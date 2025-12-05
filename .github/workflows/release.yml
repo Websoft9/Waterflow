@@ -244,7 +244,7 @@ jobs:
 
       - name: Set up Python
         if: contains(github.event.head_commit.modified, 'setup.py') || contains(github.event.head_commit.modified, 'pyproject.toml')
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.9'
 

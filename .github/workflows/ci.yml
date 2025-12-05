@@ -36,7 +36,7 @@ jobs:
 
       - name: Set up Python
         if: contains(github.event.head_commit.modified, 'requirements.txt') || contains(github.event.head_commit.modified, 'pyproject.toml')
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -144,7 +144,7 @@ jobs:
 
       - name: Set up Python ${{ matrix.python-version }}
         if: contains(github.event.head_commit.modified, '.py') || contains(github.event.head_commit.added, '.py')
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -216,7 +216,7 @@ jobs:
           cache: 'npm'
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
