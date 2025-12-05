@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload Go coverage to Codecov
         if: contains(github.event.head_commit.modified, '.go') || contains(github.event.head_commit.added, '.go')
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage.out
           flags: go
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload Python coverage to Codecov
         if: contains(github.event.head_commit.modified, '.py') || contains(github.event.head_commit.added, '.py')
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage.xml
           flags: python
