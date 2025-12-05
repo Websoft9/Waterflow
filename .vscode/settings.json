@@ -1,0 +1,39 @@
+{
+  "go.useLanguageServer": true,
+  "go.formatTool": "gofmt",
+  "go.lintTool": "golangci-lint",
+  "go.testFlags": ["-v"],
+  "go.testTimeout": "300s",
+  "go.coverOnSave": true,
+  "go.coverOnSingleTest": true,
+  "go.gocodeAutoBuild": true,
+  "go.buildOnSave": "workspace",
+  "go.lintOnSave": "workspace",
+  "go.vetOnSave": "workspace",
+  "go.testOnSave": false,
+  "go.alternateTools": {
+    "go": "go",
+    "gofmt": "gofmt",
+    "goimports": "goimports",
+    "golint": "golint",
+    "golangci-lint": "golangci-lint"
+  },
+  "go.addTags": {
+    "tags": "json",
+    "options": "json=omitempty",
+    "promptForTags": false,
+    "transform": "snakecase"
+  },
+  "go.removeTags": {
+    "tags": "json",
+    "options": "",
+    "promptForTags": false
+  },
+  "go.testExplorer": {
+    "showOutput": true,
+    "showDynamicSubtests": true
+  },
+  "go.useCodeSnippetsOnFunctionSuggest": true,
+  "go.useCodeSnippetsOnFunctionSuggestWithoutType": true,
+  "go.docsTool": "gogetdoc"
+}

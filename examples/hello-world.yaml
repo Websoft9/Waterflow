@@ -1,0 +1,16 @@
+apiVersion: waterflow.io/v1
+kind: Workflow
+metadata:
+  name: hello-world
+  description: "A simple hello world workflow demonstrating basic concepts"
+
+spec:
+  stages:
+    - name: greet
+      jobs:
+        - name: say-hello
+          container: alpine:latest
+          commands:
+            - echo "Hello, Waterflow! 🌊"
+            - echo "Current date: $(date)"
+            - echo "Workflow executed successfully! ✅"

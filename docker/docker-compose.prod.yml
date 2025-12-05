@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  waterflow:
+    image: waterflow:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./workflows:/app/workflows:ro
+      - ./config:/app/config:ro
+    environment:
+      - WATERFLOW_LOG_LEVEL=info
+      - WATERFLOW_SERVER_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "./waterflow", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Production database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: waterflow
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    profiles:
+      - prod
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    profiles:
+      - prod
+
+volumes:
+  postgres_data:
+  redis_data:

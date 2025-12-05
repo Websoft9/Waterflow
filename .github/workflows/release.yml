@@ -1,0 +1,298 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Create GitHub release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag_name: ${{ steps.create_release.outputs.tag_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get tag name
+        id: tag_name
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog from git history
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGES=$(git log --oneline --pretty=format:"%s" | head -20)
+          else
+            CHANGES=$(git log --oneline --pretty=format:"%s" ${PREVIOUS_TAG}..HEAD)
+          fi
+
+          # Format changelog
+          CHANGELOG="## Changes\\n\\n"
+          echo "$CHANGES" | while read -r line; do
+            CHANGELOG="${CHANGELOG}- ${line}\\n"
+          done
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag_name.outputs.tag }}
+          release_name: Release ${{ steps.tag_name.outputs.tag }}
+          body: |
+            ## 🚀 Waterflow ${{ steps.tag_name.outputs.tag }}
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ### Installation
+
+            **Binary Downloads:**
+            - [Linux AMD64](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag_name.outputs.tag }}/waterflow-linux-amd64.tar.gz)
+            - [macOS AMD64](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag_name.outputs.tag }}/waterflow-darwin-amd64.tar.gz)
+            - [Windows AMD64](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag_name.outputs.tag }}/waterflow-windows-amd64.zip)
+
+            **Docker:**
+            ```bash
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag_name.outputs.tag }}
+            ```
+
+            ### What's Changed
+            - See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details
+
+            ### Contributors
+            Thanks to all contributors who made this release possible! 🎉
+          draft: false
+          prerelease: ${{ contains(steps.tag_name.outputs.tag, 'alpha') || contains(steps.tag_name.outputs.tag, 'beta') || contains(steps.tag_name.outputs.tag, 'rc') }}
+
+  # Build and upload binaries
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: [release]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary_name: waterflow-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            binary_name: waterflow-linux-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            binary_name: waterflow-darwin-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            binary_name: waterflow-darwin-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary_name: waterflow-windows-amd64.exe
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Build binary
+        run: |
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build \
+            -ldflags="-X 'main.version=${{ needs.release.outputs.tag_name }}' -X 'main.commit=${{ github.sha }}' -X 'main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" \
+            -o ${{ matrix.binary_name }} ./cmd/waterflow
+
+      - name: Create archive (Unix)
+        if: matrix.goos != 'windows'
+        run: |
+          tar -czf ${{ matrix.binary_name }}.tar.gz ${{ matrix.binary_name }}
+
+      - name: Create archive (Windows)
+        if: matrix.goos == 'windows'
+        run: |
+          7z a ${{ matrix.binary_name }}.zip ${{ matrix.binary_name }}
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ./${{ matrix.binary_name }}.tar.gz
+          asset_name: ${{ matrix.binary_name }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Windows release asset
+        if: matrix.goos == 'windows'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ./${{ matrix.binary_name }}.zip
+          asset_name: ${{ matrix.binary_name }}.zip
+          asset_content_type: application/zip
+
+  # Build and push Docker image
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [release]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+
+  # Update Homebrew formula (if applicable)
+  homebrew:
+    name: Update Homebrew Formula
+    runs-on: ubuntu-latest
+    needs: [release, build]
+    if: contains(github.event.head_commit.message, 'release') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: Websoft9/homebrew-tap
+          path: homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update formula
+        run: |
+          # Update Homebrew formula with new version
+          # This would need to be customized based on your Homebrew setup
+          echo "Updating Homebrew formula..."
+
+  # Publish to package registries
+  publish:
+    name: Publish Packages
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: contains(github.event.head_commit.modified, 'package.json') || contains(github.event.head_commit.added, 'package.json')
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Set up Python
+        if: contains(github.event.head_commit.modified, 'setup.py') || contains(github.event.head_commit.modified, 'pyproject.toml')
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Publish to NPM
+        if: contains(github.event.head_commit.modified, 'package.json') || contains(github.event.head_commit.added, 'package.json')
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to PyPI
+        if: contains(github.event.head_commit.modified, 'setup.py') || contains(github.event.head_commit.modified, 'pyproject.toml')
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+          python -m build
+          twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  # Notify stakeholders
+  notify:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [release, build, docker]
+    if: always() && needs.release.result == 'success'
+    steps:
+      - name: Notify Discord
+        if: env.DISCORD_WEBHOOK
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        with:
+          args: |
+            🚀 **Waterflow ${{ needs.release.outputs.tag_name }}** released!
+
+            **Download:** https://github.com/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag_name }}
+            **Docker:** `docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.release.outputs.tag_name }}`
+
+            See what's new in the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)!
+
+      - name: Notify Slack
+        if: env.SLACK_WEBHOOK
+        uses: 8398a7/action-slack@v3
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        with:
+          status: success
+          title: 'Waterflow Release'
+          text: 'New version ${{ needs.release.outputs.tag_name }} is now available!'
+          color: good

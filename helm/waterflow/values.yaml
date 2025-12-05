@@ -1,0 +1,116 @@
+# Default values for waterflow.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: waterflow
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: waterflow.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: waterflow-tls
+  #    hosts:
+  #      - waterflow.local
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "changeme"
+    username: "waterflow"
+    password: "changeme"
+    database: "waterflow"
+  architecture: standalone
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Redis configuration
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Waterflow specific configuration
+waterflow:
+  logLevel: info
+  server:
+    host: 0.0.0.0
+    port: 8080
+  database:
+    host: ""
+    port: 5432
+    sslmode: require
+  redis:
+    host: ""
+    port: 6379
+  workflows:
+    storage: filesystem
+    path: /app/workflows

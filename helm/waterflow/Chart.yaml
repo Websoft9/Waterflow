@@ -1,0 +1,17 @@
+apiVersion: v2
+name: waterflow
+description: A Helm chart for Waterflow DevOps workflow orchestration platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - devops
+  - workflow
+  - orchestration
+  - ci-cd
+home: https://github.com/waterflow/waterflow
+sources:
+  - https://github.com/waterflow/waterflow
+maintainers:
+  - name: Waterflow Team
+    email: team@waterflow.io

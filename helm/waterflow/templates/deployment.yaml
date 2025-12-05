@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "waterflow.fullname" . }}
+  labels:
+    {{- include "waterflow.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "waterflow.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "waterflow.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "waterflow.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: waterflow
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.waterflow.server.port }}
+              protocol: TCP
+          env:
+            - name: WATERFLOW_LOG_LEVEL
+              value: {{ .Values.waterflow.logLevel | quote }}
+            - name: WATERFLOW_SERVER_HOST
+              value: {{ .Values.waterflow.server.host | quote }}
+            - name: WATERFLOW_SERVER_PORT
+              value: {{ .Values.waterflow.server.port | quote }}
+            - name: WATERFLOW_DATABASE_HOST
+              value: {{ .Values.waterflow.database.host | default (include "waterflow.postgresql.host" .) | quote }}
+            - name: WATERFLOW_DATABASE_PORT
+              value: {{ .Values.waterflow.database.port | quote }}
+            - name: WATERFLOW_DATABASE_SSLMODE
+              value: {{ .Values.waterflow.database.sslmode | quote }}
+            - name: WATERFLOW_REDIS_HOST
+              value: {{ .Values.waterflow.redis.host | default (include "waterflow.redis.host" .) | quote }}
+            - name: WATERFLOW_REDIS_PORT
+              value: {{ .Values.waterflow.redis.port | quote }}
+            - name: WATERFLOW_WORKFLOWS_STORAGE
+              value: {{ .Values.waterflow.workflows.storage | quote }}
+            - name: WATERFLOW_WORKFLOWS_PATH
+              value: {{ .Values.waterflow.workflows.path | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: workflows
+              mountPath: {{ .Values.waterflow.workflows.path }}
+      volumes:
+        - name: workflows
+          persistentVolumeClaim:
+            claimName: {{ include "waterflow.fullname" . }}-workflows
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,89 @@
+apiVersion: waterflow.io/v1
+kind: Workflow
+metadata:
+  name: microservices-deploy
+  description: "Complete microservices deployment pipeline"
+
+spec:
+  env:
+    - name: ENVIRONMENT
+      value: "staging"
+    - name: DOCKER_REGISTRY
+      value: "websoft9/waterflow"
+
+  stages:
+    - name: build
+      jobs:
+        - name: build-api
+          container: golang:1.21-alpine
+          commands:
+            - echo "Building API service..."
+            - go mod download
+            - go build -o bin/api ./cmd/api
+            - echo "API build completed"
+
+        - name: build-worker
+          container: golang:1.21-alpine
+          commands:
+            - echo "Building worker service..."
+            - go mod download
+            - go build -o bin/worker ./cmd/worker
+            - echo "Worker build completed"
+
+    - name: test
+      dependsOn: [build]
+      jobs:
+        - name: unit-tests
+          container: golang:1.21-alpine
+          commands:
+            - echo "Running unit tests..."
+            - go test -v -race -cover ./...
+            - echo "Unit tests passed"
+
+        - name: integration-tests
+          container: golang:1.21-alpine
+          commands:
+            - echo "Running integration tests..."
+            - go test -v -tags=integration ./test/integration/...
+            - echo "Integration tests passed"
+
+    - name: security-scan
+      dependsOn: [build]
+      jobs:
+        - name: vulnerability-scan
+          container: aquasecurity/trivy:latest
+          commands:
+            - echo "Scanning for vulnerabilities..."
+            - trivy filesystem --exit-code 0 --no-progress /workspace
+            - echo "Security scan completed"
+
+    - name: docker-build
+      dependsOn: [test, security-scan]
+      jobs:
+        - name: build-api-image
+          container: docker:latest
+          commands:
+            - echo "Building API Docker image..."
+            - docker build -t ${DOCKER_REGISTRY}/api:${ENVIRONMENT} -f docker/Dockerfile.api .
+            - docker push ${DOCKER_REGISTRY}/api:${ENVIRONMENT}
+            - echo "API image pushed"
+
+        - name: build-worker-image
+          container: docker:latest
+          commands:
+            - echo "Building worker Docker image..."
+            - docker build -t ${DOCKER_REGISTRY}/worker:${ENVIRONMENT} -f docker/Dockerfile.worker .
+            - docker push ${DOCKER_REGISTRY}/worker:${ENVIRONMENT}
+            - echo "Worker image pushed"
+
+    - name: deploy
+      dependsOn: [docker-build]
+      jobs:
+        - name: deploy-to-k8s
+          container: alpine/k8s:1.28
+          commands:
+            - echo "Deploying to Kubernetes..."
+            - kubectl apply -f k8s/
+            - kubectl rollout status deployment/api
+            - kubectl rollout status deployment/worker
+            - echo "Deployment completed successfully"

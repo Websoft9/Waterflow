@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  waterflow-test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    volumes:
+      - ../:/app
+    environment:
+      - WATERFLOW_LOG_LEVEL=debug
+      - WATERFLOW_TEST_MODE=true
+    command: ["make", "test-integration"]
+    profiles:
+      - test
+
+  # Test database
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: waterflow_test
+      POSTGRES_USER: waterflow_test
+      POSTGRES_PASSWORD: testpassword
+    tmpfs:
+      - /var/lib/postgresql/data
+    profiles:
+      - test
+
+  # Redis for test caching
+  redis-test:
+    image: redis:7-alpine
+    tmpfs:
+      - /data
+    profiles:
+      - test

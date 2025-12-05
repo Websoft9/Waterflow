@@ -1,0 +1,26 @@
+{
+  "recommendations": [
+    "golang.go",
+    "ms-vscode.vscode-json",
+    "redhat.vscode-yaml",
+    "ms-vscode.makefile-tools",
+    "ms-vscode.vscode-docker",
+    "ms-vscode.vscode-kubernetes-tools",
+    "ms-vscode.vscode-eslint",
+    "ms-python.python",
+    "ms-vscode.vscode-typescript-next",
+    "esbenp.prettier-vscode",
+    "ms-vscode.vscode-markdownlint",
+    "gruntfuggly.todo-tree",
+    "christian-kohler.path-intellisense",
+    "ms-vscode.vscode-git-graph",
+    "ms-vscode.vscode-pull-request-github",
+    "ms-vscode.test-adapter-converter",
+    "hbenl.vscode-test-explorer",
+    "ms-vscode.vscode-coverage-gutters"
+  ],
+  "unwantedRecommendations": [
+    "ms-vscode.vscode-typescript",
+    "hookyqr.beautify"
+  ]
+}
