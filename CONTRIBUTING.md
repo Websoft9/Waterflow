@@ -5,12 +5,23 @@ Thank you for your interest in contributing to Waterflow! This document provides
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
 - [Branch Strategy](#branch-strategy)
 - [Commit Message Guidelines](#commit-message-guidelines)
 - [Pull Request Process](#pull-request-process)
 - [Development Workflow](#development-workflow)
 - [Coding Standards](#coding-standards)
+
+## Project Structure
+
+This repository contains two main components:
+
+- **`/src`** (Coming soon) - Waterflow core engine implementation
+- **`.bmad/`** - BMAD Method workflow system and configurations
+- **`.github/`** - GitHub templates, workflows, and project management configurations
+
+When contributing, please ensure your changes are in the appropriate directory.
 
 ## Code of Conduct
 
