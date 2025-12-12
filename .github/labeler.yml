@@ -1,0 +1,17 @@
+# Auto-label PRs based on changed files
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file: ['docs/**', '**/*.md']
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file: ['.github/**']
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file: ['**/*_test.go']
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file: ['go.mod', 'go.sum']
