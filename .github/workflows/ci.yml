@@ -22,13 +22,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check if Go project exists
+        id: check-go
+        run: |
+          if [ -f "go.mod" ]; then
+            echo "has_go=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_go=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No go.mod found, skipping Go checks"
+          fi
+
       - name: Set up Go
+        if: steps.check-go.outputs.has_go == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
 
       - name: Run gofmt
+        if: steps.check-go.outputs.has_go == 'true'
         run: |
           if [ -n "$(gofmt -l .)" ]; then
             echo "Code is not formatted. Please run 'gofmt -w .'"
@@ -37,6 +49,7 @@ jobs:
           fi
 
       - name: Run go vet
+        if: steps.check-go.outputs.has_go == 'true'
         run: go vet ./...
 
   test:
@@ -51,13 +64,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check if Go project exists
+        id: check-go
+        run: |
+          if [ -f "go.mod" ]; then
+            echo "has_go=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_go=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No go.mod found, skipping tests"
+          fi
+
       - name: Set up Go
+        if: steps.check-go.outputs.has_go == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
 
       - name: Run tests
+        if: steps.check-go.outputs.has_go == 'true'
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
   build:
@@ -68,16 +93,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check if Go project exists
+        id: check-go
+        run: |
+          if [ -f "go.mod" ]; then
+            echo "has_go=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_go=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No go.mod found, skipping build"
+          fi
+
       - name: Set up Go
+        if: steps.check-go.outputs.has_go == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
 
       - name: Build
+        if: steps.check-go.outputs.has_go == 'true'
         run: go build -v ./...
 
       - name: Verify dependencies
+        if: steps.check-go.outputs.has_go == 'true'
         run: |
           go mod verify
           go mod tidy
