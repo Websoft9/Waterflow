@@ -31,12 +31,12 @@ status: 'complete'
 
 **FR4:** 实现服务器组 (Server Group) 概念,支持工作流目标特定服务器组执行
 
-**FR5:** 提供 10 个内置节点:
+**FR5:** 提供 10 个核心节点 (编译为 .so 插件,随 Agent 镜像发布):
   - 控制流: condition (if/else), loop (for-each), sleep
   - 操作: shell, script, file/transfer, http/request
   - Docker: docker/exec, docker/compose-up, docker/compose-down
 
-**FR6:** 支持自定义节点注册和扩展
+**FR6:** 支持自定义节点开发和热加载 (通过 Go Plugin 机制,自动注册到 NodeRegistry)
 
 **FR7:** 通过 Temporal 实现工作流状态持久化,支持进程重启后恢复
 
@@ -62,7 +62,6 @@ status: 'complete'
 
 **NFR1: 部署简单性**
 - Docker Compose 一键部署 (Waterflow Server + Temporal + Agents) ≤10 分钟
-- Kubernetes Helm Chart 生产部署支持
 - 预构建 Docker 镜像
 
 **NFR2: 性能**
@@ -101,7 +100,7 @@ status: 'complete'
 - 自定义节点开发指南
 
 **NFR8: 跨平台支持**
-- Server: Linux (Docker/Kubernetes 部署)
+- Server: Linux (Docker 部署)
 - Agent: Linux 服务器、容器环境
 - CLI: Linux/MacOS/Windows (Go 交叉编译)
 
@@ -120,7 +119,9 @@ status: 'complete'
 
 **AR2: 架构约束**
 - 必须使用 Temporal SDK (Server ↔ Temporal ↔ Agent)
-- 工作流状态完全依赖 Temporal 持久化
+- 工作流状态完全依赖 Temporal 持久化 (Event Sourcing 模式)
+- 所有执行状态存储在 Temporal Event History,Server 无状态
+- 单节点执行模式: 每个 Step 映射为 1 个 Temporal Activity 调用 (ADR-0002)
 - Agent 注册信息可存入内存/Redis/etcd (MVP 使用内存)
 - 配置通过环境变量 + 配置文件 (YAML/TOML)
 
@@ -132,16 +133,15 @@ status: 'complete'
 - 每个接口 ≤3 个方法,提供默认实现
 
 **AR4: 数据模型**
-- Workflow: 工作流定义和执行状态
+- Workflow: 工作流定义和执行状态 (状态存储在 Temporal Event History)
 - Job: 工作流中的作业单元
-- Step: 作业中的步骤
-- Node: 可执行的节点类型
-- ServerGroup: 服务器组逻辑集合
-- Agent: Worker 进程实例
+- Step: 作业中的步骤 (每个 Step = 1 个 Activity 调用)
+- Node: 可执行的节点类型 (以 .so 插件形式实现)
+- ServerGroup: 服务器组逻辑集合 (直接映射到 Task Queue)
+- Agent: Worker 进程实例 (加载插件并执行 Activity)
 
 **AR5: 部署方案**
-- Docker Compose: 开发和一体化部署
-- Kubernetes Helm Chart: 生产部署
+- Docker Compose: 开发和生产部署
 - 二进制独立部署 (Server + Agent)
 
 **AR6: 错误处理**
@@ -190,8 +190,13 @@ status: 'complete'
 **FR12** → Epic 7 (工作流模板库)  
 **FR13** → Epic 2 (并行执行)  
 **FR14** → Epic 2 (健康监控)  
-**FR15** → Epic 5 (变量引用系统)  
+**FR15** → Epic 2, Epic 5 (ServerGroupProvider接口 + 变量引用系统)  
 **FR16** → Epic 5 (条件执行)  
+**FR17** → Epic 8 (EventHandler接口) ✨ **新增**  
+**FR18** → Epic 8 (LogHandler接口) ✨ **新增**  
+**FR19** → Epic 9 (Docker镜像打包 - Server和Agent) ✨ **已完善**  
+**FR20** → Epic 1, Epic 9 (Docker Compose部署)  
+**FR21** → Epic 11 (文档结构)  
 
 **NFR1** → Epic 9 (部署简单性)  
 **NFR2** → Epic 8 (性能)  
@@ -212,17 +217,18 @@ status: 'complete'
 **FRs covered:** FR1, FR2, FR7, FR9
 
 ### Epic 2: 分布式 Agent 系统
-运维工程师可以在多台服务器上部署 Agent,工作流可以将任务分发到特定服务器组执行,实现跨服务器编排
+运维工程师可以在多台服务器上部署 Agent,工作流可以将任务分发到特定服务器组执行,实现跨服务器编排。支持通过 ServerGroupProvider 接口集成外部 CMDB 系统。
 
-**FRs covered:** FR3, FR4, FR13, FR14
+**FRs covered:** FR3, FR4, FR13, FR14, FR15 (ServerGroupProvider接口)
 
-### Epic 3: 内置节点库
-用户可以使用 10 个内置节点构建实用的工作流,覆盖控制流、Shell 操作、文件传输、HTTP 请求、Docker 管理等常见场景
+### Epic 3: 核心节点插件库
+用户可以使用 10 个核心节点构建实用的工作流,覆盖控制流、Shell 操作、文件传输、HTTP 请求、Docker 管理等常见场景。所有节点都编译为 .so 插件,通过 Agent 启动时自动加载 (ADR-0003 插件化节点系统)。
 
 **FRs covered:** FR5
 
 ### Epic 4: 节点扩展系统
-开发者可以创建自定义节点扩展 Waterflow 能力,通过简单的插件 API (<50 LOC) 注册新节点类型
+
+开发者可以创建自定义节点扩展 Waterflow 能力,通过简单的插件 API (<50 LOC) 注册新节点类型,支持热加载无需重启 (ADR-0003 插件化节点系统)
 
 **FRs covered:** FR6, FR8, NFR5
 
@@ -242,14 +248,14 @@ status: 'complete'
 **FRs covered:** FR12
 
 ### Epic 8: 生产级可靠性
-Waterflow 在生产环境中稳定运行,支持故障恢复、性能优化、完善的错误处理
+Waterflow 在生产环境中稳定运行,支持故障恢复、性能优化、完善的错误处理。提供 EventHandler 和 LogHandler 接口用于集成外部监控和日志系统。
 
-**FRs covered:** FR8, NFR2, NFR3, NFR4
+**FRs covered:** FR8, FR17 (EventHandler), FR18 (LogHandler), NFR2, NFR3, NFR4
 
 ### Epic 9: 部署和运维
-用户可以通过 Docker Compose 快速部署开发环境,或通过 Helm Chart 部署生产级 Kubernetes 集群
+用户可以通过 Docker Compose 快速部署开发和生产环境。提供 Waterflow Server 和 Agent 的 Docker 镜像,支持一键部署完整栈。
 
-**FRs covered:** NFR1, NFR8
+**FRs covered:** FR19 (Docker镜像 - Server和Agent), FR20 (Docker Compose), NFR1, NFR8
 
 ### Epic 10: 安全和认证
 Waterflow 支持 API 认证,保护敏感凭证,提供安全的通信机制
@@ -457,21 +463,29 @@ So that **Agent 可以作为 Temporal Worker 运行**。
 **And** 支持优雅关闭  
 **And** 日志输出到 stdout
 
-### Story 2.2: 服务器组概念实现
+### Story 2.2: 服务器组概念和 ServerGroupProvider 接口实现
 
 As a **系统架构师**,  
-I want **实现服务器组 (Server Group) 的概念**,  
-So that **工作流可以目标特定服务器组执行任务**。
+I want **实现服务器组 (Server Group) 的概念和 ServerGroupProvider 接口**,  
+So that **工作流可以目标特定服务器组执行任务,并支持与外部 CMDB 集成**。
 
 **Acceptance Criteria:**
 
 **Given** Agent 和 Server 已实现  
 **When** Agent 启动时指定服务器组名称  
 **Then** Agent 注册到对应的 Task Queue (以组名命名)  
+**And** 定义 ServerGroupProvider 接口包含方法:  
+**And** GetServers(ctx, groupName) ([]ServerInfo, error) - 查询服务器组中的 Agent 清单  
+**And** ServerInfo 包含: agentID, hostname, ip, status, lastHeartbeat  
+**And** 提供默认内存实现 (InMemoryServerGroupProvider)  
+**And** 提供配置文件实现 (从 YAML/JSON 加载服务器组定义)  
+**And** Server 配置支持注入自定义 ServerGroupProvider  
 **And** Server 维护服务器组和 Agent 的映射关系  
 **And** 工作流中 `runs-on` 字段指定服务器组  
 **And** 任务路由到正确的服务器组  
-**And** 支持多个 Agent 属于同一个组
+**And** 支持多个 Agent 属于同一个组  
+**And** 提供 CMDB 集成示例 (如何实现自定义 Provider)  
+**And** 文档说明如何实现自定义 ServerGroupProvider
 
 ### Story 2.3: Agent 注册和心跳
 
@@ -779,22 +793,23 @@ So that **了解如何使用节点**。
 
 开发者可以创建自定义节点扩展 Waterflow 能力,通过简单的插件 API (<50 LOC) 注册新节点类型
 
-### Story 4.1: 节点注册表实现
+### Story 4.1: NodeRegistry 和插件加载器实现
 
 As a **开发者**,  
-I want **实现节点注册中心**,  
-So that **管理内置和自定义节点**。
+I want **实现节点注册中心和插件加载器**,  
+So that **管理所有节点插件**。
 
 **Acceptance Criteria:**
 
 **Given** 节点接口已定义  
-**When** Server 启动时  
-**Then** 初始化节点注册表  
-**And** 自动注册所有内置节点  
-**And** 支持运行时注册自定义节点  
+**When** Agent 启动时  
+**Then** 初始化 NodeRegistry  
+**And** 扫描 `/opt/waterflow/plugins/` 目录加载所有 .so 文件  
+**And** 调用插件的 Register() 函数自动注册  
 **And** 节点按 name 唯一标识  
 **And** 提供 ListNodes() 方法查询可用节点  
-**And** 提供 GetNode(name) 方法获取节点实例
+**And** 提供 GetNode(name) 方法获取节点实例  
+**And** 支持运行时热加载新插件 (fsnotify)
 
 ### Story 4.2: 节点参数 Schema 验证
 
@@ -828,20 +843,23 @@ So that **临时故障可以自动恢复**。
 **And** 重试日志记录每次尝试  
 **And** 不可重试的错误 (如参数错误) 不重试
 
-### Story 4.4: 自定义节点开发示例
+### Story 4.4: 自定义节点插件开发示例
 
 As a **开发者**,  
-I want **创建自己的节点类型**,  
+I want **创建自己的节点插件**,  
 So that **扩展 Waterflow 能力**。
 
 **Acceptance Criteria:**
 
-**Given** 节点 API 文档  
+**Given** 节点插件 API 文档  
 **When** 按照示例创建自定义节点  
-**Then** 实现节点接口 (<50 LOC)  
+**Then** 实现 NodeExecutor 接口 (Execute + Metadata)  
 **And** 定义节点元数据和 Schema  
-**And** 注册节点到 Registry  
-**And** 节点在工作流中可用  
+**And** 实现 Register() 函数注册到 NodeRegistry  
+**And** 编译为 .so 文件: `go build -buildmode=plugin`  
+**And** 复制到 `/opt/waterflow/plugins/custom/` 目录  
+**And** Agent 自动检测并加载该插件  
+**And** 节点在工作流中立即可用  
 **And** 示例包含完整测试代码
 
 ### Story 4.5: 自定义节点开发指南
@@ -1238,11 +1256,76 @@ So that **监控系统运行状态**。
 **And** 指标包含: 节点执行时长  
 **And** 提供 Grafana Dashboard 模板
 
+### Story 8.6: EventHandler 接口实现
+
+As a **系统集成者**,  
+I want **通过 EventHandler 接口接收工作流生命周期事件**,  
+So that **集成外部监控和通知系统**。
+
+**Acceptance Criteria:**
+
+**Given** Waterflow Server 运行中  
+**When** 工作流生命周期事件发生  
+**Then** 定义 EventHandler 接口包含三个方法:  
+**And** OnWorkflowStart(ctx, workflowID, metadata) - 工作流开始时调用  
+**And** OnWorkflowComplete(ctx, workflowID, result) - 工作流成功完成时调用  
+**And** OnWorkflowFailed(ctx, workflowID, error) - 工作流失败时调用  
+**And** 提供默认 Webhook 实现 (POST JSON 到配置的 URL)  
+**And** 提供空实现 (NoOpEventHandler) 作为默认值  
+**And** Server 配置支持注入自定义 EventHandler  
+**And** 事件发送失败不影响工作流执行  
+**And** 提供集成示例: Slack 通知、Prometheus Pushgateway  
+**And** 文档说明如何实现自定义 EventHandler
+
+### Story 8.7: LogHandler 接口实现
+
+As a **系统集成者**,  
+I want **通过 LogHandler 接口接收工作流执行日志**,  
+So that **集成企业日志系统**。
+
+**Acceptance Criteria:**
+
+**Given** Waterflow Server 和 Agent 运行中  
+**When** 工作流执行产生日志  
+**Then** 定义 LogHandler 接口包含一个方法:  
+**And** OnLog(ctx, entry LogEntry) - 接收日志条目  
+**And** LogEntry 包含: timestamp, level, workflowID, stepID, nodeType, message  
+**And** 提供默认 Stdout 实现 (输出到标准输出)  
+**And** 提供 File 实现 (写入日志文件,支持轮转)  
+**And** Server 配置支持注入自定义 LogHandler  
+**And** 日志发送失败记录到错误日志但不中断执行  
+**And** 支持批量发送优化性能 (可选)  
+**And** 提供集成示例: Loki、CloudWatch Logs  
+**And** 文档说明如何实现自定义 LogHandler
+
 ---
 
 ## Epic 9: 部署和运维
 
-用户可以通过 Docker Compose 快速部署开发环境,或通过 Helm Chart 部署生产级 Kubernetes 集群
+用户可以通过 Docker Compose 快速部署开发和生产环境
+
+### Story 9.0: Waterflow Server Docker 镜像构建
+
+As a **开发者**,  
+I want **构建和发布 Waterflow Server Docker 镜像**,  
+So that **简化 Server 部署和分发**。
+
+**Acceptance Criteria:**
+
+**Given** Server 代码已完成  
+**When** 构建 Docker 镜像  
+**Then** 创建多阶段 Dockerfile (builder + runtime)  
+**And** 使用轻量级基础镜像 (alpine 或 distroless)  
+**And** 镜像大小 < 50MB (压缩后)  
+**And** 支持环境变量配置所有参数  
+**And** 暴露端口 8080 (HTTP API)  
+**And** 健康检查配置 (HEALTHCHECK 指令)  
+**And** 非 root 用户运行提升安全性  
+**And** CI/CD 自动构建和推送到 Docker Hub 和 GHCR  
+**And** 镜像标签策略: latest, 版本号 (v1.0.0), commit SHA  
+**And** 提供 docker run 示例命令  
+**And** 启动时间 < 5 秒  
+**And** 空闲内存占用 < 100MB
 
 ### Story 9.1: Docker Compose 完善
 
@@ -1261,25 +1344,7 @@ So that **一键启动完整环境**。
 **And** 提供环境变量配置说明  
 **And** 总启动时间 < 10 分钟
 
-### Story 9.2: Kubernetes Helm Chart
-
-As a **系统管理员**,  
-I want **Kubernetes Helm Chart**,  
-So that **在 K8s 集群部署 Waterflow**。
-
-**Acceptance Criteria:**
-
-**Given** Kubernetes 集群  
-**When** 执行 `helm install waterflow`  
-**Then** 部署 Waterflow Server Deployment  
-**And** 部署 Temporal Server StatefulSet  
-**And** 部署 PostgreSQL (或使用外部)  
-**And** 配置 Service 和 Ingress  
-**And** 支持自定义 values.yaml  
-**And** 健康检查和就绪探针配置  
-**And** 提供 HPA 水平扩展支持
-
-### Story 9.3: 配置管理
+### Story 9.2: 配置管理
 
 As a **系统管理员**,  
 I want **灵活的配置管理**,  
@@ -1296,7 +1361,7 @@ So that **适配不同环境**。
 **And** 配置项文档完整 (类型、默认值、说明)  
 **And** 配置错误启动时报告清晰错误
 
-### Story 9.4: 健康检查和就绪探针
+### Story 9.3: 健康检查和就绪探针
 
 As a **系统管理员**,  
 I want **健康检查端点**,  
@@ -1309,8 +1374,8 @@ So that **监控服务可用性**。
 **Then** `/health` 端点检查进程存活  
 **And** `/ready` 端点检查 Temporal 连接、数据库连接  
 **And** 服务不可用时返回 503  
-**And** Kubernetes Liveness Probe 使用 `/health`  
-**And** Kubernetes Readiness Probe 使用 `/ready`
+**And** Docker Healthcheck 使用 `/health` 端点  
+**And** Readiness 检查通过 `/ready` 端点验证
 
 ### Story 9.5: 部署文档
 
@@ -1323,7 +1388,6 @@ So that **正确部署和配置系统**。
 **Given** 部署工具和配置  
 **When** 查阅部署文档  
 **Then** 说明 Docker Compose 部署步骤  
-**And** 说明 Kubernetes Helm 部署步骤  
 **And** 说明二进制独立部署步骤  
 **And** 列出所有配置参数和说明  
 **And** 提供生产环境最佳实践  
@@ -1602,7 +1666,37 @@ So that **选择最适合的安装方式**。
 
 ## 总结
 
-**共 12 个 Epics, 110+ User Stories**
+**共 12 个 Epics, 80 User Stories**
 
 所有需求已完整分解为可执行的 Stories,每个 Story 都包含清晰的验收标准。Stories 按 Epic 组织,体现用户价值和技术实现的平衡。
 
+### 最近更新 (2025-12-16)
+
+**补充的Stories (基于实施就绪性评估):**
+
+1. **Epic 2 - Story 2.2**: 增强ServerGroupProvider接口实现的验收标准
+   - 明确接口定义和默认实现
+   - 添加CMDB集成示例
+
+2. **Epic 8 - Story 8.6**: EventHandler接口实现 ✨ **新增**
+   - 支持工作流生命周期事件集成
+   - 提供Webhook默认实现和集成示例
+
+3. **Epic 8 - Story 8.7**: LogHandler接口实现 ✨ **新增**
+   - 支持日志系统集成
+   - 提供Stdout和File默认实现
+
+4. **Epic 9 - Story 9.0**: Waterflow Server Docker镜像构建 ✨ **新增**
+   - 完善Docker镜像构建和发布流程
+   - 补充Server镜像(原本只有Agent镜像)
+
+**FR覆盖率更新:**
+- 原覆盖率: 85.7% (18/21)
+- 当前覆盖率: 100% (21/21) ✅
+- 补充的FR: FR15 (ServerGroupProvider), FR17 (EventHandler), FR18 (LogHandler), FR19 (Server镜像)
+
+**Story总数更新:**
+- Epic 2: 9 → 9 Stories (Story 2.2增强)
+- Epic 8: 5 → 7 Stories (新增8.6, 8.7)
+- Epic 9: 4 → 5 Stories (新增9.0)
+- **总计: 76 → 80 Stories**

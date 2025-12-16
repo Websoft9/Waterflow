@@ -1,695 +1,1179 @@
 ---
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 inputDocuments:
   - /data/Waterflow/docs/prd.md
+  - /data/Waterflow/docs/adr/0001-use-temporal-workflow-engine.md
+  - /data/Waterflow/docs/adr/0002-single-node-execution-pattern.md
+  - /data/Waterflow/docs/adr/0003-plugin-based-node-system.md
+  - /data/Waterflow/docs/adr/0004-yaml-dsl-syntax.md
+  - /data/Waterflow/docs/adr/0005-expression-system-syntax.md
+  - /data/Waterflow/docs/adr/0006-task-queue-routing.md
 workflowType: 'architecture'
-lastStep: 2
+lastStep: 8
 project_name: 'Waterflow'
 user_name: 'Websoft9'
-date: '2025-12-13'
+date: '2025-12-16'
+status: 'complete'
+version: '1.0'
 ---
 
-# Architecture Decision Document
+# Waterflow 架构设计文档
 
-_This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
+**版本:** 1.0  
+**日期:** 2025-12-16  
+**状态:** Architecture Design Complete
 
 ---
 
-## 项目背景分析
+## 文档说明
 
-### 1. 产品定位
+本文档采用 [C4 Model](https://c4model.com/) 组织架构视图,从不同抽象层次描述 Waterflow 系统架构:
+- **Context View (系统上下文)** - Waterflow 在整体生态中的定位
+- **Container View (容器视图)** - 核心组件及其交互
+- **Component View (组件视图)** - 各容器内部结构
+- **Data Flow (数据流)** - 典型场景的执行流程
+- **Deployment View (部署视图)** - 运行时部署架构
+- **Quality Attributes (质量属性)** - 非功能性需求
 
-Waterflow 是一个**声明式工作流编排服务**,提供企业级的分布式任务执行能力。通过 YAML DSL 定义工作流,基于 Temporal 提供生产级的持久化执行,通过分布式 Agent 实现跨服务器的任务编排。
+核心架构决策记录在 [Architecture Decision Records (ADR)](adr/README.md) 中。
 
-**核心架构:** Waterflow Server (REST API) → Temporal (内部运行时) → 分布式 Agent
+---
 
-#### 1.1 设计目标
+## 1. Context View (系统上下文)
 
-为 Temporal 提供声明式 DSL 和分布式 Agent 模式,降低工作流编排门槛。用户通过 REST API 提交 YAML 工作流,Waterflow Server 将其转换为 Temporal Workflow 执行,Agent 在目标服务器上完成具体任务。用户无需了解 Temporal 复杂性。
+### 1.1 系统定位
 
-#### 1.2 典型使用场景
+Waterflow 是一个**声明式工作流编排服务**,为 [Temporal](https://temporal.io) 提供 YAML DSL 接口和分布式 Agent 执行模式。
 
-- **应用部署**: 跨多服务器编排容器化应用部署流程
-- **批量运维**: 对服务器组执行批量巡检、配置更新
-- **DevOps 自动化**: 声明式定义 CI/CD 流水线,替代复杂脚本
-- **定时任务**: 可靠的分布式定时任务调度
+**定位:** 简化分布式工作流编排,让用户通过 YAML 定义工作流,无需编写 Temporal SDK 代码。
 
-#### 1.3 技术定位对比
+**核心价值:**
+- 声明式 DSL → 降低编程门槛
+- 分布式 Agent → 跨服务器任务编排  
+- 生产级可靠性 → 基于 Temporal 的持久化执行
 
-| 对比维度 | Waterflow | Temporal | GitHub Actions |
-|---------|-----------|----------|----------------|
-| **抽象层级** | 高 (YAML DSL) | 中 (SDK) | 高 (YAML) |
-| **用户界面** | REST API + CLI | Web UI + SDK | Web UI + API |
-| **部署模式** | 独立服务 | 独立服务 | 云服务 |
-| **工作流定义** | YAML | 代码 (Go/Java/Python) | YAML |
-| **执行环境** | 分布式 Agent | Worker Pool | GitHub Runners |
-| **目标场景** | 通用工作流编排 | 企业级工作流引擎 | CI/CD 专用 |
+### 1.2 系统边界
 
-#### 1.4 系统边界
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      User Application                       │
+│  (业务系统通过 REST API/SDK 集成 Waterflow)                  │
+└──────────────┬──────────────────────────────────────────────┘
+               │ REST API
+               ↓
+┌──────────────────────────────────────────────────────────────┐
+│                        Waterflow                             │
+│  ┌──────────┐    ┌──────────┐    ┌────────────────────┐     │
+│  │  Server  │───→│ Temporal │←───│ Distributed Agents │     │
+│  │(REST API)│    │ (Engine) │    │  (Task Executors)  │     │
+│  └──────────┘    └──────────┘    └────────────────────┘     │
+└──────────────────────────────────────────────────────────────┘
+               │
+               ↓ 执行任务
+┌──────────────────────────────────────────────────────────────┐
+│              Target Infrastructure                           │
+│  (Linux Servers, Docker Containers)                          │
+└──────────────────────────────────────────────────────────────┘
+```
 
-**Waterflow 提供:**
+**Waterflow 负责:**
 - YAML DSL 解析与验证
-- REST API (工作流提交、查询、控制)
-- 工作流到 Temporal Workflow 的转换
+- REST API 服务 (工作流提交、状态查询、日志获取)
+- DSL → Temporal Workflow 转换
 - 分布式 Agent 任务执行
-- 节点执行逻辑和任务路由
-- 执行状态和日志输出
-- CLI 工具 (开发测试)
-- 多语言 SDK (可选,便于集成)
+- 插件化节点系统
 
-**Temporal 负责 (内部实现细节):**
-- 工作流状态持久化
-- 分布式任务调度
-- 自动重试和容错
+**Temporal 负责 (内部依赖):**
+- 工作流状态持久化 (Event Sourcing)
+- 分布式任务调度 (Task Queue)
+- 容错与自动重试
 - 执行历史存储
 
 **用户应用负责:**
-- 通过 REST API/SDK 集成 Waterflow
-- 管理服务器凭证和连接信息
-- 构建业务层 UI (可选)
-- 实现业务级权限控制 (可选)
+- 集成 Waterflow REST API/SDK
+- 业务层权限控制
+- UI 界面(可选)
+- 服务器凭证管理
 
-### 2. 功能需求
+### 1.3 典型使用场景
 
-#### 2.1 Waterflow Server
+| 场景 | 示例 |
+|------|------|
+| **应用部署** | 跨多服务器编排容器化应用部署 |
+| **批量运维** | 对服务器组执行批量巡检、配置更新 |
+| **CI/CD 流水线** | 声明式定义构建、测试、部署流程 |
+| **定时任务** | 可靠的分布式定时任务调度 |
+| **数据处理** | 跨多节点的 ETL 数据处理流程 |
 
-提供 REST API 服务,处理工作流提交和管理:
-- **工作流提交**: 接收 YAML 定义,解析并提交到 Temporal
-- **状态查询**: 查询工作流执行状态和进度
-- **日志获取**: 实时或历史日志流
-- **生命周期管理**: 取消、重试、暂停工作流
-- **DSL 验证**: YAML 语法验证和错误提示
+### 1.4 技术定位对比
 
-#### 2.2 DSL 引擎
+| 对比维度 | Waterflow | Temporal | GitHub Actions |
+|---------|-----------|----------|----------------|
+| **抽象层级** | 高 (YAML DSL) | 中 (SDK 编程) | 高 (YAML) |
+| **用户界面** | REST API + CLI | Web UI + SDK | Web UI + API |
+| **部署模式** | 自托管 | 自托管/云服务 | 云服务 |
+| **工作流定义** | YAML | 代码 | YAML |
+| **执行环境** | 分布式 Agent | Worker Pool | GitHub Runners |
+| **目标场景** | 通用工作流编排 | 企业级工作流引擎 | CI/CD 专用 |
 
-解析 YAML 工作流定义,转换为 Temporal Workflow:
-- YAML 语法解析和验证 (jobs, steps, runs-on, with)
-- 变量引用系统 (`${{ vars.name }}`)
-- 条件执行 (`if: ${{ condition }}`)
-- 循环控制 (`for-each`)
-- DSL 到 Temporal Workflow 代码的动态生成
-- 语法错误定位和提示
+---
 
-#### 2.3 分布式 Agent
+## 2. Container View (容器视图)
 
-Agent 作为 Temporal Worker 在目标服务器上执行任务:
-- 连接到 Temporal Server
-- 按服务器组 (Server Group) 注册
-- 接收并执行工作流任务
-- 上报执行状态和日志
-- 健康检查和自动重连
+### 2.1 核心容器
 
-#### 2.4 节点系统
+Waterflow 系统由 3 个核心容器组成:
 
-可插拔的任务执行单元,MVP 提供 10 个核心节点:
+```
+┌────────────────┐         ┌──────────────────┐
+│ User           │         │ Waterflow Server │
+│ Application    │────────→│ (REST API)       │
+│                │ HTTPS   │                  │
+└────────────────┘         └─────────┬────────┘
+                                     │ gRPC
+                                     ↓
+                           ┌──────────────────┐
+                           │ Temporal Server  │
+                           │ (Workflow Engine)│
+                           └─────────┬────────┘
+                                     │ gRPC
+                                     ↓
+                           ┌──────────────────┐
+                           │ Agent Workers    │
+                           │ (Task Executors) │
+                           └──────────────────┘
+```
 
-**控制流节点:**
-- 条件判断 (if/else)
-- 循环迭代 (for-each)
-- 延迟等待 (sleep)
+#### Container 1: Waterflow Server
 
-**运维基础节点:**
-- Shell 命令执行
-- 文件传输 (上传/下载)
-- HTTP 请求
-- 环境变量设置
+**技术:** Go + Gin/Echo  
+**职责:**
+- 提供 REST API 端点
+- 解析和验证 YAML DSL
+- 转换 DSL 为 Temporal Workflow 参数
+- 作为 Temporal Client 提交工作流
+- 查询工作流状态和日志
 
-**Docker 管理节点:**
-- Docker 命令执行
-- Docker Compose Up
-- Docker Compose Down
+**关键决策:** [ADR-0004: YAML DSL 语法设计](adr/0004-yaml-dsl-syntax.md)
 
-**扩展机制:**
-- 节点接口规范 (Go interface)
-- 参数 Schema 验证 (JSON Schema)
-- 宿主应用可注册自定义节点
+#### Container 2: Temporal Server
 
-#### 2.5 REST API
+**技术:** Temporal (Go)  
+**职责:**
+- 工作流状态持久化 (Event Sourcing)
+- 任务调度和路由 (Task Queue)
+- 容错与自动重试
+- 执行历史存储
+- Worker 健康检查
 
-**核心端点:**
+**关键决策:** [ADR-0001: 使用 Temporal 作为工作流引擎](adr/0001-use-temporal-workflow-engine.md)
+
+**外部依赖:** PostgreSQL/MySQL/Cassandra (持久化存储)
+
+#### Container 3: Agent Workers
+
+**技术:** Go + Temporal Worker SDK  
+**职责:**
+- 作为 Temporal Worker 连接到 Temporal Server
+- 注册到特定 Task Queue (基于服务器组)
+- 加载插件化节点 (.so 文件)
+- 执行节点任务
+- 上报心跳和日志
+
+**关键决策:**
+- [ADR-0002: 单节点执行模式](adr/0002-single-node-execution-pattern.md)
+- [ADR-0003: 插件化节点系统](adr/0003-plugin-based-node-system.md)
+- [ADR-0006: Task Queue 路由机制](adr/0006-task-queue-routing.md)
+
+### 2.2 容器交互
+
+#### 工作流提交流程
+
+```
+User App ──POST /v1/workflows──→ Server ──ExecuteWorkflow──→ Temporal
+                                            (DSL → Workflow)
+```
+
+#### 任务执行流程
+
+```
+Temporal ──Task Queue──→ Agent ──Execute Node──→ Target Server
+         (runs-on)       (Plugin)              (Docker/SSH)
+```
+
+#### 状态查询流程
+
+```
+User App ──GET /v1/workflows/{id}──→ Server ──GetWorkflow──→ Temporal
+                                              (Query Event History)
+```
+
+---
+
+## 3. Component View (组件视图)
+
+### 3.1 Server 内部组件
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  Waterflow Server                       │
+│                                                         │
+│  ┌────────────┐    ┌────────────┐    ┌──────────────┐  │
+│  │ REST API   │───→│ DSL Parser │───→│ Temporal     │  │
+│  │ Handler    │    │ (YAML)     │    │ Client       │  │
+│  └────────────┘    └────────────┘    └──────────────┘  │
+│         │                 │                            │
+│         ↓                 ↓                            │
+│  ┌────────────┐    ┌────────────┐                     │
+│  │ Validator  │    │ Expression │                     │
+│  │ (Schema)   │    │ Engine     │                     │
+│  └────────────┘    └────────────┘                     │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 3.1.1 REST API Handler
+
+**职责:**
+- 处理 HTTP 请求 (提交工作流、查询状态、获取日志)
+- 请求参数验证
+- API 认证 (API Key/JWT)
+- 错误响应格式化 (RFC 7807)
+
+**关键端点:**
 - `POST /v1/workflows` - 提交工作流
 - `GET /v1/workflows/{id}` - 查询状态
 - `POST /v1/workflows/{id}/cancel` - 取消执行
-- `GET /v1/workflows/{id}/logs` - 获取日志流
-- `POST /v1/workflows/{id}/retry` - 重试失败工作流
+- `GET /v1/workflows/{id}/logs` - 获取日志
 - `POST /v1/validate` - 验证 YAML 语法
-- `GET /v1/nodes` - 列出可用节点
-- `GET /v1/agents` - 列出 Agent 状态
 
-**认证策略:**
-- MVP: 简单 API Key 认证
-- Post-MVP: JWT + RBAC
+#### 3.1.2 DSL Parser
 
-**API 规范:**
-- OpenAPI 3.0 文档自动生成
-- RESTful 设计原则
-- 统一错误格式 (RFC 7807)
+**职责:**
+- 解析 YAML 工作流定义
+- 构建 AST (Abstract Syntax Tree)
+- 生成 Temporal Workflow 参数
 
-#### 2.6 多语言 SDK (可选)
-
-为便于集成,提供 SDK 封装 REST API:
-- **Go SDK**: 原生实现,类型安全
-- **Python SDK**: 适用 Python 生态集成
-- **Node.js SDK**: 适用 JavaScript/TypeScript 应用
-
-SDK 示例 (Go):
+**实现:**
 ```go
-client := waterflow.NewClient("http://waterflow-server:8080", apiKey)
+type WorkflowDSL struct {
+    Name string
+    On   map[string]interface{}
+    Jobs map[string]JobDSL
+}
 
-// 提交工作流
-workflowID, err := client.SubmitWorkflow(ctx, yamlContent, 
-  waterflow.WithVariables(vars),
-)
+type JobDSL struct {
+    RunsOn  string
+    Timeout int
+    Steps   []StepDSL
+}
 
-// 查询状态
-status, err := client.GetWorkflowStatus(ctx, workflowID)
+type StepDSL struct {
+    Name    string
+    Uses    string
+    With    map[string]interface{}
+    Timeout int
+    Retry   *RetryConfig
+}
 ```
 
-#### 2.7 CLI 工具
+**关键决策:** [ADR-0004: YAML DSL 语法设计](adr/0004-yaml-dsl-syntax.md)
 
-用于开发测试和快速验证:
-- `waterflow validate <file>` - 验证 YAML 语法
-- `waterflow submit <file>` - 提交工作流
-- `waterflow status <workflow-id>` - 查询状态
-- `waterflow logs <workflow-id>` - 查看日志
-- `waterflow cancel <workflow-id>` - 取消执行
-- `waterflow node list` - 列出可用节点
-- `waterflow agent list` - 列出 Agent 状态
+#### 3.1.3 Expression Engine
 
-#### 2.8 工作流模板
+**职责:**
+- 解析表达式 `${{ expression }}`
+- 求值上下文变量
+- 支持运算符和内置函数
 
-提供预定义工作流模板,加速常见场景开发。
-
-**API 接口:**
-```bash
-GET /v1/templates - 列出所有模板
-GET /v1/templates/{name} - 获取模板 YAML
+**示例:**
+```yaml
+steps:
+  - name: Use Output
+    with:
+      commit: ${{ steps.checkout.outputs.commit }}
+  
+  - name: Conditional Step
+    if: ${{ job.status == 'success' }}
 ```
 
-**MVP 内置模板:**
-- 单服务器应用部署
-- 多服务器批量巡检  
-- 分布式应用部署 (WordPress + MySQL)
-- Docker Compose 部署
-- 文件同步任务
+**关键决策:** [ADR-0005: 表达式系统语法](adr/0005-expression-system-syntax.md)
 
-**用户自定义模板:**
-- 用户应用可上传自定义模板
-- 模板市场 (社区贡献)
+**实现库:** [antonmedv/expr](https://github.com/antonmedv/expr) (MVP 阶段)
 
-### 3. 非功能性需求
+#### 3.1.4 Validator
 
-#### 3.1 部署简单性
+**职责:**
+- JSON Schema 验证
+- 语法错误定位 (行号、字段)
+- 语义验证 (节点是否存在、参数类型)
 
-**快速启动:**
-- Docker Compose 一键部署 (Waterflow Server + Temporal + Agents)
-- Kubernetes Helm Chart 生产部署
-- 预构建 Docker 镜像
+#### 3.1.5 Temporal Client
 
-**配置简单:**
-- 环境变量配置 (Temporal 地址、端口、日志级别)
-- 可选配置文件 (YAML/TOML)
-- 默认配置开箱即用
+**职责:**
+- 提交 Workflow 到 Temporal Server
+- 查询 Workflow 状态
+- 取消/重试 Workflow
 
-**最小依赖:**
-- 仅依赖 Temporal Server (可与 Waterflow 一起部署)
-- 无需额外数据库 (Temporal 自带持久化)
-- 轻量级运行时
-
-#### 3.2 性能
-
-- Server 启动时间 < 5 秒
-- YAML 解析 (1000 行) < 100ms
-- 工作流提交 API 响应 < 500ms
-- 单工作流支持 100+ Agent 并发执行
-- Temporal Worker Pool 并发处理
-- Agent 内存占用 < 50MB (空闲)
-
-#### 3.3 可靠性
-
-- 工作流执行失败支持重试
-- Agent 离线不影响系统运行
-- 基于 Temporal 的容错机制
-- 健康检查和任务路由
-
-#### 3.4 可维护性
-
-- 统一 Go 技术栈
-- 节点开发周期 < 2 小时
-- 完善的 SDK 文档和示例
-- 单元测试覆盖率 > 80%
-- 集成测试工具包
-
-#### 3.5 可扩展性
-
-- 节点接口向后兼容
-- 宿主应用可注册自定义节点
-- DSL 语法版本化
-- 支持未来多语言节点 (gRPC)
-
-#### 3.6 安全性
-
-**凭证管理:**
-- Waterflow Server 不存储任何凭证
-- SSH 密钥/密码由用户应用管理
-- 节点执行时凭证通过 API 实时传入
-
-**通信安全:**
-- Agent 通过 Temporal 通信 (mTLS)
-- REST API 支持 HTTPS/TLS
-- 可选 API Key/JWT 认证
-
-**多租户隔离:**
-- API 支持租户标识透传
-- Temporal Namespace 物理隔离
-- 隔离逻辑由用户应用实现
-
-**审计:**
-- 结构化审计事件输出
-- 工作流执行历史跟踪
-- API 调用日志
-
-#### 3.7 文档完善性
-
-**REST API 文档:**
-- OpenAPI 3.0 规范
-- 自动生成 API 文档
-- 多语言客户端示例 (curl, Python, Go, Node.js)
-- 错误码参考
-
-**DSL 语法文档:**
-- YAML 语法参考
-- 表达式系统说明
-- 内置节点参考
-- 完整示例工作流
-
-**部署指南:**
-- Docker Compose 快速启动
-- Kubernetes 生产部署
-- Agent 配置指南
-- 故障排查
-
-**开发指南:**
-- 自定义节点开发
-- SDK 集成示例
-- 最佳实践
-
-### 4. 项目规模评估
-
-#### 4.1 技术复杂度
-
-- **分布式系统**: Server-Agent 架构,跨服务器执行 → 中高
-- **领域复杂度**: DevOps 工作流编排,多技术栈 → 中
-- **技术栈深度**: Temporal 深度集成,分布式工作流模式 → 中高
-- **接口设计**: SDK 公共 API 需向后兼容 → 高
-
-#### 4.2 MVP 范围
-
-**核心交付物:**
-1. **Waterflow Server** (REST API 服务)
-2. **Agent** (分布式任务执行器)
-3. **DSL 引擎** (YAML 解析和验证)
-4. **10 个内置节点**
-5. **CLI 工具** (开发测试)
-6. **5 个工作流模板**
-7. **Docker Compose 部署方案**
-8. **REST API 文档** (OpenAPI 3.0)
-9. **DSL 语法文档**
-
-**明确排除:**
-- Web UI (由用户应用自建)
-- 用户认证授权系统 (简单 API Key 认证)
-- 复杂 Agent 自动部署
-- 工作流可视化编辑器
-- 内置监控面板
-- 多语言 SDK (Post-MVP)
-
-**可接受的技术快捷方式:**
-- 简单轮询负载均衡
-- 基于文件的服务器组配置
-- 基础 CLI 输出
-- 同步工作流提交
-- 简单 API Key 认证
-
-#### 4.3 团队与周期
-
-- 团队规模: 2-3 名 Go 后端工程师
-- 开发周期: 3-4 个月 (MVP)
-- 关键技能: 
-  - Go 服务开发 (REST API, 分布式系统)
-  - Temporal 深度理解 (Workflow/Activity 模式)
-  - DSL 设计和解析
-  - Docker/Kubernetes 部署
-
-#### 4.4 关键技术决策
-
-**必须一次做对 (无法后期修改):**
-- REST API 路由和端点设计
-- DSL 语法规范 (YAML 结构/字段)
-- 节点接口设计
-- 服务器组抽象
-- Temporal Workflow 模式
-- 数据模型 (Workflow/Job/Step 状态)
-
-**可后期优化:**
-- CLI 命令结构
-- 负载均衡算法
-- 性能优化
-- 监控指标粒度
-- 日志格式细节
-
-### 5. 技术约束与依赖
-
-#### 5.1 核心技术栈
-
-**Temporal 工作流引擎:**
-- 版本: Temporal Server (v1.20+) + Temporal Go SDK (v1.25+)
-- 约束: 深度理解 Workflow/Activity 模式
-- 风险缓解: 团队完成 Temporal 官方教程,开发 PoC 验证
-- 架构影响:
-  - Waterflow Server 作为 Temporal Client 提交工作流
-  - Agent 设计为 Temporal Worker
-  - 工作流状态依赖 Temporal 持久化
-
-**Go 语言生态:**
-- 版本: Go 1.21+
-- Server 核心依赖: 
-  - Temporal Go SDK
-  - Gin/Echo (REST API 框架)
-  - Viper (配置管理)
-  - Zap/Logrus (日志)
-- CLI 依赖: Cobra (CLI 框架)
-- 原则: 最小化依赖,优先使用标准库
-
-**Docker 容器技术:**
-- Waterflow Server Docker 镜像
-- Agent Docker 镜像 (推荐部署方式)
-- Docker 管理节点需访问 Docker Socket
-- Docker Compose 一键部署
-
-**数据存储:**
-- 工作流状态: Temporal 持久化 (PostgreSQL/MySQL/Cassandra)
-- Server 配置: 环境变量/配置文件 (YAML/TOML)
-- Agent 注册信息: 内存 (MVP) / Redis/etcd (Post-MVP)
-
-#### 5.2 平台约束
-
-- **Server**: Linux (Docker/Kubernetes 部署)
-- **Agent**: Linux 服务器、容器环境
-- **CLI**: Linux/MacOS/Windows (Go 交叉编译)
-- **网络**: Agent 需连接 Temporal Server (端口 7233)
-- **部署**: Docker Compose / Kubernetes Helm Chart
-
-#### 5.3 架构约束
-
-**通信协议:**
-- 必须使用 Temporal SDK (Server ↔ Temporal ↔ Agent)
-- 不可自定义通信协议
-- REST API 使用 HTTP/HTTPS
-
-**状态管理:**
-- 完全依赖 Temporal 持久化
-- Waterflow 不实现独立状态存储
-- Agent 注册信息可存入内存/Redis/etcd
-
-**配置方式:**
-- Server: 环境变量 + 配置文件 (YAML/TOML)
-- Agent: 环境变量 + 配置文件
-- CLI: 命令行参数 + 配置文件 (可选)
-
-**日志输出:**
-- 结构化日志 (JSON 格式)
-- 支持多种日志库 (Zap/Logrus/slog)
-- 输出到 stdout/stderr 或文件
-
-#### 5.4 可扩展性边界
-
-- 节点接口向后兼容,支持未来多语言节点
-- DSL 语法 v1.0 版本锁定后保持兼容
-- Go SDK API 遵循语义化版本
-- REST API 使用 `/v1/` 前缀版本化
-- 宿主应用可注册自定义节点
-
-### 6. 横切关注点
-
-#### 6.1 分布式协调与容错
-
-利用 Temporal 的 Workflow 持久化和自动重试机制:
-- **任务分发**: Agent 作为 Temporal Worker,任务分发由 Temporal 管理
-- **健康检查**: 确保只向在线 Agent 分发任务
-- **确定性要求**: 工作流定义必须是确定性的 (Temporal 要求)
-- **重试策略**: 节点执行封装为 Temporal Activity,支持超时和重试配置
-- **状态恢复**: Server 重启后,运行中的工作流自动恢复
-
-**架构优化 (基于 Temporal 深度分析):**
-
-**优化 1: 解释器模式 (确定性保证)**
+**连接管理:**
 ```go
-// ❌ 错误: 在 Workflow 中解析 DSL (非确定性)
-func WaterflowWorkflow(ctx workflow.Context, yamlContent string) error {
-    dsl := parseYAML(yamlContent) // 修改解析器会破坏确定性!
-}
-
-// ✅ 正确: DSL 解析在 Server 端
-// Server 端 (可迭代修改)
-func (s *Server) SubmitWorkflow(yamlContent string) error {
-    dsl, err := s.parser.Parse(yamlContent) // 解析在这里
-    return s.temporalClient.ExecuteWorkflow(ctx, options, WaterflowWorkflow, dsl)
-}
-
-// Workflow (确定性,代码固定)
-func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL) error {
-    // 接收已解析对象,确定性保证
-}
-```
-
-**优化 2: 批量执行 Activity (性能优化)**
-```go
-// ❌ 问题: 每个 step 一个 Activity → 1000 steps = 1000 Events
-for _, step := range job.Steps {
-    workflow.ExecuteActivity(ctx, ExecuteStepActivity, step)
-}
-
-// ✅ 优化: 一个 job 所有 steps 打包成一个 Activity
-func JobWorkflow(ctx workflow.Context, job JobDSL) error {
-    return workflow.ExecuteActivity(ctx, ExecuteJobActivity, job.Steps).Get(ctx, nil)
-}
-
-func ExecuteJobActivity(ctx context.Context, steps []StepDSL) error {
-    for i, step := range steps {
-        executor := nodeRegistry.Get(step.Uses)
-        executor.Execute(ctx, step.With)
-        // 心跳上报进度
-        activity.RecordHeartbeat(ctx, map[string]interface{}{
-            "progress": float64(i+1) / float64(len(steps)) * 100,
-        })
-    }
-    return nil
-}
-```
-
-**优化 3: Task Queue 路由 (runs-on 映射)**
-```go
-// runs-on: web-servers → TaskQueue: "server-group-web"
-for _, job := range dsl.Jobs {
-    workflow.ExecuteChildWorkflow(
-        workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
-            TaskQueue: job.RunsOn, // 直接映射到队列名
-        }),
-        JobWorkflow,
-        job,
-    )
-}
-
-// Agent 启动时注册到特定队列
-func main() {
-    serverGroup := os.Getenv("SERVER_GROUP") // "web-servers"
-    worker := worker.New(temporalClient, serverGroup, worker.Options{})
-    worker.Run(worker.InterruptCh())
-}
-```
-
-#### 6.2 状态持久化与可观测性
-
-依赖 Temporal 的 Event History 实现状态管理:
-- CLI/SDK 通过 Temporal Client 查询工作流状态和日志
-- 日志分级: 工作流级、Job 级、Step 级
-- 支持实时日志流 (tail -f 模式)
-- Post-MVP 考虑独立日志聚合
-
-**Event Sourcing 架构优势:**
-
-```
-Temporal 持久化机制:
-
-1. WorkflowExecutionStarted Event (工作流开始)
-   ↓
-2. ChildWorkflowExecutionStarted (Job 开始)
-   ↓
-3. ActivityTaskScheduled Event (Activity 调度)
-   ↓
-4. ActivityTaskCompleted Event (Activity 完成,包含结果)
-   ↓
-5. ChildWorkflowExecutionCompleted (Job 完成)
-   ↓
-6. WorkflowExecutionCompleted Event (工作流完成)
-
-关键特性:
-✅ 状态重建: 通过重放 Event History 恢复完整状态
-✅ 崩溃恢复: Server/Worker 崩溃后,从 Event 继续执行
-✅ 时间旅行: 可查看任意时间点的工作流状态
-✅ 审计追溯: 完整 Event 链,所有操作可追溯
-```
-
-**Waterflow Server 无状态设计:**
-```go
-// Server 不存储任何状态,仅作为 API Gateway
-func (s *Server) GetWorkflowStatus(workflowID string) (*WorkflowStatus, error) {
-    // 直接查询 Temporal
-    execution := s.temporalClient.GetWorkflow(ctx, workflowID, "")
-    
-    // 从 Event History 重建状态
-    var status WorkflowStatus
-    err := execution.Get(ctx, &status)
-    
-    return &status, err
-}
-
-// Server 崩溃不影响工作流执行
-// 重启后仍可查询所有运行中的工作流
-```
-
-#### 6.3 可插拔节点架构
-
-节点通过接口注册和发现:
-- 节点接口: `Execute(ctx, inputs) (outputs, error)`
-- 节点元数据: name, version, description, input_schema, output_schema
-- 参数 Schema 验证使用 JSON Schema
-- MVP 内置节点编译到二进制,Post-MVP 支持插件加载
-
-#### 6.4 配置管理
-
-SDK 零配置文件设计:
-- 配置通过构造函数和 Option 模式传入
-- 示例: `waterflow.NewEngine(client, waterflow.WithLogger(log))`
-- CLI/REST API Server 可选使用 Viper 读取配置
-- 配置模型统一,传递方式灵活
-
-#### 6.5 安全与权限
-
-Waterflow 最小化凭证存储原则:
-- **零凭证存储**: 不存储任何 SSH 密钥、密码、Token
-- **API 认证**: MVP 支持简单 API Key,Post-MVP 支持 JWT + RBAC
-- **凭证注入**: 节点执行时,凭证由用户应用通过 API 实时传入
-- **多租户**: API 支持传入 `tenant_id`,隔离逻辑由用户应用实现
-- **Agent 权限**: 由部署者控制 (最小权限原则)
-- **通信加密**: Agent 通过 Temporal 通信 (mTLS),REST API 支持 HTTPS
-
-#### 6.6 错误处理
-
-使用 Go 标准错误包装和类型化错误:
-- 错误分类: `ErrInvalidYAML`, `ErrNodeNotFound`, `ErrWorkflowTimeout`
-- DSL 验证器提供精确错误位置 (行号、字段)
-- 节点执行错误包含上下文 (服务器、步骤、参数)
-- REST API 返回 RFC 7807 Problem Details
-- SDK 支持 Context 传递,宿主应用可控制超时和取消
-
-#### 6.7 性能优化
-
-MVP 阶段基础优化策略:
-- DSL 解析缓存 (相同工作流不重复解析)
-- Temporal Worker Pool 并发处理
-- 服务器组简单轮询负载均衡
-- Post-MVP 优化为智能调度
-- 避免过早优化,先验证核心功能
-
-**大规模工作流优化 (基于 Temporal 分析):**
-
-**优化 1: Continue-As-New (超大工作流)**
-```go
-// 问题: 1000+ jobs 会导致 Event History 过大
-// 解决: 分批处理,使用 Continue-As-New
-
-func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL, startIndex int) error {
-    batchSize := 100 // 每次处理 100 个 job
-    endIndex := min(startIndex+batchSize, len(dsl.Jobs))
-    
-    // 处理当前批次
-    for i := startIndex; i < endIndex; i++ {
-        workflow.ExecuteChildWorkflow(ctx, JobWorkflow, dsl.Jobs[i])
-    }
-    
-    // 超过阈值,继续下一批
-    if endIndex < len(dsl.Jobs) {
-        return workflow.NewContinueAsNewError(ctx, WaterflowWorkflow, dsl, endIndex)
-    }
-    return nil
-}
-```
-
-**优化 2: 并发执行 Jobs**
-```go
-// 问题: 顺序执行 jobs 太慢
-// 解决: 根据 needs 依赖并发执行
-
-func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL) error {
-    // 构建 DAG
-    dag := buildDAG(dsl.Jobs)
-    
-    // 拓扑排序,识别可并发 jobs
-    for _, level := range dag.Levels {
-        // 同一层级的 jobs 并发执行
-        futures := []workflow.Future{}
-        for _, job := range level {
-            future := workflow.ExecuteChildWorkflow(ctx, JobWorkflow, job)
-            futures = append(futures, future)
-        }
-        
-        // 等待当前层级全部完成
-        for _, f := range futures {
-            f.Get(ctx, nil)
-        }
-    }
-    return nil
-}
-```
-
-**优化 3: Workflow 代码缓存**
-```go
-// Server 端缓存已注册的 Workflow
-var workflowRegistry sync.Map
-
-func init() {
-    // 只注册一次
-    workflowRegistry.Store("WaterflowWorkflow", WaterflowWorkflow)
-    workflowRegistry.Store("JobWorkflow", JobWorkflow)
-}
-
-// Agent Worker 启动时批量注册
-func (w *AgentWorker) RegisterWorkflows() {
-    w.worker.RegisterWorkflow(WaterflowWorkflow)
-    w.worker.RegisterWorkflow(JobWorkflow)
-    w.worker.RegisterActivity(ExecuteJobActivity)
-}
-```
-
-**优化 4: gRPC 连接池复用**
-```go
-// Server 端复用 Temporal Client 连接
 type Server struct {
-    temporalClient client.Client // 单例,连接池复用
+    temporalClient client.Client // 连接池复用
 }
 
 func NewServer(temporalAddr string) (*Server, error) {
     client, err := client.NewClient(client.Options{
         HostPort: temporalAddr,
-        // 连接池配置
-        ConnectionOptions: client.ConnectionOptions{
-            MaxConcurrentSessionExecutionSize: 100,
-        },
     })
-    
     return &Server{temporalClient: client}, nil
 }
 ```
+
+### 3.2 Agent 内部组件
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Agent Worker                        │
+│                                                         │
+│  ┌────────────┐    ┌────────────┐    ┌──────────────┐  │
+│  │ Temporal   │───→│ Plugin     │───→│ Node         │  │
+│  │ Worker     │    │ Manager    │    │ Executors    │  │
+│  └────────────┘    └────────────┘    └──────────────┘  │
+│         │                 │                 │          │
+│         ↓                 ↓                 ↓          │
+│  ┌────────────┐    ┌────────────┐    ┌──────────────┐  │
+│  │ Workflow   │    │ Node       │    │ .so Plugins  │  │
+│  │ Handlers   │    │ Registry   │    │ (/plugins/)  │  │
+│  └────────────┘    └────────────┘    └──────────────┘  │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 3.2.1 Temporal Worker
+
+**职责:**
+- 连接到 Temporal Server
+- 注册到 Task Queue (基于 `runs-on` 配置)
+- 轮询任务并执行
+- 上报心跳和执行状态
+
+**Task Queue 路由:**
+```go
+func (w *Worker) Start(taskQueues []string) error {
+    for _, queue := range taskQueues {
+        worker := worker.New(w.temporalClient, queue, worker.Options{})
+        worker.RegisterWorkflow(RunJobWorkflow)
+        worker.RegisterActivity(w.ExecuteNode)
+        go worker.Run(worker.InterruptCh())
+    }
+    return nil
+}
+```
+
+**关键决策:** [ADR-0006: Task Queue 路由机制](adr/0006-task-queue-routing.md)
+
+#### 3.2.2 Plugin Manager
+
+**职责:**
+- 扫描插件目录 (`/opt/waterflow/plugins/`)
+- 加载 .so 文件
+- 调用插件的 `Register()` 函数
+- 热加载支持 (fsnotify 监控)
+
+**加载流程:**
+```go
+func (pm *PluginManager) LoadPlugin(path string) error {
+    // 1. 加载 .so 文件
+    p, err := plugin.Open(path)
+    
+    // 2. 查找 Register 函数
+    symbol, err := p.Lookup("Register")
+    
+    // 3. 调用 Register 注册节点
+    register := symbol.(func() node.Node)
+    nodeInstance := register()
+    
+    // 4. 注册到 NodeRegistry
+    pm.nodeRegistry.Register(nodeInstance)
+    
+    return nil
+}
+```
+
+**关键决策:** [ADR-0003: 插件化节点系统](adr/0003-plugin-based-node-system.md)
+
+#### 3.2.3 Node Registry
+
+**职责:**
+- 存储已注册的节点实现
+- 根据 `uses` 字段查找节点
+- 提供节点元数据
+
+**接口:**
+```go
+type NodeRegistry interface {
+    Register(node Node) error
+    Get(nodeType string) (Node, error)
+    List() []NodeMetadata
+}
+
+type Node interface {
+    Execute(ctx context.Context, args map[string]interface{}) (NodeResult, error)
+}
+```
+
+#### 3.2.4 Workflow Handlers
+
+**职责:**
+- 实现 Temporal Workflow 函数
+- 编排 Job 执行
+- 管理执行上下文
+
+**单节点执行模式:**
+```go
+func RunJobWorkflow(ctx workflow.Context, job JobDSL) error {
+    execCtx := &ExecutionContext{
+        Outputs: make(map[string]interface{}),
+    }
+    
+    for _, step := range job.Steps {
+        // 每个 Step 独立配置超时/重试
+        opts := workflow.ActivityOptions{
+            StartToCloseTimeout: time.Duration(step.Timeout) * time.Minute,
+            RetryPolicy: &temporal.RetryPolicy{
+                MaximumAttempts: step.Retry.Attempts,
+            },
+        }
+        ctx = workflow.WithActivityOptions(ctx, opts)
+        
+        // 一个 Step = 一个 Activity 调用
+        var result NodeResult
+        err := workflow.ExecuteActivity(ctx, "ExecuteNode", step, execCtx).Get(ctx, &result)
+        
+        if err != nil && !step.ContinueOnError {
+            return err
+        }
+        
+        execCtx.Outputs[step.ID] = result.Output
+    }
+    return nil
+}
+```
+
+**关键决策:** [ADR-0002: 单节点执行模式](adr/0002-single-node-execution-pattern.md)
+
+#### 3.2.5 Node Executors
+
+**职责:**
+- 执行具体节点逻辑
+- 与目标基础设施交互 (Docker/SSH/HTTP)
+- 返回执行结果
+
+**插件示例:**
+```go
+// plugins/checkout/main.go
+package main
+
+import (
+    "context"
+    "waterflow/pkg/node"
+)
+
+type CheckoutNode struct{}
+
+func (n *CheckoutNode) Execute(ctx context.Context, args map[string]interface{}) (node.NodeResult, error) {
+    repo := args["repository"].(string)
+    // Git checkout 逻辑
+    return node.NodeResult{
+        Outputs: map[string]string{"commit": "abc123"},
+    }, nil
+}
+
+func Register() node.Node {
+    return &CheckoutNode{}
+}
+```
+
+### 3.3 数据模型
+
+#### 3.3.1 DSL 模型
+
+```go
+type WorkflowDSL struct {
+    Name    string
+    On      TriggerConfig
+    Jobs    map[string]JobDSL
+    Env     map[string]string
+}
+
+type JobDSL struct {
+    RunsOn         string
+    TimeoutMinutes int
+    Needs          []string
+    Steps          []StepDSL
+    Env            map[string]string
+}
+
+type StepDSL struct {
+    ID             string
+    Name           string
+    Uses           string
+    With           map[string]interface{}
+    TimeoutMinutes int
+    Retry          *RetryConfig
+    If             string
+    ContinueOnError bool
+}
+
+type RetryConfig struct {
+    Attempts         int
+    InitialInterval  string
+    BackoffCoefficient float64
+}
+```
+
+#### 3.3.2 执行上下文
+
+```go
+type ExecutionContext struct {
+    WorkflowID string
+    Outputs    map[string]interface{}
+    Env        map[string]string
+}
+```
+
+#### 3.3.3 节点结果
+
+```go
+type NodeResult struct {
+    Output map[string]string
+    Logs   []string
+    Error  error
+}
+```
+
+---
+
+## 4. Data Flow (数据流)
+
+### 4.1 工作流提交与执行流程
+
+```
+┌──────────┐     ┌────────┐     ┌──────────┐     ┌───────┐
+│User App  │────→│ Server │────→│ Temporal │────→│ Agent │
+└──────────┘     └────────┘     └──────────┘     └───────┘
+     │                │               │               │
+     │ 1. POST        │               │               │
+     │  /v1/workflows │               │               │
+     │  (YAML)        │               │               │
+     ├───────────────→│               │               │
+     │                │ 2. Parse DSL  │               │
+     │                │    Validate   │               │
+     │                │               │               │
+     │                │ 3. Execute    │               │
+     │                │    Workflow   │               │
+     │                ├──────────────→│               │
+     │                │               │ 4. Schedule   │
+     │                │               │    Activity   │
+     │                │               │   (Task Queue)│
+     │                │               ├──────────────→│
+     │                │               │               │ 5. Load Plugin
+     │                │               │               │    Execute Node
+     │                │               │               │
+     │                │               │ 6. Complete   │
+     │                │               │←──────────────│
+     │                │               │               │
+     │ 7. Response    │               │               │
+     │   (workflow_id)│               │               │
+     │←───────────────│               │               │
+```
+
+**详细步骤:**
+
+1. **User App → Server**: 提交 YAML 工作流定义
+2. **Server**: 解析 YAML,生成 WorkflowDSL 对象,验证语法
+3. **Server → Temporal**: 调用 `ExecuteWorkflow()`,传入 WorkflowDSL
+4. **Temporal**: 根据 `runs-on` 字段路由任务到对应 Task Queue
+5. **Agent**: Worker 轮询 Task Queue,获取任务,加载节点插件并执行
+6. **Agent → Temporal**: 上报执行结果和日志
+7. **Server → User App**: 返回 `workflow_id`
+
+### 4.2 状态查询流程
+
+```
+┌──────────┐     ┌────────┐     ┌──────────┐
+│User App  │────→│ Server │────→│ Temporal │
+└──────────┘     └────────┘     └──────────┘
+     │                │               │
+     │ GET /v1/       │               │
+     │ workflows/{id} │               │
+     ├───────────────→│               │
+     │                │ GetWorkflow() │
+     │                ├──────────────→│
+     │                │               │ Query Event
+     │                │               │ History
+     │                │               │
+     │                │ WorkflowStatus│
+     │                │←──────────────│
+     │ Response       │               │
+     │ (status, logs) │               │
+     │←───────────────│               │
+```
+
+**Event Sourcing 优势:**
+- Temporal 通过 Event History 重建完整状态
+- Server 无状态,崩溃后仍可查询所有工作流
+- 时间旅行:可查看任意时间点的状态
+
+### 4.3 单节点执行流程
+
+基于 [ADR-0002](adr/0002-single-node-execution-pattern.md),每个 Step 映射为一个 Activity 调用:
+
+```
+Workflow Context
+  │
+  ├─ Job 1
+  │   ├─ Step 1 ──→ Activity Call (独立超时 5min,重试 3次)
+  │   ├─ Step 2 ──→ Activity Call (独立超时 30min,重试 1次)
+  │   └─ Step 3 ──→ Activity Call (独立超时 10min,重试 2次)
+  │
+  └─ Job 2
+      ├─ Step 1 ──→ Activity Call
+      └─ Step 2 ──→ Activity Call
+```
+
+**优势:**
+- 每个 Step 独立配置超时和重试
+- Temporal UI 清晰展示每个 Step 状态
+- 失败的 Step 可单独重试
+- 自然支持并发执行 (future)
+
+### 4.4 Task Queue 路由流程
+
+基于 [ADR-0006](adr/0006-task-queue-routing.md),`runs-on` 直接映射到 Task Queue:
+
+```
+DSL:
+  jobs:
+    build-linux:
+      runs-on: linux-amd64  ──→ Task Queue: "linux-amd64"
+    
+    build-mac:
+      runs-on: macos-arm64  ──→ Task Queue: "macos-arm64"
+
+Agent 配置:
+  Agent-1: task-queues: [linux-amd64, linux-common]
+  Agent-2: task-queues: [macos-arm64, mac-common]
+  Agent-3: task-queues: [linux-amd64, gpu-a100]
+
+路由结果:
+  build-linux  → Agent-1 或 Agent-3 (负载均衡)
+  build-mac    → Agent-2
+```
+
+### 4.5 插件加载流程
+
+基于 [ADR-0003](adr/0003-plugin-based-node-system.md),所有节点都是插件:
+
+```
+Agent 启动
+  │
+  ├─ 扫描 /opt/waterflow/plugins/
+  │   ├─ checkout.so
+  │   ├─ run.so
+  │   └─ custom-deploy.so
+  │
+  ├─ 加载每个 .so 文件
+  │   ├─ plugin.Open("checkout.so")
+  │   ├─ p.Lookup("Register")
+  │   └─ register() → Node 实例
+  │
+  └─ 注册到 NodeRegistry
+      └─ nodeRegistry.Register("checkout@v1", nodeInstance)
+
+执行时:
+  DSL: uses: checkout@v1
+    ↓
+  NodeRegistry.Get("checkout@v1")
+    ↓
+  node.Execute(ctx, args)
+```
+
+**热加载:**
+```
+fsnotify 监控 /opt/waterflow/plugins/
+  │
+  ├─ 检测到 new-node.so 添加
+  ├─ 自动加载并注册
+  └─ 新任务立即可用
+```
+
+---
+## 5. Deployment View (部署视图)
+
+### 5.1 MVP 部署架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  Docker Compose Host                    │
+│                                                         │
+│  ┌────────────────┐         ┌────────────────────┐     │
+│  │ Waterflow      │         │ Temporal Server    │     │
+│  │ Server         │────────→│                    │     │
+│  │ :8080          │  gRPC   │ :7233              │     │
+│  └────────────────┘         └─────────┬──────────┘     │
+│         ↑                              │                │
+│         │ HTTPS                        │                │
+│         │                              ↓                │
+│  ┌────────────────┐         ┌────────────────────┐     │
+│  │ Reverse Proxy  │         │ PostgreSQL         │     │
+│  │ (Traefik/Nginx)│         │ (Temporal DB)      │     │
+│  └────────────────┘         └────────────────────┘     │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+                    │
+                    │ gRPC
+                    ↓
+┌─────────────────────────────────────────────────────────┐
+│              Target Servers (Agent Deployment)          │
+│                                                         │
+│  Server-1:           Server-2:           Server-3:      │
+│  ┌──────────┐        ┌──────────┐       ┌──────────┐   │
+│  │  Agent   │        │  Agent   │       │  Agent   │   │
+│  │ (Docker) │        │ (Docker) │       │ (Binary) │   │
+│  └──────────┘        └──────────┘       └──────────┘   │
+│  Task Queue:         Task Queue:        Task Queue:    │
+│  linux-amd64         linux-amd64        gpu-a100        │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 5.2 Docker Compose 配置
+
+```yaml
+version: '3.8'
+
+services:
+  postgresql:
+    image: postgres:14
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  temporal:
+    image: temporalio/auto-setup:1.22.0
+    depends_on:
+      - postgresql
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+    ports:
+      - "7233:7233"
+
+  waterflow-server:
+    image: waterflow/server:latest
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_HOST=temporal:7233
+      - PORT=8080
+      - API_KEY=${API_KEY}
+    ports:
+      - "8080:8080"
+
+  waterflow-agent:
+    image: waterflow/agent:latest
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_HOST=temporal:7233
+      - TASK_QUEUES=linux-amd64,linux-common
+      - PLUGIN_DIR=/opt/waterflow/plugins
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./plugins:/opt/waterflow/plugins
+
+volumes:
+  postgres_data:
+```
+
+### 5.3 Agent 部署模式
+
+#### 模式 1: Docker 容器 (推荐)
+
+```bash
+docker run -d \
+  --name waterflow-agent \
+  -e TEMPORAL_HOST=temporal.example.com:7233 \
+  -e TASK_QUEUES=linux-amd64,gpu-a100 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /opt/waterflow/plugins:/opt/waterflow/plugins \
+  waterflow/agent:latest
+```
+
+#### 模式 2: 二进制部署
+
+```bash
+# 下载 Agent 二进制
+wget https://github.com/waterflow/releases/agent-linux-amd64
+
+# 配置
+cat > /etc/waterflow/agent.yaml <<EOF
+temporal:
+  host: temporal.example.com:7233
+task-queues:
+  - linux-amd64
+  - linux-common
+plugin-dir: /opt/waterflow/plugins
+EOF
+
+# 启动 Systemd 服务
+systemctl start waterflow-agent
+```
+
+### 5.4 网络拓扑
+
+```
+Internet
+    │
+    ↓
+┌─────────────────┐
+│ Load Balancer   │
+│ (HTTPS :443)    │
+└────────┬────────┘
+         │
+         ↓
+┌─────────────────┐
+│ Waterflow Server│
+│ (HTTP :8080)    │
+└────────┬────────┘
+         │ gRPC :7233
+         ↓
+┌─────────────────┐         ┌──────────────┐
+│ Temporal Server │────────→│ PostgreSQL   │
+│                 │  :5432  │              │
+└────────┬────────┘         └──────────────┘
+         │ gRPC :7233
+         ↓
+┌──────────────────────────┐
+│ Agent Workers (Firewall) │
+│ (outbound only)          │
+└──────────────────────────┘
+```
+
+**安全要点:**
+- Agent 仅需 **outbound** 连接到 Temporal (7233)
+- 无需在 Agent 服务器开放端口
+- Temporal 使用 mTLS 加密通信
+
+---
+
+## 6. Quality Attributes (质量属性)
+
+### 6.1 可靠性 (Reliability)
+
+**容错机制:**
+- 基于 Temporal 的 Event Sourcing 实现状态持久化
+- Server/Agent 崩溃后自动恢复执行
+- 节点执行失败自动重试 (可配置策略)
+- Agent 离线不影响系统运行
+
+**重试策略:**
+```yaml
+steps:
+  - name: Deploy
+    uses: deploy@v1
+    timeout-minutes: 30
+    retry:
+      attempts: 3
+      initial-interval: 1s
+      backoff-coefficient: 2.0
+```
+
+**故障隔离:**
+- 单个节点失败不影响其他节点
+- `continue-on-error: true` 支持失败继续
+- Job 级别隔离 (一个 Job 失败不影响其他 Job)
+
+### 6.2 性能 (Performance)
+
+**目标指标:**
+- Server 启动时间 < 5秒
+- YAML 解析 (1000行) < 100ms
+- 工作流提交 API 响应 < 500ms
+- 单工作流支持 100+ Agent 并发执行
+- Agent 内存占用 < 50MB (空闲)
+
+**优化策略:**
+- DSL 解析结果缓存
+- Temporal Worker Pool 并发处理
+- gRPC 连接池复用
+- Continue-As-New 处理超大工作流
+
+**扩展性:**
+- Server 水平扩展 (无状态设计)
+- Agent 按需添加
+- Temporal 集群扩展
+
+### 6.3 安全性 (Security)
+
+**凭证管理:**
+- Waterflow 零凭证存储原则
+- 节点执行时凭证由用户应用实时传入
+- 支持外部密钥管理系统集成 (Vault)
+
+**通信安全:**
+- Agent ↔ Temporal: mTLS 加密
+- User ↔ Server: HTTPS/TLS
+- API 认证: API Key (MVP) / JWT (Post-MVP)
+
+**多租户隔离:**
+- API 支持 `tenant_id` 透传
+- Temporal Namespace 物理隔离
+- 隔离逻辑由用户应用实现
+
+**审计:**
+- Temporal Event History 记录完整执行链路
+- 结构化审计日志输出
+- API 调用日志
+
+### 6.4 可维护性 (Maintainability)
+
+**代码质量:**
+- 统一 Go 技术栈
+- 单元测试覆盖率 > 80%
+- 集成测试覆盖核心场景
+- Go 标准错误处理
+
+**文档:**
+- REST API 文档 (OpenAPI 3.0)
+- DSL 语法文档
+- 节点开发指南
+- 部署运维文档
+
+**可观测性:**
+- 结构化日志 (JSON)
+- Prometheus 指标导出
+- Temporal UI 查看执行历史
+- 错误链路追踪
+
+### 6.5 可扩展性 (Extensibility)
+
+**插件化节点:**
+- 所有节点都是插件 (.so 文件)
+- 节点接口向后兼容
+- 热加载支持
+- 第三方可开发自定义节点
+
+**DSL 版本化:**
+- 语法版本 v1.0 锁定后保持兼容
+- 新增功能通过可选字段扩展
+- 弃用功能保留兼容期
+
+**API 版本化:**
+- REST API 使用 `/v1/` 前缀
+- 语义化版本管理
+- 向后兼容原则
+
+### 6.6 易用性 (Usability)
+
+**低学习成本:**
+- GitHub Actions 风格语法 (用户熟悉)
+- 详细的错误提示 (行号、字段定位)
+- 丰富的示例和模板
+
+**开发体验:**
+- CLI 工具快速验证
+- 本地 Docker Compose 一键启动
+- 节点开发周期 < 2小时
+
+**集成便利:**
+- REST API + SDK 支持
+- OpenAPI 文档自动生成
+- 多语言客户端示例
+
+### 6.7 部署简单性 (Deployability)
+
+**快速启动:**
+- Docker Compose 一键部署
+- 预构建 Docker 镜像
+
+**配置简单:**
+- 环境变量配置
+- 默认配置开箱即用
+- 可选配置文件 (YAML)
+
+**最小依赖:**
+- 仅依赖 Temporal Server
+- 无需额外数据库
+- 轻量级运行时
+
+---
+
+## 7. 关键技术决策
+
+所有核心架构决策记录在 [ADR](adr/README.md) 中:
+
+| ADR | 决策 | 理由 |
+|-----|------|------|
+| [ADR-0001](adr/0001-use-temporal-workflow-engine.md) | 使用 Temporal 作为工作流引擎 | 成熟稳定,持久化执行,生产就绪 |
+| [ADR-0002](adr/0002-single-node-execution-pattern.md) | 单节点执行模式 | 独立超时/重试,精确控制,易调试 |
+| [ADR-0003](adr/0003-plugin-based-node-system.md) | 插件化节点系统 | 可扩展,热加载,统一机制 |
+| [ADR-0004](adr/0004-yaml-dsl-syntax.md) | YAML DSL 语法 | 用户熟悉,可读性好,生态成熟 |
+| [ADR-0005](adr/0005-expression-system-syntax.md) | 表达式系统语法 | GitHub Actions 兼容,安全沙箱 |
+| [ADR-0006](adr/0006-task-queue-routing.md) | Task Queue 路由机制 | 简单直观,零配置,灵活扩展 |
+
+---
+
+## 8. MVP 范围
+
+### 8.1 核心交付物
+
+1. **Waterflow Server** - REST API 服务
+2. **Waterflow Agent** - 分布式任务执行器
+3. **DSL Engine** - YAML 解析和表达式引擎
+4. **10 个内置节点** - 基础执行能力
+5. **CLI 工具** - 开发测试
+6. **Docker Compose 部署** - 快速启动
+7. **REST API 文档** - OpenAPI 3.0
+8. **DSL 语法文档** - 用户参考
+
+### 8.2 内置节点列表
+
+| 节点 | 功能 | 优先级 |
+|------|------|--------|
+| `checkout@v1` | Git 仓库检出 | P0 |
+| `run@v1` | Shell 命令执行 | P0 |
+| `docker@v1` | Docker 命令执行 | P0 |
+| `http@v1` | HTTP 请求 | P1 |
+| `file-transfer@v1` | 文件传输 | P1 |
+| `sleep@v1` | 延迟等待 | P1 |
+| `if@v1` | 条件判断 | P1 |
+| `for-each@v1` | 循环迭代 | P2 |
+| `docker-compose@v1` | Docker Compose | P2 |
+| `cache@v1` | 缓存管理 | P2 |
+
+### 8.3 明确排除
+
+**不在 MVP 范围:**
+- Web UI (由用户应用自建)
+- 复杂用户认证系统 (简单 API Key 即可)
+- 工作流可视化编辑器
+- 内置监控面板
+- 多语言 SDK (Post-MVP)
+- Agent 自动部署工具
+- 复杂负载均衡算法
+
+### 8.4 技术快捷方式 (可接受)
+
+- 简单 API Key 认证 (无 RBAC)
+- 基于环境变量的配置 (无动态配置)
+- 同步工作流提交 (无异步队列)
+- 简单轮询负载均衡 (无智能调度)
+- 基础 CLI 输出 (无 TUI 界面)
+
+---
+
+## 9. 技术栈
+
+### 9.1 核心依赖
+
+**Waterflow Server:**
+```go
+require (
+    go.temporal.io/sdk v1.25.0        // Temporal Go SDK
+    github.com/gin-gonic/gin v1.9.0   // REST API 框架
+    github.com/spf13/viper v1.16.0    // 配置管理
+    go.uber.org/zap v1.25.0           // 结构化日志
+    gopkg.in/yaml.v3 v3.0.1           // YAML 解析
+    github.com/antonmedv/expr v1.15.0 // 表达式引擎
+)
+```
+
+**Waterflow Agent:**
+```go
+require (
+    go.temporal.io/sdk v1.25.0        // Temporal Worker SDK
+    go.uber.org/zap v1.25.0           // 日志
+    github.com/docker/docker v24.0.0  // Docker SDK
+    github.com/fsnotify/fsnotify v1.6.0 // 文件监控(热加载)
+)
+```
+
+**CLI:**
+```go
+require (
+    github.com/spf13/cobra v1.7.0     // CLI 框架
+    github.com/olekukonko/tablewriter // 表格输出
+)
+```
+
+### 9.2 外部依赖
+
+- **Temporal Server** v1.22+ (工作流引擎)
+- **PostgreSQL** 14+ (Temporal 持久化)
+- **Docker** 20.10+ (可选,容器节点)
+
+---
+
+## 10. 风险与缓解
+
+### 10.1 技术风险
+
+| 风险 | 影响 | 概率 | 缓解措施 |
+|------|------|------|----------|
+| Temporal 学习曲线陡峭 | 高 | 中 | 团队完成官方教程,构建 PoC 验证 |
+| Go Plugin 跨平台限制 | 中 | 高 | Windows 使用内置编译 fallback |
+| DSL 语法设计缺陷 | 高 | 中 | 参考 GitHub Actions 成熟语法 |
+| 性能不满足大规模场景 | 中 | 低 | 使用 Continue-As-New,分批处理 |
+
+### 10.2 架构风险
+
+| 风险 | 影响 | 缓解措施 |
+|------|------|----------|
+| Temporal 单点依赖 | 高 | Temporal 支持集群部署,HA 架构 |
+| 插件沙箱隔离不足 | 中 | 限制插件能力,未来考虑 WASM |
+| Event History 过大 | 低 | Continue-As-New 分批处理 |
+
+---
+
+## 11. 后续演进方向
+
+### Phase 1: MVP (3-4 个月)
+- ✅ 核心功能实现
+- ✅ Docker Compose 部署
+- ✅ 10 个内置节点
+
+### Phase 2: 生产就绪 (2-3 个月)
+- Prometheus 监控
+- 多语言 SDK (Python, Node.js)
+- 高级节点 (Ansible)
+
+### Phase 3: 企业特性 (3-6 个月)
+- Web UI (工作流编辑、监控)
+- RBAC 权限系统
+- 审计日志
+- 工作流市场
+
+### Phase 4: 高级能力 (持续)
+- 工作流可视化编辑器
+- AI 辅助工作流生成
+- 多云编排能力
+- WASM 插件支持
+
+---
+
+## 12. 参考资料
+
+- [PRD: 产品需求文档](prd.md)
+- [Epics: 功能分解](epics.md)
+- [ADR: 架构决策记录](adr/README.md)
+- [Temporal 官方文档](https://docs.temporal.io)
+- [GitHub Actions 语法参考](https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions)
+- [C4 Model](https://c4model.com/)
 

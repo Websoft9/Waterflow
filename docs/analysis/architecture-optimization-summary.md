@@ -64,81 +64,82 @@ func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL) error {
 
 ---
 
-## 优化 2: 批量执行 Activity (性能优化)
+## 优化 2: 单节点执行模式 (独立配置)
 
 ### 问题
-大规模工作流会产生海量 Event,导致性能问题
+需要每个节点独立配置超时和重试策略
 
-### 优化前
+### 设计原则
 ```go
-// ❌ 性能问题
+// ✅ 单节点执行设计
 func JobWorkflow(ctx workflow.Context, job JobDSL) error {
-    for _, step := range job.Steps { // 100 steps
-        // 每个 step 一个 Activity
-        workflow.ExecuteActivity(ctx, ExecuteStepActivity, step)
+    execCtx := &ExecutionContext{
+        Outputs: make(map[string]interface{}),
     }
-}
-
-// 结果: 100 steps = 200+ Events (Schedule + Complete)
-// Event History 过大 → Workflow Task 超时
-```
-
-**问题:**
-- 1 个 job 100 steps → 200+ Events
-- 1000 jobs → 200,000 Events
-- Event History 过大导致:
-  - Workflow Task 超时
-  - 查询性能下降
-  - 存储压力大
-
-### 优化后
-```go
-// ✅ 批量优化
-func JobWorkflow(ctx workflow.Context, job JobDSL) error {
-    // 所有 steps 打包成一个 Activity
-    activityOptions := workflow.ActivityOptions{
-        StartToCloseTimeout: job.Timeout,
-        HeartbeatTimeout: 30 * time.Second, // 心跳检测
-    }
-    ctx = workflow.WithActivityOptions(ctx, activityOptions)
     
-    return workflow.ExecuteActivity(ctx, ExecuteJobActivity, job.Steps).Get(ctx, nil)
-}
-
-func ExecuteJobActivity(ctx context.Context, steps []StepDSL) error {
-    for i, step := range steps {
-        // 1. 执行节点
-        executor := nodeRegistry.Get(step.Uses)
-        result, err := executor.Execute(ctx, step.With)
+    for _, step := range job.Steps {
+        // 每个节点独立配置
+        opts := workflow.ActivityOptions{
+            StartToCloseTimeout: step.Timeout,
+            HeartbeatTimeout:    step.HeartbeatTimeout,
+            RetryPolicy: &temporal.RetryPolicy{
+                MaximumAttempts:    step.Retry.MaxAttempts,
+                InitialInterval:    step.Retry.InitialInterval,
+                MaximumInterval:    step.Retry.MaximumInterval,
+                BackoffCoefficient: step.Retry.BackoffCoefficient,
+            },
+        }
+        ctx = workflow.WithActivityOptions(ctx, opts)
+        
+        // 调用单一 Activity 定义
+        var result NodeResult
+        err := workflow.ExecuteActivity(
+            ctx,
+            "ExecuteNodeActivity",
+            step,
+            execCtx,
+        ).Get(ctx, &result)
+        
         if err != nil {
             return err
         }
         
-        // 2. 心跳上报进度
-        activity.RecordHeartbeat(ctx, map[string]interface{}{
-            "progress": float64(i+1) / float64(len(steps)) * 100,
-            "currentStep": step.Name,
-            "result": result,
-        })
+        // 保存输出供后续节点使用
+        if step.ID != "" {
+            execCtx.Outputs[step.ID] = result.Output
+        }
     }
     return nil
+}
+
+// Activity 通过 NodeRegistry 动态路由
+func (a *ExecuteNodeActivity) Execute(
+    ctx context.Context,
+    step Step,
+    execCtx *ExecutionContext,
+) (*NodeResult, error) {
+    executor := a.nodeRegistry.Get(step.Uses)
+    if executor == nil {
+        return nil, fmt.Errorf("unknown node: %s", step.Uses)
+    }
+    
+    result, err := executor.Execute(ctx, step.With, execCtx)
+    
+    // 上报心跳
+    activity.RecordHeartbeat(ctx, map[string]interface{}{
+        "node":   step.Uses,
+        "status": "completed",
+    })
+    
+    return result, err
 }
 ```
 
 **收益:**
-- ✅ **Event 减少**: 100 steps → 2 Events (减少 100 倍)
-- ✅ **性能提升**: Workflow Task 不再超时
-- ✅ **进度可见**: 通过 Heartbeat 上报细粒度进度
-- ✅ **支持大规模**: 单 job 可支持 1000+ steps
-
-**对比:**
-
-| 指标 | 优化前 | 优化后 | 提升 |
-|------|--------|--------|------|
-| Event 数量 (100 steps) | 200+ | 2 | 100x |
-| Event History 大小 | 10MB | 100KB | 100x |
-| Workflow Task 时间 | 5s | 50ms | 100x |
-| 最大 steps 支持 | ~100 | 10,000+ | 100x |
+- ✅ **精确控制**: 每个节点独立超时/重试配置
+- ✅ **精确重试**: 失败只重试该节点,已完成节点不受影响
+- ✅ **灵活性**: 不同节点可有不同策略
+- ✅ **可观测性**: 每个节点独立 Event,便于追踪
 
 ---
 
@@ -476,19 +477,17 @@ func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL) error {
 | 维度 | 优化前 | 优化后 | 改进 |
 |------|--------|--------|------|
 | **DSL 解析** | Workflow 中解析 | Server 端解析 | 确定性保证 |
-| **Activity 粒度** | 每个 step 一个 | 批量执行 | Event 减少 100x |
+| **Activity 粒度** | 批量执行 | 单节点执行 | 独立配置 |
 | **runs-on 路由** | 自研调度器 | Task Queue 映射 | 零开发成本 |
 | **状态存储** | Server 自建 DB | Temporal Event Sourcing | 无状态,高可用 |
-| **心跳机制** | 仅 Temporal | 双重心跳 | 覆盖更全面 |
-| **最大 jobs** | ~100 | 10,000+ | 100x 扩展 |
-| **Event 大小** | 10MB | 100KB | 100x 减少 |
+| **节点系统** | 硬编码 | 插件化 (.so) | 热加载,可扩展 |
 | **Server 容错** | 需备份状态 | 无状态,自动恢复 | 运维简化 |
 
 ---
 
 ## 最终架构图
 
-参见: [waterflow-optimized-architecture-20251215.excalidraw](../diagrams/waterflow-optimized-architecture-20251215.excalidraw)
+参见: [waterflow-detailed-architecture-20251215.excalidraw](../diagrams/waterflow-detailed-architecture-20251215.excalidraw)
 
 **3层架构:**
 
@@ -511,9 +510,9 @@ func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL) error {
 ┌─────────────────────────────────────┐
 │ Waterflow Agent (Worker + Executor) │
 │ • Temporal Worker                   │
-│ • ExecuteJobActivity (批量)         │
-│ • Node Registry (10个节点)          │
-│ • Monitor Goroutine (独立心跳)      │
+│ • ExecuteNodeActivity (单节点)      │
+│ • NodeRegistry (动态路由)           │
+│ • PluginManager (热加载 .so)        │
 └─────────────────────────────────────┘
 ```
 
@@ -524,9 +523,10 @@ func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL) error {
 ### MVP 阶段必须实现
 
 1. ✅ **解释器模式**: Server 端解析 DSL
-2. ✅ **批量执行**: 一个 job 一个 Activity
-3. ✅ **Task Queue 路由**: runs-on 映射队列
-4. ✅ **无状态 Server**: 依赖 Temporal 持久化
+2. ✅ **单节点执行**: 每个节点独立 Activity 调用,独立配置
+3. ✅ **插件系统**: NodeRegistry + PluginManager,支持热加载
+4. ✅ **Task Queue 路由**: runs-on 映射队列
+5. ✅ **无状态 Server**: 依赖 Temporal 持久化
 
 ### Post-MVP 优化
 
@@ -556,13 +556,15 @@ func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL) error {
 通过 5 个关键优化,Waterflow 架构实现了:
 
 ✅ **确定性保证** - 解释器模式,DSL 解析在 Server 端  
-✅ **性能提升** - 批量执行 Activity,Event 减少 100 倍  
+✅ **精确控制** - 单节点执行,每个节点独立超时/重试配置  
+✅ **插件化** - 所有节点都是 .so 插件,支持热加载和自动注册  
 ✅ **零开发成本** - Task Queue 路由,利用 Temporal 原生能力  
 ✅ **高可用** - 无状态 Server,依赖 Event Sourcing  
-✅ **可扩展** - 支持 10,000+ jobs,水平扩展  
 
 **技术可行性:** ⭐⭐⭐⭐⭐ (5/5)  
 **架构合理性:** ⭐⭐⭐⭐⭐ (5/5)  
 **实施难度:** ⭐⭐⭐⭐ (4/5)
+
+**注:** Agent 在线状态检测和系统指标收集功能暂不实现,MVP 阶段依赖 Temporal Worker 的内置机制即可
 
 **推荐:** ✅ **架构优化合理,可推进实施**

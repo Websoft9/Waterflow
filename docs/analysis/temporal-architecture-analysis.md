@@ -810,68 +810,7 @@ func WaterflowWorkflow(ctx workflow.Context, dsl WorkflowDSL, startIndex int) er
 }
 ```
 
-**风险 3: Agent Monitor 设计**
 
-**问题:** 架构图中的 "Agent Monitor (独立协程)" 如何实现?
-
-**分析:**
-
-```
-Agent 进程:
-├─ Temporal Worker (主协程)
-│  - Long Polling Task Queue
-│  - 执行 Workflow/Activity
-│
-└─ Monitor Goroutine (独立协程)
-   - 收集系统指标 (CPU/内存/磁盘)
-   - 定时心跳上报 (HTTP 调用 Waterflow Server API)
-   - 健康检查
-```
-
-**实现:**
-
-```go
-func main() {
-    // 1. 启动 Temporal Worker
-    worker := worker.New(temporalClient, serverGroup, worker.Options{})
-    worker.RegisterWorkflow(JobWorkflow)
-    worker.RegisterActivity(ExecuteNodeActivity)
-    
-    // 2. 启动 Monitor 协程
-    go runMonitor()
-    
-    // 3. 启动 Worker
-    worker.Run(worker.InterruptCh())
-}
-
-func runMonitor() {
-    ticker := time.NewTicker(30 * time.Second)
-    for range ticker.C {
-        // 收集系统指标
-        metrics := collectMetrics()
-        
-        // 上报到 Waterflow Server
-        http.Post(
-            "http://waterflow-server/api/v1/agents/heartbeat",
-            "application/json",
-            toJSON(metrics),
-        )
-    }
-}
-```
-
-**问题:** Temporal Worker 已经有心跳机制,为什么还需要独立 Monitor?
-
-**答案:**
-
-| 心跳类型 | Temporal Heartbeat | Agent Monitor |
-|---------|-------------------|---------------|
-| **触发时机** | Activity 执行期间 | 始终运行 (30秒间隔) |
-| **用途** | 检测 Activity 超时 | Agent 在线状态检测 |
-| **上报目标** | Temporal Server | Waterflow Server |
-| **数据内容** | Activity 进度 | 系统指标 (CPU/内存) |
-
-**合理性:** ✅ 两种心跳互补,用途不同
 
 ---
 
@@ -906,15 +845,12 @@ func runMonitor() {
 │  │  ├─ 注册到 server-group-{name} 队列         │
 │  │  ├─ JobWorkflow (编排逻辑)                  │
 │  │  └─ ExecuteJobActivity (批量执行 steps)     │
-│  ├─ Node Registry (10个内置节点)                │
-│  │  ├─ shell, script, file/transfer            │
-│  │  ├─ http/request                            │
-│  │  ├─ docker/exec, compose-up, compose-down   │
-│  │  ├─ condition, loop, sleep                  │
-│  │  └─ (支持自定义节点注册)                    │
-│  └─ Monitor (独立协程)                          │
-│     ├─ 系统指标收集                             │
-│     └─ 心跳上报 (HTTP → Server)                 │
+│  └─ Node Registry (10个内置节点)                │
+│     ├─ shell, script, file/transfer            │
+│     ├─ http/request                            │
+│     ├─ docker/exec, compose-up, compose-down   │
+│     ├─ condition, loop, sleep                  │
+│     └─ (支持自定义节点注册)                    │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -1021,7 +957,7 @@ func ExecuteJobActivity(ctx context.Context, steps []StepDSL) (JobResult, error)
 }
 ```
 
-**4. Agent 注册与心跳**
+**4. Agent 注册**
 
 ```go
 func main() {
@@ -1032,14 +968,7 @@ func main() {
     worker.RegisterWorkflow(JobWorkflow)
     worker.RegisterActivity(ExecuteJobActivity)
     
-    // Monitor 独立心跳
-    go func() {
-        ticker := time.NewTicker(30 * time.Second)
-        for range ticker.C {
-            reportHeartbeat(serverGroup)
-        }
-    }()
-    
+    // 启动 Worker
     worker.Run(worker.InterruptCh())
 }
 ```
