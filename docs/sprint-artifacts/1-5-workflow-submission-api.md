@@ -32,6 +32,16 @@ So that **触发工作流执行**。
    - 调用Temporal Client提交工作流 (Story 1.4)
    - 返回WorkflowID和RunID给客户端
 
+2. **Event Sourcing 架构** (参考 ADR-0001)
+   - 工作流提交后状态 100% 持久化到 Temporal Event History
+   - Server 完全无状态,重启后不影响执行中的工作流
+   - Temporal 负责工作流生命周期管理
+
+3. **功能需求映射**
+   - **FR3 工作流管理 API**: 本 Story 实现 POST /v1/workflows 端点
+   - **FR1 YAML DSL 语法**: 集成 Story 1.3 的解析器
+   - **FR5 Event Sourcing**: 通过 Temporal 实现持久化执行
+
 2. **请求/响应格式**
 
 **请求:**
@@ -203,7 +213,27 @@ api/
 
 ## Tasks / Subtasks
 
-### Task 1: 定义请求/响应数据模型 (AC: 返回工作流ID和提交状态)
+### Task 1: 安装依赖并定义数据模型 (AC: 依赖已安装,API契约清晰)
+
+- [ ] 1.0 安装UUID生成库和Metrics库
+  ```bash
+  # 安装Google UUID库 (WorkflowID生成)
+  go get github.com/google/uuid
+  
+  # 安装Prometheus客户端 (Metrics埋点)
+  go get github.com/prometheus/client_golang/prometheus
+  go get github.com/prometheus/client_golang/prometheus/promhttp
+  
+  # 安装Rate Limiter (可选,防止滥用)
+  go get golang.org/x/time/rate
+  
+  # 整理依赖
+  go mod tidy
+  
+  # 验证安装
+  go list -m github.com/google/uuid
+  go list -m github.com/prometheus/client_golang
+  ```
 
 - [ ] 1.1 创建`internal/models/request.go`
   ```go
@@ -213,7 +243,8 @@ api/
   
   // SubmitWorkflowRequest 提交工作流请求
   type SubmitWorkflowRequest struct {
-      Workflow string `json:"workflow" binding:"required"` // YAML内容
+      Workflow       string `json:"workflow" binding:"required"` // YAML内容
+      IdempotencyKey string `json:"idempotency_key,omitempty"`   // 幂等性键(可选)
   }
   
   // SubmitWorkflowResponse 提交工作流响应
@@ -286,13 +317,45 @@ api/
       parser         *parser.Parser
       temporalClient *temporal.Client
       logger         *zap.Logger
+      metrics        *WorkflowMetrics
+  }
+  
+  // WorkflowMetrics Prometheus指标
+  type WorkflowMetrics struct {
+      submissionCounter  *prometheus.CounterVec
+      submissionDuration *prometheus.HistogramVec
+  }
+  
+  func NewWorkflowMetrics() *WorkflowMetrics {
+      return &WorkflowMetrics{
+          submissionCounter: prometheus.NewCounterVec(
+              prometheus.CounterOpts{
+                  Name: "waterflow_workflow_submissions_total",
+                  Help: "Total number of workflow submissions",
+              },
+              []string{"status"}, // success, parse_error, validation_error, temporal_error
+          ),
+          submissionDuration: prometheus.NewHistogramVec(
+              prometheus.HistogramOpts{
+                  Name:    "waterflow_workflow_submission_duration_seconds",
+                  Help:    "Workflow submission duration in seconds",
+                  Buckets: prometheus.DefBuckets,
+              },
+              []string{"status"},
+          ),
+      }
   }
   
   func NewWorkflowService(p *parser.Parser, tc *temporal.Client, logger *zap.Logger) *WorkflowService {
+      metrics := NewWorkflowMetrics()
+      prometheus.MustRegister(metrics.submissionCounter)
+      prometheus.MustRegister(metrics.submissionDuration)
+      
       return &WorkflowService{
           parser:         p,
           temporalClient: tc,
           logger:         logger,
+          metrics:        metrics,
       }
   }
   
@@ -331,19 +394,35 @@ api/
       "waterflow/internal/parser"
   )
   
-  // SubmitWorkflow 提交工作流到Temporal
-  func (ws *WorkflowService) SubmitWorkflow(ctx context.Context, yamlContent string) (*models.SubmitWorkflowResponse, error) {
+  // SubmitWorkflow 提交工作流到Temporal (带Metrics埋点)
+  func (ws *WorkflowService) SubmitWorkflow(ctx context.Context, yamlContent string, idempotencyKey string) (*models.SubmitWorkflowResponse, error) {
+      start := time.Now()
+      var status string
+      defer func() {
+          // 记录Metrics
+          ws.metrics.submissionDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+          ws.metrics.submissionCounter.WithLabelValues(status).Inc()
+      }()
+      
       // 1. 解析YAML
       wf, err := ws.parser.Parse(yamlContent)
       if err != nil {
+          status = "parse_error"
           ws.logger.Error("Failed to parse workflow",
               zap.Error(err),
           )
           return nil, fmt.Errorf("parse error: %w", err)
       }
       
-      // 2. 生成WorkflowID
-      workflowID := ws.GenerateWorkflowID()
+      // 2. 生成WorkflowID (支持幂等性)
+      var workflowID string
+      if idempotencyKey != "" {
+          // 使用幂等性键作为WorkflowID
+          workflowID = fmt.Sprintf("wf-%s", idempotencyKey)
+      } else {
+          // 生成新的UUID
+          workflowID = ws.GenerateWorkflowID()
+      }
       
       // 3. 提交到Temporal
       workflowOptions := client.StartWorkflowOptions{
@@ -361,6 +440,17 @@ api/
           wf,
       )
       if err != nil {
+          // 检查是否为重复WorkflowID错误 (幂等性)
+          if strings.Contains(err.Error(), "WorkflowExecutionAlreadyStarted") {
+              status = "idempotent"
+              ws.logger.Warn("Workflow already started (idempotent request)",
+                  zap.String("workflow_id", workflowID),
+              )
+              // 返回已存在的工作流信息
+              return ws.GetWorkflowStatus(ctx, workflowID)
+          }
+          
+          status = "temporal_error"
           ws.logger.Error("Failed to submit workflow to Temporal",
               zap.Error(err),
               zap.String("workflow_id", workflowID),
@@ -369,6 +459,7 @@ api/
       }
       
       // 4. 返回响应
+      status = "success"
       response := &models.SubmitWorkflowResponse{
           WorkflowID:  we.GetID(),
           RunID:       we.GetRunID(),
@@ -445,18 +536,18 @@ api/
           return
       }
       
-      // 2. 验证YAML大小限制
-      const maxYAMLSize = 1 << 20 // 1MB
-      if len(req.Workflow) > maxYAMLSize {
+      // 2. 验证YAML大小限制 (防止DoS攻击)
+      const MaxWorkflowSize = 1 << 20 // 1MB
+      if len(req.Workflow) > MaxWorkflowSize {
           c.JSON(http.StatusBadRequest, models.NewBadRequestError(
               fmt.Sprintf("Workflow YAML exceeds maximum size of %d bytes", maxYAMLSize),
           ))
           return
       }
       
-      // 3. 提交工作流
+      // 3. 提交工作流 (支持幂等性)
       ctx := c.Request.Context()
-      resp, err := h.workflowService.SubmitWorkflow(ctx, req.Workflow)
+      resp, err := h.workflowService.SubmitWorkflow(ctx, req.Workflow, req.IdempotencyKey)
       
       if err != nil {
           h.handleSubmitError(c, err)
@@ -464,6 +555,18 @@ api/
       }
       
       // 4. 返回成功响应
+      // 支持异步确认模式: 202 Accepted + Location header
+      if req.Async {
+          c.Header("Location", fmt.Sprintf("/v1/workflows/%s", resp.WorkflowID))
+          c.JSON(http.StatusAccepted, gin.H{
+              "workflow_id": resp.WorkflowID,
+              "status":      "accepted",
+              "message":     "Workflow submitted for processing",
+          })
+          return
+      }
+      
+      // 同步模式: 201 Created
       c.JSON(http.StatusCreated, resp)
   }
   
@@ -520,8 +623,13 @@ api/
       router.GET("/health", healthHandler.HealthCheck)
       router.GET("/ready", healthHandler.ReadinessCheck)
       
-      // API v1
+      // Prometheus metrics端点
+      router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+      
+      // API v1 (带Rate Limiting)
+      rateLimiter := middleware.NewRateLimiter(10, 20) // 10 req/s, burst 20
       v1 := router.Group("/v1")
+      v1.Use(rateLimiter.RateLimit())
       {
           v1.GET("/", handlers.APIVersionInfo)
           
@@ -576,7 +684,7 @@ api/
   }
   ```
 
-### Task 6: 添加请求超时控制 (AC: 响应时间<500ms)
+### Task 6: 添加请求超时控制和限流 (AC: 响应时间<500ms, 防护DoS)
 
 - [ ] 6.1 添加Context超时中间件
   ```go
@@ -597,6 +705,64 @@ api/
           defer cancel()
           
           c.Request = c.Request.WithContext(ctx)
+          c.Next()
+      }
+  }
+  ```
+
+- [ ] 6.1b 添加限流中间件
+  ```go
+  // internal/server/middleware/ratelimit.go
+  package middleware
+  
+  import (
+      "net/http"
+      "sync"
+      
+      "github.com/gin-gonic/gin"
+      "golang.org/x/time/rate"
+  )
+  
+  // RateLimiter 基于IP的限流器
+  type RateLimiter struct {
+      limiters map[string]*rate.Limiter
+      mu       sync.RWMutex
+      rate     int   // 每秒请求数
+      burst    int   // 突发容量
+  }
+  
+  func NewRateLimiter(r, b int) *RateLimiter {
+      return &RateLimiter{
+          limiters: make(map[string]*rate.Limiter),
+          rate:     r,
+          burst:    b,
+      }
+  }
+  
+  // RateLimit 返回限流中间件
+  func (rl *RateLimiter) RateLimit() gin.HandlerFunc {
+      return func(c *gin.Context) {
+          clientIP := c.ClientIP()
+          
+          rl.mu.Lock()
+          limiter, exists := rl.limiters[clientIP]
+          if !exists {
+              limiter = rate.NewLimiter(rate.Limit(rl.rate), rl.burst)
+              rl.limiters[clientIP] = limiter
+          }
+          rl.mu.Unlock()
+          
+          if !limiter.Allow() {
+              c.JSON(http.StatusTooManyRequests, gin.H{
+                  "type":   "https://waterflow.io/errors/rate-limit",
+                  "title":  "Too Many Requests",
+                  "status": 429,
+                  "detail": "Rate limit exceeded, please retry later",
+              })
+              c.Abort()
+              return
+          }
+          
           c.Next()
       }
   }
@@ -1256,76 +1422,22 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 ├── internal/server/middleware/
 │   └── timeout.go                  # 超时中间件
 
-修改文件 (~3个):
-├── internal/server/server.go       # 集成WorkflowService
-├── internal/server/router.go       # 注册/v1/workflows端点
-└── api/openapi.yaml                # 添加API文档
+修改文件 (~4个):
+├── internal/server/server.go       # 集成WorkflowService + Metrics
+├── internal/server/router.go       # 注册/v1/workflows端点 + Rate Limiting
+├── api/openapi.yaml                # 添加API文档
+└── cmd/server/main.go              # 注册Prometheus metrics
 ```
 
-**关键代码片段:**
+**详细实现代码请参考Tasks 1-8各小节,此处省略以节省token。**
 
-**workflow_service.go (核心):**
-```go
-package service
-
-type WorkflowService struct {
-    parser         *parser.Parser
-    temporalClient *temporal.Client
-    logger         *zap.Logger
-}
-
-func (ws *WorkflowService) SubmitWorkflow(ctx context.Context, yamlContent string) (*models.SubmitWorkflowResponse, error) {
-    // 1. 解析YAML
-    wf, err := ws.parser.Parse(yamlContent)
-    if err != nil {
-        return nil, fmt.Errorf("parse error: %w", err)
-    }
-    
-    // 2. 生成WorkflowID
-    workflowID := fmt.Sprintf("wf-%s", uuid.New().String())
-    
-    // 3. 提交到Temporal
-    we, err := ws.temporalClient.GetClient().ExecuteWorkflow(
-        ctx,
-        client.StartWorkflowOptions{
-            ID:        workflowID,
-            TaskQueue: "default",
-        },
-        "SimpleWorkflow",
-        wf,
-    )
-    
-    // 4. 返回响应
-    return &models.SubmitWorkflowResponse{
-        WorkflowID:  we.GetID(),
-        RunID:       we.GetRunID(),
-        Status:      "running",
-        SubmittedAt: time.Now(),
-    }, nil
-}
-```
-
-**workflow.go (Handler):**
-```go
-package handlers
-
-func (h *WorkflowHandler) SubmitWorkflow(c *gin.Context) {
-    var req models.SubmitWorkflowRequest
-    
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(400, models.NewBadRequestError(err.Error()))
-        return
-    }
-    
-    resp, err := h.workflowService.SubmitWorkflow(c.Request.Context(), req.Workflow)
-    if err != nil {
-        h.handleSubmitError(c, err)
-        return
-    }
-    
-    c.JSON(201, resp)
-}
-```
+**关键增强:**
+- ✅ UUID依赖安装 (Critical Fix)
+- ✅ YAML大小限制 (1MB,防止DoS)
+- ✅ 幂等性支持 (idempotency_key)
+- ✅ Rate Limiting (10 req/s per IP)
+- ✅ Metrics埋点 (Prometheus)
+- ✅ 异步确认模式 (202 Accepted)
 
 ---
 

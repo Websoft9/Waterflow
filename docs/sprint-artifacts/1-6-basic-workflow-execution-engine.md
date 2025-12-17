@@ -1,6 +1,6 @@
 # Story 1.6: 基础工作流执行引擎
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -13,10 +13,13 @@ So that **工作流可以持久化运行**。
 **Given** 工作流已通过 API 提交  
 **When** 工作流开始执行  
 **Then** 创建 Temporal Workflow 实例  
-**And** 工作流状态持久化到 Temporal  
+**And** 工作流状态 100% 持久化到 Temporal Event History (Event Sourcing 架构)  
 **And** 支持单 Job、单 Step 的简单工作流  
+**And** 每个 Step = 1 个 Activity 调用 (单节点执行模式, ADR-0002)  
 **And** Step 执行结果记录到 Temporal Event History  
-**And** 工作流执行失败时状态正确记录
+**And** Server/Worker 崩溃后可从 Event History 完全恢复执行  
+**And** 工作流执行失败时状态正确记录  
+**And** 单个 Step 执行启动延迟 < 100ms (Activity调度性能)
 
 ## Technical Context
 
@@ -41,11 +44,20 @@ Story 1.5提交 → Temporal启动Workflow → Story 1.6执行引擎
                                                    (Story 2.x Agent执行)
 ```
 
-3. **关键设计约束** (参考 ADR-0002)
-   - **单节点执行模式**: 每个Step映射为一个独立的Activity调用
-   - **细粒度超时**: 每个Step有独立的timeout-minutes配置
-   - **独立重试**: 每个Step可配置不同的重试策略
-   - **MVP简化**: 仅支持单Job、串行执行Steps
+3. **关键设计约束**
+   
+   **Event Sourcing 架构** (参考 ADR-0001):
+   - 所有工作流状态存储在 Temporal Event History
+   - Server 完全无状态,状态 100% 持久化
+   - 进程崩溃后从 Event History 自动恢复
+   - 支持时间旅行查询和完整审计日志
+   
+   **单节点执行模式** (参考 ADR-0002):
+   - **每个 Step = 1 个 Activity 调用**,精确控制粒度
+   - **细粒度超时**: 每个 Step 独立配置 timeout-minutes
+   - **独立重试**: 每个 Step 可配置不同的重试策略
+   - **精确故障定位**: Temporal UI 清晰展示每个 Step 的执行历史
+   - **MVP简化**: 仅支持单 Job、串行执行 Steps
 
 ### Dependencies
 
@@ -217,6 +229,66 @@ cmd/server/
 
 ## Tasks / Subtasks
 
+### Task 0: 验证依赖 (AC: 开发环境就绪)
+
+- [ ] 0.1 确认Temporal SDK已安装 (Story 1.4)
+  ```bash
+  # 验证依赖
+  go list -m go.temporal.io/sdk
+  # 期望输出: go.temporal.io/sdk v1.25.0
+  ```
+
+- [ ] 0.2 确认Temporal Server运行中
+  ```bash
+  # 方法1: 健康检查
+  curl http://localhost:7233/health
+  
+  # 方法2: Docker Compose状态
+  cd deployments
+  docker-compose ps temporal
+  # 期望: State=Up
+  ```
+
+- [ ] 0.3 验证前置Story (1.1-1.5) 产出文件存在
+  ```bash
+  #!/bin/bash
+  # test/verify-dependencies.sh
+  
+  echo "=== Verifying Story 1.1-1.5 Dependencies ==="
+  
+  # Story 1.1-1.2: Server框架和REST API
+  test -f cmd/server/main.go || { echo "ERROR: Story 1.1未完成 - 缺少cmd/server/main.go"; exit 1; }
+  test -f internal/server/server.go || { echo "ERROR: Story 1.2未完成 - 缺少internal/server/server.go"; exit 1; }
+  
+  # Story 1.3: YAML解析器
+  test -f internal/parser/parser.go || { echo "ERROR: Story 1.3未完成 - 缺少internal/parser/parser.go"; exit 1; }
+  go list -m gopkg.in/yaml.v3 > /dev/null 2>&1 || { echo "ERROR: Story 1.3未完成 - YAML库未安装"; exit 1; }
+  
+  # Story 1.4: Temporal集成
+  test -f internal/temporal/client.go || { echo "ERROR: Story 1.4未完成 - 缺少internal/temporal/client.go"; exit 1; }
+  go list -m go.temporal.io/sdk > /dev/null 2>&1 || { echo "ERROR: Story 1.4未完成 - Temporal SDK未安装"; exit 1; }
+  
+  # Story 1.5: 工作流提交API
+  test -f internal/service/workflow_service.go || { echo "ERROR: Story 1.5未完成 - 缺少workflow_service.go"; exit 1; }
+  test -f internal/models/request.go || { echo "ERROR: Story 1.5未完成 - 缺少models/request.go"; exit 1; }
+  
+  echo "✅ All dependencies verified - Story 1.6 can proceed"
+  ```
+
+- [ ] 0.4 说明本Story无新增依赖
+  ```markdown
+  本Story复用Story 1.4安装的Temporal SDK,无需安装新依赖。
+  主要开发工作: 实现Workflow函数、Activity定义、Worker管理。
+  
+  **开始开发前务必运行:**
+  ```bash
+  chmod +x test/verify-dependencies.sh
+  ./test/verify-dependencies.sh
+  ```
+  
+  如果验证失败,请先完成对应的前置Story。
+  ```
+
 ### Task 1: 定义Temporal Workflow函数 (AC: 创建Temporal Workflow实例)
 
 - [ ] 1.1 创建`internal/workflow/waterflow_workflow.go`
@@ -384,10 +456,12 @@ cmd/server/
   }
   
   // ExecuteStepActivity 执行单个Step (MVP Mock实现)
+  // TODO: Story 2.x 将实现真实的Agent调用逻辑 (run@v1, checkout@v1等)
+  // 当前仅用于验证Workflow编排和Event Sourcing架构
   func ExecuteStepActivity(ctx context.Context, input ExecuteStepInput) (ExecuteStepResult, error) {
       logger := activity.GetLogger(ctx)
       
-      logger.Info("Executing step",
+      logger.Info("[MOCK] Executing step",
           "name", input.Name,
           "uses", input.Uses,
       )
@@ -416,26 +490,51 @@ cmd/server/
   }
   ```
 
-- [ ] 2.2 添加心跳支持
+- [ ] 2.2 添加增强的心跳支持 (支持取消检测和进度报告)
   ```go
   func ExecuteStepActivity(ctx context.Context, input ExecuteStepInput) (ExecuteStepResult, error) {
       logger := activity.GetLogger(ctx)
       
-      // 发送心跳 (防止Activity超时)
+      // 检查Activity是否在启动前就被取消
+      if err := ctx.Err(); err != nil {
+          logger.Warn("Activity cancelled before execution", zap.Error(err))
+          return ExecuteStepResult{}, err
+      }
+      
+      logger.Info("[MOCK] Executing step",
+          "name", input.Name,
+          "uses", input.Uses,
+      )
+      
+      // 心跳Ticker (每10秒发送一次)
       heartbeatTicker := time.NewTicker(10 * time.Second)
       defer heartbeatTicker.Stop()
       
       done := make(chan ExecuteStepResult)
       errCh := make(chan error)
       
-      // 异步执行
+      // 异步执行 (模拟长时间运行的任务)
       go func() {
-          // 模拟执行
-          time.Sleep(1 * time.Second)
+          // MVP: Mock执行,模拟10秒的工作
+          for i := 0; i < 10; i++ {
+              time.Sleep(1 * time.Second)
+              
+              // 定期检查取消信号
+              select {
+              case <-ctx.Done():
+                  logger.Warn("Execution cancelled mid-flight")
+                  errCh <- ctx.Err()
+                  return
+              default:
+                  // 继续执行
+              }
+          }
+          
+          // 完成执行
           done <- ExecuteStepResult{
-              Output:   fmt.Sprintf("[MOCK] Executed %s", input.Uses),
+              Output:   fmt.Sprintf("[MOCK] Executed %s with args: %v", input.Uses, input.With),
               ExitCode: 0,
-              Duration: 1 * time.Second,
+              Duration: 10 * time.Second,
           }
       }()
       
@@ -443,15 +542,24 @@ cmd/server/
       for {
           select {
           case <-ctx.Done():
+              logger.Warn("Activity cancelled during execution")
               return ExecuteStepResult{}, ctx.Err()
           
           case <-heartbeatTicker.C:
-              activity.RecordHeartbeat(ctx, "executing")
+              // 发送心跳并报告进度
+              activity.RecordHeartbeat(ctx, fmt.Sprintf("executing: %s", input.Name))
+              logger.Debug("Heartbeat sent", zap.String("step", input.Name))
           
           case result := <-done:
+              logger.Info("Step executed successfully",
+                  "name", input.Name,
+                  "exit_code", result.ExitCode,
+                  "duration", result.Duration,
+              )
               return result, nil
           
           case err := <-errCh:
+              logger.Error("Step execution failed", zap.Error(err))
               return ExecuteStepResult{}, err
           }
       }
@@ -518,10 +626,26 @@ cmd/server/
       return nil
   }
   
-  // Stop 停止Worker
+  // Stop 优雅停止Worker (等待正在执行的Activity完成)
   func (wm *WorkerManager) Stop() {
-      wm.logger.Info("Stopping Temporal Worker...")
-      wm.worker.Stop()
+      wm.logger.Info("Stopping Temporal Worker gracefully...")
+      
+      // Worker.Stop()会阻塞直到所有Activity完成
+      // 添加超时保护避免无限等待
+      done := make(chan struct{})
+      
+      go func() {
+          wm.worker.Stop() // 阻塞直到Activity完成
+          close(done)
+      }()
+      
+      // 等待最多30秒
+      select {
+      case <-done:
+          wm.logger.Info("Worker stopped gracefully - all activities completed")
+      case <-time.After(30 * time.Second):
+          wm.logger.Warn("Worker stop timeout - forcing shutdown after 30s")
+      }
   }
   ```
 
@@ -561,16 +685,83 @@ cmd/server/
   }
   
   func (s *Server) Start() error {
-      // 启动Worker (goroutine)
+      // Worker启动重试配置
+      const (
+          maxRetries = 5
+          retryDelay = 5 * time.Second
+      )
+      
+      // 创建错误通道用于Worker启动检测
+      errChan := make(chan error, 1)
+      
+      // 启动Worker (带重试机制)
       go func() {
-          if err := s.workerManager.Start(); err != nil {
-              s.logger.Fatal("Worker failed to start", zap.Error(err))
+          for attempt := 1; attempt <= maxRetries; attempt++ {
+              s.logger.Info("Starting Temporal Worker",
+                  zap.Int("attempt", attempt),
+                  zap.Int("max_retries", maxRetries),
+              )
+              
+              err := s.workerManager.Start()
+              if err == nil {
+                  return // 启动成功
+              }
+              
+              s.logger.Warn("Worker failed to start",
+                  zap.Int("attempt", attempt),
+                  zap.Error(err),
+              )
+              
+              // 检查是否为连接错误 (可重试) vs 配置错误 (不可重试)
+              if isConnectionError(err) && attempt < maxRetries {
+                  s.logger.Info("Connection error detected - retrying",
+                      zap.Duration("retry_delay", retryDelay),
+                  )
+                  time.Sleep(retryDelay)
+                  continue
+              }
+              
+              // 最后一次尝试或不可重试的错误
+              errChan <- fmt.Errorf("worker failed after %d attempts: %w", attempt, err)
+              return
           }
       }()
+      
+      // 等待Worker启动或失败 (最多等待30秒)
+      select {
+      case err := <-errChan:
+          return err
+      case <-time.After(30 * time.Second):
+          s.logger.Info("Worker started successfully")
+      }
       
       // 启动HTTP Server
       s.logger.Info("Starting HTTP server", zap.String("addr", s.httpServer.Addr))
       return s.httpServer.ListenAndServe()
+  }
+  
+  // isConnectionError 判断是否为连接错误 (可重试)
+  func isConnectionError(err error) bool {
+      if err == nil {
+          return false
+      }
+      
+      errMsg := err.Error()
+      // Temporal连接错误通常包含这些关键词
+      connectionErrors := []string{
+          "connection refused",
+          "no such host",
+          "timeout",
+          "temporary failure",
+      }
+      
+      for _, keyword := range connectionErrors {
+          if strings.Contains(strings.ToLower(errMsg), keyword) {
+              return true
+          }
+      }
+      
+      return false
   }
   
   func (s *Server) Shutdown(ctx context.Context) error {
@@ -877,16 +1068,84 @@ cmd/server/
   echo "Waiting for workflow to complete..."
   sleep 5
   
-  # 6. 在Temporal UI查看 (手动)
-  echo "Check Temporal UI: http://localhost:8233"
+  # 6. 查询工作流状态 (使用Story 1.7 API - 如果已实现)
+  echo "Querying workflow status..."
+  STATUS=$(curl -s http://localhost:8080/v1/workflows/$WORKFLOW_ID || echo '{"status":"unknown"}')
+  echo "Status Response: $STATUS"
   
-  # 7. 清理
+  # 验证状态 (如果API可用)
+  if command -v jq &> /dev/null; then
+      WORKFLOW_STATUS=$(echo "$STATUS" | jq -r '.status // "unknown"')
+      if [ "$WORKFLOW_STATUS" = "completed" ]; then
+          echo "✅ Workflow completed successfully"
+      elif [ "$WORKFLOW_STATUS" = "running" ]; then
+          echo "⏳ Workflow still running (may need more time)"
+      else
+          echo "⚠️  Workflow status: $WORKFLOW_STATUS"
+      fi
+  fi
+  
+  # 7. 在Temporal UI查看 (手动验证)
+  echo "Check Temporal UI: http://localhost:8233"
+  echo "  → Workflow ID: $WORKFLOW_ID"
+  
+  # 8. 测试失败场景
+  echo "=== Testing Workflow Failure Scenario ==="
+  
+  FAILURE_RESPONSE=$(curl -s -X POST http://localhost:8080/v1/workflows \
+    -H "Content-Type: application/json" \
+    -d '{
+      "workflow": "name: Failing Workflow\\non: push\\njobs:\\n  fail:\\n    runs-on: default\\n    steps:\\n      - name: Fail Step\\n        uses: fail@v1"
+    }')
+  
+  FAILED_WF_ID=$(echo $FAILURE_RESPONSE | jq -r '.workflow_id')
+  echo "Failed Workflow ID: $FAILED_WF_ID"
+  
+  # 等待失败
+  sleep 10
+  
+  # 验证状态为failed
+  FAILED_STATUS=$(curl -s http://localhost:8080/v1/workflows/$FAILED_WF_ID | jq -r '.status')
+  if [ "$FAILED_STATUS" = "failed" ]; then
+      echo "✅ Workflow failure handling works correctly"
+  else
+      echo "❌ Expected status=failed, got $FAILED_STATUS"
+      # 不退出,继续清理
+  fi
+  
+  # 9. 测试工作流取消
+  echo "=== Testing Workflow Cancellation ==="
+  
+  # 提交一个长时间运行的工作流
+  CANCEL_RESPONSE=$(curl -s -X POST http://localhost:8080/v1/workflows \
+    -H "Content-Type: application/json" \
+    -d '{
+      "workflow": "name: Long Running\\non: push\\njobs:\\n  long:\\n    runs-on: default\\n    timeout-minutes: 60\\n    steps:\\n      - name: Sleep\\n        uses: sleep@v1\\n        with:\\n          duration: 300"
+    }')
+  
+  CANCEL_WF_ID=$(echo $CANCEL_RESPONSE | jq -r '.workflow_id')
+  echo "Long-running Workflow ID: $CANCEL_WF_ID"
+  
+  # 等待开始执行
+  sleep 3
+  
+  # 取消工作流 (如果Story 1.9已实现)
+  if curl -s -X POST http://localhost:8080/v1/workflows/$CANCEL_WF_ID/cancel > /dev/null 2>&1; then
+      echo "✅ Workflow cancellation API available"
+      sleep 2
+      CANCELLED_STATUS=$(curl -s http://localhost:8080/v1/workflows/$CANCEL_WF_ID | jq -r '.status')
+      echo "Cancelled workflow status: $CANCELLED_STATUS"
+  else
+      echo "⚠️  Workflow cancellation API not yet implemented (Story 1.9)"
+  fi
+  
+  # 10. 清理
   echo "Cleaning up..."
   kill $SERVER_PID
   cd deployments
   docker-compose down
   
-  echo "✅ Integration test completed"
+  echo "✅ Integration test completed (success + failure scenarios)"
   ```
 
 - [ ] 7.2 添加到CI
@@ -899,7 +1158,153 @@ cmd/server/
       ./test/integration/test_workflow_execution.sh
   ```
 
-### Task 8: 更新文档和日志 (可观测性)
+### Task 8: 性能基准测试 (AC: 单个Step执行启动延迟<100ms)
+
+- [ ] 8.1 创建`internal/workflow/benchmark_test.go`
+  ```go
+  package workflow
+  
+  import (
+      "testing"
+      "time"
+      
+      "github.com/stretchr/testify/assert"
+      "github.com/stretchr/testify/mock"
+      "go.temporal.io/sdk/testsuite"
+      
+      "waterflow/internal/parser"
+  )
+  
+  // BenchmarkActivitySchedulingLatency 测试Activity调度延迟
+  // 验证AC: 单个Step执行启动延迟 < 100ms
+  func BenchmarkActivitySchedulingLatency(b *testing.B) {
+      testSuite := &testsuite.WorkflowTestSuite{}
+      env := testSuite.NewTestWorkflowEnvironment()
+      
+      // Mock Activity (立即返回)
+      env.OnActivity("ExecuteStepActivity", mock.Anything, mock.Anything).Return(
+          ExecuteStepResult{
+              Output:   "benchmark",
+              ExitCode: 0,
+              Duration: 1 * time.Millisecond,
+          }, nil,
+      )
+      
+      // 准备最小工作流
+      def := &parser.WorkflowDefinition{
+          Name: "Benchmark Workflow",
+          On:   "push",
+          Jobs: map[string]parser.Job{
+              "bench": {
+                  RunsOn: "default",
+                  Steps: []parser.Step{
+                      {
+                          Name: "Benchmark Step",
+                          Uses: "run@v1",
+                          With: map[string]interface{}{"command": "echo test"},
+                      },
+                  },
+              },
+          },
+      }
+      
+      b.ResetTimer()
+      
+      // 运行基准测试
+      for i := 0; i < b.N; i++ {
+          start := time.Now()
+          env.ExecuteWorkflow(WaterflowWorkflow, def)
+          latency := time.Since(start)
+          
+          // 验证AC: 启动延迟必须<100ms
+          if latency > 100*time.Millisecond {
+              b.Errorf("Step启动延迟超过100ms: %v (第%d次)", latency, i+1)
+          }
+      }
+  }
+  
+  // BenchmarkMultiStepLatency 测试多Step场景的总延迟
+  func BenchmarkMultiStepLatency(b *testing.B) {
+      testSuite := &testsuite.WorkflowTestSuite{}
+      env := testSuite.NewTestWorkflowEnvironment()
+      
+      env.OnActivity("ExecuteStepActivity", mock.Anything, mock.Anything).Return(
+          ExecuteStepResult{ExitCode: 0}, nil,
+      )
+      
+      // 10个Steps的工作流
+      steps := make([]parser.Step, 10)
+      for i := 0; i < 10; i++ {
+          steps[i] = parser.Step{
+              Name: fmt.Sprintf("Step %d", i+1),
+              Uses: "run@v1",
+          }
+      }
+      
+      def := &parser.WorkflowDefinition{
+          Name: "Multi-Step Benchmark",
+          On:   "push",
+          Jobs: map[string]parser.Job{
+              "multi": {
+                  RunsOn: "default",
+                  Steps:  steps,
+              },
+          },
+      }
+      
+      b.ResetTimer()
+      
+      for i := 0; i < b.N; i++ {
+          start := time.Now()
+          env.ExecuteWorkflow(WaterflowWorkflow, def)
+          totalLatency := time.Since(start)
+          
+          avgLatency := totalLatency / 10
+          
+          // 平均每个Step<100ms
+          if avgLatency > 100*time.Millisecond {
+              b.Errorf("平均Step延迟超过100ms: %v", avgLatency)
+          }
+      }
+  }
+  ```
+
+- [ ] 8.2 运行基准测试并记录结果
+  ```bash
+  # 运行性能基准测试
+  go test -bench=BenchmarkActivitySchedulingLatency \
+          -benchtime=100x \
+          -benchmem \
+          ./internal/workflow
+  
+  # 期望输出示例:
+  # BenchmarkActivitySchedulingLatency-8    100    45000 ns/op    2048 B/op    25 allocs/op
+  #                                               ^^^^^^^ <100ms = <100,000,000 ns
+  
+  # 记录基准结果
+  go test -bench=. -benchmem ./internal/workflow > docs/benchmark-story-1-6.txt
+  
+  echo "✅ Performance benchmarks recorded"
+  ```
+
+- [ ] 8.3 添加到CI流程作为性能门禁
+  ```yaml
+  # .github/workflows/ci.yml (添加到现有workflow)
+  
+  - name: Performance Benchmark Tests
+    run: |
+      # 运行基准测试,如果延迟超标则失败
+      go test -bench=BenchmarkActivitySchedulingLatency \
+              -benchtime=50x \
+              ./internal/workflow || {
+        echo "❌ Performance regression detected - Step latency exceeds 100ms"
+        exit 1
+      }
+      
+      echo "✅ Performance benchmarks passed"
+  ```
+
+### Task 9: 更新文档和日志 (可观测性)
 
 - [ ] 8.1 添加日志输出
   ```go
@@ -1220,93 +1625,29 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 **预期创建/修改的文件清单:**
 
 ```
-新建文件 (~8个):
+新建文件 (~5个):
 ├── internal/workflow/
-│   ├── waterflow_workflow.go       # Temporal Workflow实现
-│   ├── activities.go               # Activity定义和Mock
-│   ├── worker.go                   # Worker管理
-│   ├── waterflow_workflow_test.go  # Workflow测试
-│   └── activities_test.go          # Activity测试
+│   ├── waterflow_workflow.go       # 详见Task 1
+│   ├── activities.go               # 详见Task 2
+│   ├── worker.go                   # 详见Task 3
+│   ├── waterflow_workflow_test.go  # 详见Task 6
+│   └── activities_test.go          # 详见Task 6
 ├── test/integration/
-│   └── test_workflow_execution.sh  # 集成测试脚本
+│   └── test_workflow_execution.sh  # 详见Task 7
 
 修改文件 (~3个):
-├── internal/server/server.go       # 集成Worker管理
-├── internal/service/workflow_service.go  # 更新提交逻辑
-└── cmd/server/main.go              # Worker生命周期
+├── internal/server/server.go       # 详见Task 3.2 (Worker集成)
+├── internal/service/workflow_service.go  # 详见Task 4 (更新提交逻辑)
+└── cmd/server/main.go              # Worker生命周期管理
 ```
 
-**关键代码片段:**
+**详细实现代码请参考Tasks 0-7各小节,此处省略以节省token。**
 
-**waterflow_workflow.go (核心):**
-```go
-package workflow
-
-func WaterflowWorkflow(ctx workflow.Context, def *parser.WorkflowDefinition) error {
-    logger := workflow.GetLogger(ctx)
-    logger.Info("Workflow started", "name", def.Name)
-    
-    // MVP: 单Job
-    if len(def.Jobs) > 1 {
-        return fmt.Errorf("MVP only supports single job")
-    }
-    
-    for jobName, job := range def.Jobs {
-        err := executeJob(ctx, jobName, job)
-        if err != nil {
-            return fmt.Errorf("job %s failed: %w", jobName, err)
-        }
-        break
-    }
-    
-    return nil
-}
-
-func executeJob(ctx workflow.Context, jobName string, job parser.Job) error {
-    for _, step := range job.Steps {
-        err := executeStep(ctx, step)
-        if err != nil {
-            return err
-        }
-    }
-    return nil
-}
-
-func executeStep(ctx workflow.Context, step parser.Step) error {
-    timeout := 10 * time.Minute
-    if step.TimeoutMinutes > 0 {
-        timeout = time.Duration(step.TimeoutMinutes) * time.Minute
-    }
-    
-    activityCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-        StartToCloseTimeout: timeout,
-    })
-    
-    var result ExecuteStepResult
-    return workflow.ExecuteActivity(activityCtx, "ExecuteStepActivity", ExecuteStepInput{
-        Name: step.Name,
-        Uses: step.Uses,
-        With: step.With,
-    }).Get(activityCtx, &result)
-}
-```
-
-**activities.go (Mock):**
-```go
-func ExecuteStepActivity(ctx context.Context, input ExecuteStepInput) (ExecuteStepResult, error) {
-    logger := activity.GetLogger(ctx)
-    logger.Info("Executing step", "name", input.Name, "uses", input.Uses)
-    
-    // MVP Mock实现
-    time.Sleep(1 * time.Second)
-    
-    return ExecuteStepResult{
-        Output:   fmt.Sprintf("[MOCK] Executed %s", input.Uses),
-        ExitCode: 0,
-        Duration: 1 * time.Second,
-    }, nil
-}
-```
+**关键技术要点:**
+- Event Sourcing架构 (状态100%持久化到Temporal Event History)
+- Workflow确定性要求 (禁止time.Now()、rand、直接IO)
+- 单节点执行模式 (每个Step = 1个Activity)
+- MVP Mock实现 (Story 2.x将替换为真实Agent调用)
 
 ---
 

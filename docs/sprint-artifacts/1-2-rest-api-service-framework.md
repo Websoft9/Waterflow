@@ -28,7 +28,7 @@ so that **可以通过 HTTP 接口接收工作流请求**。
 1. **核心职责**
    - 处理HTTP请求 (提交工作流、查询状态、获取日志)
    - 请求参数验证
-   - API认证 (API Key/JWT) - 本Story暂不实现,Epic 10处理
+   - API认证 (API Key/JWT) - 本Story暂不实现,Epic 9处理
    - 错误响应格式化 (RFC 7807)
 
 2. **关键端点** (本Story实现基础框架)
@@ -37,11 +37,15 @@ so that **可以通过 HTTP 接口接收工作流请求**。
    - `GET /v1/` - API版本信息
    - 后续Stories将添加: `/v1/workflows`, `/v1/validate` 等
 
-3. **非功能性需求** (参考 PRD NFR1-NFR5)
-   - 响应时间: p95 < 500ms
-   - 并发支持: 100+ req/s
-   - 优雅关闭: 最多等待30秒完成进行中的请求
-   - 日志: JSON格式,包含request_id, trace_id
+3. **非功能性需求** (参考 epics.md NFR1-NFR8)
+   - **NFR1 部署简单性**: 单二进制部署,配置外部化
+   - **NFR2 性能**: API 响应时间 p95 < 500ms,并发支持 100+ req/s
+   - **NFR4 可观测性**: 结构化日志 (JSON),包含 request_id, trace_id
+   - **NFR8 跨平台支持**: Linux, macOS, Windows (WSL2)
+   
+   **核心 FR 支持**:
+   - **FR3 工作流管理 API**: 本 Story 建立 REST API 基础框架
+   - 后续 Story 将实现具体端点 (提交、查询、取消、日志、验证)
 
 ### Dependencies
 
@@ -141,6 +145,24 @@ api/
 
 ### Task 1: 实现HTTP Server核心逻辑 (AC: HTTP服务监听端口)
 
+- [ ] 1.0 安装REST API依赖
+  ```bash
+  # 安装Gin中间件依赖
+  go get github.com/gin-contrib/cors@v1.4.0
+  go get github.com/gin-contrib/requestid@v0.0.0-20230514214907-c2b8f126e326
+  
+  # 可选: 限流中间件(生产环境推荐)
+  go get github.com/ulule/limiter/v3@v3.11.2
+  go get github.com/ulule/limiter/v3/drivers/store/memory
+  
+  # 可选: Swagger文档
+  go get github.com/swaggo/gin-swagger@v1.6.0
+  go get github.com/swaggo/files@v1.0.1
+  
+  # 验证依赖
+  go mod tidy
+  ```
+
 - [ ] 1.1 创建`internal/server/server.go`
   ```go
   type Server struct {
@@ -151,16 +173,22 @@ api/
   }
   
   func New(cfg *config.Config, logger *zap.Logger) *Server
-  func (s *Server) Start() error
+  // 使用Story 1.1预留的接口设计
+  func (s *Server) Run() error  // 而非Start()
   func (s *Server) Shutdown(ctx context.Context) error
+  func (s *Server) RegisterRoutes(routeFunc func(*gin.Engine))
   ```
+  
+  **说明:** 使用Story 1.1预留的`Run()`方法名而非`Start()`,保持接口一致性。`RegisterRoutes()`允许后续Stories注册路由而无需修改server.go。
 
-- [ ] 1.2 实现服务器启动逻辑
+- [ ] 1.2 实现服务器启动逻辑 (Run方法)
   - 设置Gin模式 (根据config.server.mode)
   - 创建http.Server实例
   - 配置监听地址 (config.server.host:port)
-  - 启动goroutine监听HTTP请求
+  - 调用httpServer.ListenAndServe()
   - 返回error如果端口被占用
+  
+  **注意:** 使用`Run()`方法名与Story 1.1保持一致。
 
 - [ ] 1.3 验证服务器启动
   ```bash
@@ -237,13 +265,26 @@ api/
   }))
   ```
 
-- [ ] 3.4 在router.go中应用中间件
+- [ ] 3.4 在router.go中按正确顺序应用中间件
   ```go
+  // 中间件执行顺序关键说明:
+  // 1. Recovery必须最先 - 捕获后续所有中间件和handler的panic
   router.Use(gin.Recovery())
+  
+  // 2. RequestID其次 - 生成request_id供后续中间件使用
   router.Use(middleware.RequestID())
+  
+  // 3. Logger第三 - 使用request_id记录请求日志
   router.Use(middleware.Logger(logger))
+  
+  // 4. CORS最后 - 处理跨域请求头
   router.Use(cors.New(...))
   ```
+  
+  **顺序原因:**
+  - Recovery在最外层确保任何panic都被捕获
+  - RequestID必须在Logger前,否则日志无request_id
+  - CORS放最后处理响应头即可
 
 ### Task 4: 实现健康检查和就绪检查端点 (AC: /health和/ready端点)
 
@@ -258,20 +299,62 @@ api/
   }
   ```
 
-- [ ] 4.2 创建就绪检查handler
+- [ ] 4.2 设计HealthChecker接口并实现就绪检查 (支持扩展)
   ```go
-  // GET /ready - 检查依赖服务状态
-  func ReadinessCheck(c *gin.Context) {
-      // 本Story暂时返回OK
-      // Story 1.4添加Temporal连接检查
-      c.JSON(http.StatusOK, gin.H{
-          "status": "ready",
-          "checks": gin.H{
-              "temporal": "not_configured", // 待Story 1.4实现
-          },
+  // HealthChecker接口 - 允许注册多个检查项
+  type HealthChecker interface {
+      Name() string
+      Check(ctx context.Context) error
+  }
+  
+  // ReadinessHandler - 可扩展的就绪检查handler
+  type ReadinessHandler struct {
+      checkers []HealthChecker
+  }
+  
+  func NewReadinessHandler() *ReadinessHandler {
+      return &ReadinessHandler{
+          checkers: []HealthChecker{},
+      }
+  }
+  
+  func (h *ReadinessHandler) AddChecker(checker HealthChecker) {
+      h.checkers = append(h.checkers, checker)
+  }
+  
+  func (h *ReadinessHandler) ServeHTTP(c *gin.Context) {
+      ctx := c.Request.Context()
+      checks := make(map[string]string)
+      allReady := true
+      
+      for _, checker := range h.checkers {
+          if err := checker.Check(ctx); err != nil {
+              checks[checker.Name()] = "unhealthy: " + err.Error()
+              allReady = false
+          } else {
+              checks[checker.Name()] = "healthy"
+          }
+      }
+      
+      // 本Story暂无checker,返回ready
+      // Story 1.4将调用AddChecker注册TemporalHealthChecker
+      status := "ready"
+      statusCode := http.StatusOK
+      if !allReady {
+          status = "not_ready"
+          statusCode = http.StatusServiceUnavailable
+      }
+      
+      c.JSON(statusCode, gin.H{
+          "status": status,
+          "checks": checks,
       })
   }
   ```
+  
+  **扩展性设计说明:**
+  - Story 1.4可通过`readinessHandler.AddChecker(&TemporalHealthChecker{...})`添加Temporal检查
+  - 无需修改handler代码,符合开闭原则
 
 - [ ] 4.3 在router.go注册端点
   ```go
@@ -388,7 +471,7 @@ api/
       
       // 4. 启动服务器(goroutine)
       go func() {
-          if err := srv.Start(); err != nil && err != http.ErrServerClosed {
+          if err := srv.Run(); err != nil && err != http.ErrServerClosed {
               logger.Fatal("Server failed", zap.Error(err))
           }
       }()
@@ -435,12 +518,72 @@ api/
   - Logger中间件日志输出测试
   - CORS头部验证测试
 
+- [ ] 7.3b 测试环境变量覆盖配置
+  ```go
+  func TestConfigEnvOverride(t *testing.T) {
+      // 测试环境变量正确覆盖YAML配置
+      os.Setenv("WATERFLOW_SERVER_PORT", "9090")
+      os.Setenv("WATERFLOW_SERVER_HOST", "127.0.0.1")
+      defer os.Unsetenv("WATERFLOW_SERVER_PORT")
+      defer os.Unsetenv("WATERFLOW_SERVER_HOST")
+      
+      cfg := config.Load()
+      assert.Equal(t, 9090, cfg.Server.Port)
+      assert.Equal(t, "127.0.0.1", cfg.Server.Host)
+  }
+  ```
+
 - [ ] 7.4 运行测试并验证覆盖率
   ```bash
   make test
   # 期望: 所有测试通过
   # 覆盖率: internal/server目录 >70%
   ```
+
+### Task 9: 验证CI通过和性能基准 (确保质量)
+
+- [ ] 9.1 推送代码并触发GitHub Actions
+  ```bash
+  git add .
+  git commit -m "feat: implement REST API service framework (Story 1.2)"
+  git push origin feature/story-1-2
+  ```
+
+- [ ] 9.2 验证所有CI Jobs通过
+  - ✅ lint job: golangci-lint通过
+  - ✅ test job: 单元测试通过,覆盖率>70%
+  - ✅ build job: 编译成功
+  - ✅ security job: Gosec/Nancy扫描通过
+
+- [ ] 9.3 检查测试覆盖率包含新代码
+  ```bash
+  # 查看覆盖率报告
+  go tool cover -html=coverage.out
+  # 确保internal/server/目录所有文件>70%覆盖
+  ```
+
+- [ ] 9.4 性能基准测试 (对齐NFR2)
+  ```bash
+  # Tier 1: 健康检查端点 (p95<10ms, 目标1000+ req/s)
+  hey -n 10000 -c 100 http://localhost:8080/health
+  # 验证: Requests/sec > 1000, p95 < 10ms
+  
+  # Tier 2: 就绪检查端点 (p95<50ms)
+  hey -n 5000 -c 50 http://localhost:8080/ready
+  # 验证: Requests/sec > 500, p95 < 50ms
+  
+  # 注意: 业务API (POST /v1/workflows) 将在Story 1.5实现后测试
+  # 目标: p95<500ms, 100+ req/s (NFR2要求)
+  ```
+  
+  **性能验收标准 (NFR2):**
+  - 轻量端点(/health, /ready): p95<50ms
+  - 业务API: p95<500ms (Story 1.5+验证)
+  - 并发支持: 100+ req/s持续负载
+
+- [ ] 9.5 修复任何CI或性能问题
+  - 如果CI失败: 查看GitHub Actions日志并修复
+  - 如果性能不达标: 优化中间件或添加缓存
 
 ### Task 8: 更新OpenAPI规范 (API文档)
 
@@ -470,9 +613,20 @@ api/
         summary: API version information
   ```
 
-- [ ] 8.2 集成Swagger UI (可选)
-  - 使用`github.com/swaggo/gin-swagger`
+- [ ] 8.2 集成Swagger UI (可选,推荐)
+  ```go
+  import swaggerFiles "github.com/swaggo/files"
+  import ginSwagger "github.com/swaggo/gin-swagger"
+  
+  // 在router.go中添加Swagger端点
+  router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+  ```
+  
   - 访问: http://localhost:8080/swagger/index.html
+  - OpenAPI规范自动从api/openapi.yaml加载
+  - 提供交互式API文档和测试界面
+  
+  **开发体验提升:** 前端开发者可直接通过Swagger UI测试API
 
 ## Dev Notes
 
@@ -630,36 +784,27 @@ hey -n 1000 -c 10 http://localhost:8080/health
 
 ### References
 
-**架构设计:**
-- [docs/architecture.md §3.1.1](docs/architecture.md) - REST API Handler职责
-- [docs/architecture.md §2.1](docs/architecture.md) - Waterflow Server容器定义
+参见Technical Context章节中引用的架构文档、Epic上下文和依赖关系。
 
-**技术规范:**
+**外部规范:**
 - [RFC 7807: Problem Details for HTTP APIs](https://tools.ietf.org/html/rfc7807)
 - [12-Factor App: Config](https://12factor.net/config)
 - [Gin Documentation](https://gin-gonic.com/docs/)
-
-**项目上下文:**
-- [docs/epics.md Story 1.1](docs/epics.md) - 前置依赖Story
-- [docs/epics.md Story 1.3-1.9](docs/epics.md) - 后续依赖本Story的API端点
-
-**Go规范:**
-- [Effective Go: Web Servers](https://go.dev/doc/articles/wiki/)
 - [Uber Go Style Guide: Middleware](https://github.com/uber-go/guide/blob/master/style.md#middleware)
 
 ### Dependency Graph
 
-```
-Story 1.1 (框架)
-    ↓
-Story 1.2 (REST API框架) ← 当前Story
-    ↓
-    ├→ Story 1.3 (DSL解析器)
-    ├→ Story 1.4 (Temporal集成)
-    ├→ Story 1.5 (工作流提交API)
-    ├→ Story 1.7 (状态查询API)
-    └→ Story 1.8-1.9 (日志/取消API)
-```
+**前置依赖:**
+- Story 1.1 (框架搭建) → 提供项目结构、Gin依赖、Logger、Config模块
+
+**当前Story:**
+- **Story 1.2 (REST API框架)** ← 建立HTTP服务器、中间件、健康检查
+
+**后续依赖本Story:**
+- Story 1.3 (DSL解析器) → 使用本Story的路由注册机制
+- Story 1.4 (Temporal集成) → 扩展ReadinessCheck添加Temporal健康检查
+- Story 1.5 (工作流提交API) → 在v1路由组注册POST /workflows端点
+- Story 1.7-1.9 (状态查询/日志/取消API) → 复用中间件和错误处理机制
 
 ## Dev Agent Record
 
@@ -701,104 +846,10 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 
 ### File List
 
-**预期创建/修改的文件清单:**
+**新建文件:** ~12个 (internal/server/, middleware/, handlers/, 测试文件)
+**修改文件:** 3个 (main.go, config.go, config.yaml)
 
-```
-新建文件 (~12个):
-├── internal/server/server.go
-├── internal/server/router.go
-├── internal/server/middleware/logger.go
-├── internal/server/middleware/requestid.go
-├── internal/server/handlers/health.go
-├── internal/server/handlers/version.go
-├── internal/server/server_test.go
-├── internal/server/handlers/health_test.go
-├── internal/server/middleware/logger_test.go
-└── api/openapi.yaml
-
-修改文件 (~3个):
-├── cmd/server/main.go              # 添加HTTP服务器启动逻辑
-├── internal/config/config.go       # 扩展ServerConfig
-└── deployments/config.yaml         # 添加server配置段
-```
-
-**关键代码片段:**
-
-**server.go:**
-```go
-package server
-
-import (
-    "context"
-    "fmt"
-    "net/http"
-    "github.com/gin-gonic/gin"
-    "go.uber.org/zap"
-)
-
-type Server struct {
-    config     *config.Config
-    logger     *zap.Logger
-    router     *gin.Engine
-    httpServer *http.Server
-}
-
-func New(cfg *config.Config, logger *zap.Logger) *Server {
-    router := SetupRouter(logger)
-    
-    return &Server{
-        config: cfg,
-        logger: logger,
-        router: router,
-        httpServer: &http.Server{
-            Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-            Handler:      router,
-            ReadTimeout:  10 * time.Second,
-            WriteTimeout: 10 * time.Second,
-        },
-    }
-}
-
-func (s *Server) Start() error {
-    s.logger.Info("Starting HTTP server",
-        zap.String("addr", s.httpServer.Addr),
-        zap.String("mode", gin.Mode()),
-    )
-    return s.httpServer.ListenAndServe()
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-    s.logger.Info("Shutting down HTTP server")
-    return s.httpServer.Shutdown(ctx)
-}
-```
-
-**health.go:**
-```go
-package handlers
-
-import (
-    "net/http"
-    "time"
-    "github.com/gin-gonic/gin"
-)
-
-func HealthCheck(c *gin.Context) {
-    c.JSON(http.StatusOK, gin.H{
-        "status":    "healthy",
-        "timestamp": time.Now().Unix(),
-    })
-}
-
-func ReadinessCheck(c *gin.Context) {
-    c.JSON(http.StatusOK, gin.H{
-        "status": "ready",
-        "checks": gin.H{
-            "temporal": "not_configured", // Story 1.4将更新
-        },
-    })
-}
-```
+详见Tasks章节中的具体文件路径和实现要求。
 
 ---
 

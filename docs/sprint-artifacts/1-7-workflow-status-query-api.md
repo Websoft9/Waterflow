@@ -1,6 +1,6 @@
 # Story 1.7: 工作流状态查询 API
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -25,10 +25,19 @@ So that **了解工作流进度和结果**。
 根据 [docs/architecture.md](docs/architecture.md) §3.1.1 REST API Handler设计:
 
 1. **核心职责**
-   - 处理`GET /v1/workflows/{id}`请求
-   - 调用Temporal Client查询Workflow状态
-   - 从Event History提取执行进度
-   - 格式化响应数据
+   - 处理 `GET /v1/workflows/{id}` 请求
+   - 通过 Temporal Client 查询工作流状态
+   - 从 Temporal Event History 获取执行信息
+   - 返回结构化的状态数据 (JSON)
+
+2. **Event Sourcing 架构** (参考 ADR-0001)
+   - 所有状态从 Temporal Event History 查询,确保数据一致性
+   - 支持时间旅行查询:可查看历史任意时刻的状态
+   - Server 无状态,直接从 Temporal 获取最新状态
+
+3. **功能需求映射**
+   - **FR7 实时状态跟踪和日志**: 本 Story 实现状态查询 API
+   - **FR3 工作流管理 API**: GET /v1/workflows/{id} 端点
 
 2. **响应格式**
 
@@ -195,8 +204,19 @@ func calculateProgress(history []*historypb.HistoryEvent) *ProgressInfo {
         CurrentJob:      "build", // MVP: 单Job
         CurrentStep:     currentStep,
         CompletedSteps:  completedSteps,
-        TotalSteps:      getTotalSteps(), // 从WorkflowDefinition获取
+        TotalSteps:      wqs.getTotalSteps(ctx, workflowID), // 见辅助方法
     }
+}
+
+// getTotalSteps 获取工作流总步数
+func (wqs *WorkflowQueryService) getTotalSteps(ctx context.Context, workflowID string) int {
+    // 方法1: 查询Workflow Input (WorkflowDefinition) - 最准确
+    // 方法2: 从Event History遍历ActivityTaskScheduled事件 - 适用于运行中
+    // 方法3: 缓存提交时的步数 - 最快但需额外存储
+    
+    // MVP实现: 返回固定值或从缓存获取
+    // TODO: Story后续优化 - 从Workflow Input解析
+    return 3 // 临时返回
 }
 ```
 
@@ -219,6 +239,61 @@ api/
 ```
 
 ## Tasks / Subtasks
+
+### Task 0: 验证依赖 (AC: 开发环境就绪)
+
+- [ ] 0.1 确认依赖已安装 (Story 1.1-1.6)
+  ```bash
+  # 验证Temporal SDK (Story 1.4)
+  go list -m go.temporal.io/sdk
+  # 期望输出: go.temporal.io/sdk v1.25.0
+  
+  # 本Story无新增依赖,复用现有Temporal Client API
+  # 主要开发工作: 实现查询服务层、HTTP Handler、响应模型
+  ```
+
+- [ ] 0.2 验证前置Story (1.1-1.6) 产出文件存在
+  ```bash
+  #!/bin/bash
+  # test/verify-dependencies-story-1-7.sh
+  
+  echo "=== Verifying Story 1.1-1.6 Dependencies for Story 1-7 ==="
+  
+  # Story 1.1-1.2: Server框架和REST API
+  test -f cmd/server/main.go || { echo "ERROR: Story 1.1未完成 - 缺少cmd/server/main.go"; exit 1; }
+  test -f internal/server/server.go || { echo "ERROR: Story 1.2未完成 - 缺少internal/server/server.go"; exit 1; }
+  test -f internal/server/router.go || { echo "ERROR: Story 1.2未完成 - 缺少router.go"; exit 1; }
+  
+  # Story 1.4: Temporal集成
+  test -f internal/temporal/client.go || { echo "ERROR: Story 1.4未完成 - 缺少temporal/client.go"; exit 1; }
+  go list -m go.temporal.io/sdk > /dev/null 2>&1 || { echo "ERROR: Temporal SDK未安装"; exit 1; }
+  
+  # Story 1.5: 工作流提交API
+  test -f internal/service/workflow_service.go || { echo "ERROR: Story 1.5未完成 - 缺少workflow_service.go"; exit 1; }
+  test -f internal/models/request.go || { echo "ERROR: Story 1.5未完成 - 缺少models/request.go"; exit 1; }
+  test -f internal/server/handlers/workflow.go || { echo "ERROR: Story 1.5未完成 - 缺少handlers/workflow.go"; exit 1; }
+  
+  # Story 1.6: 工作流执行引擎
+  test -f internal/workflow/waterflow_workflow.go || { echo "ERROR: Story 1.6未完成 - 缺少waterflow_workflow.go"; exit 1; }
+  test -f internal/workflow/activities.go || { echo "ERROR: Story 1.6未完成 - 缺少activities.go"; exit 1; }
+  test -f internal/workflow/worker.go || { echo "ERROR: Story 1.6未完成 - 缺少worker.go"; exit 1; }
+  
+  echo "✅ All dependencies verified - Story 1.7 can proceed"
+  ```
+
+- [ ] 0.3 确认Temporal Server运行中
+  ```bash
+  curl http://localhost:7233/health
+  # 期望: 200 OK
+  ```
+
+- [ ] 0.4 开发前运行验证脚本
+  ```bash
+  chmod +x test/verify-dependencies-story-1-7.sh
+  ./test/verify-dependencies-story-1-7.sh
+  
+  # 如果验证失败,请先完成对应的前置Story
+  ```
 
 ### Task 1: 定义状态查询响应模型 (AC: 返回工作流状态)
 
@@ -278,6 +353,7 @@ api/
       "go.temporal.io/api/enums/v1"
       "go.temporal.io/sdk/client"
       "go.uber.org/zap"
+      "golang.org/x/time/rate"  // 并发限流
       
       "waterflow/internal/models"
       "waterflow/internal/temporal"
@@ -286,17 +362,28 @@ api/
   type WorkflowQueryService struct {
       temporalClient *temporal.Client
       logger         *zap.Logger
+      rateLimiter    *rate.Limiter  // 并发限流保护
   }
   
   func NewWorkflowQueryService(tc *temporal.Client, logger *zap.Logger) *WorkflowQueryService {
       return &WorkflowQueryService{
           temporalClient: tc,
           logger:         logger,
+          rateLimiter:    rate.NewLimiter(100, 200), // 100 qps, burst 200
       }
   }
   
-  // GetWorkflowStatus 查询工作流状态
+  // GetWorkflowStatus 查询工作流状态 (带并发限流保护)
   func (wqs *WorkflowQueryService) GetWorkflowStatus(ctx context.Context, workflowID string) (*models.WorkflowStatusResponse, error) {
+      // 0. 并发限流检查 (防止高并发场景下Temporal过载)
+      if err := wqs.rateLimiter.Wait(ctx); err != nil {
+          wqs.logger.Warn("Rate limit exceeded",
+              zap.String("workflow_id", workflowID),
+              zap.Error(err),
+          )
+          return nil, fmt.Errorf("too many requests, please retry later: %w", err)
+      }
+      
       // 1. 查询Workflow基本信息
       describe, err := wqs.temporalClient.GetClient().DescribeWorkflowExecution(ctx, workflowID, "")
       if err != nil {
@@ -405,7 +492,6 @@ api/
       
       var completedSteps int
       var currentStep string
-      var totalSteps int
       
       for iter.HasNext() {
           event, err := iter.Next()
@@ -413,25 +499,84 @@ api/
               return nil, err
           }
           
-          switch event.EventType {
-          case enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
-              // 新Step开始
-              totalSteps++
-              attrs := event.GetActivityTaskScheduledEventAttributes()
-              currentStep = attrs.ActivityType.Name
-          
-          case enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED:
-              // Step完成
+          // 统计完成的Steps (ActivityTaskCompleted事件)
+          if event.EventType == enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED {
               completedSteps++
+          }
+          
+          // 获取当前Step (最近的ActivityTaskStarted)
+          if event.EventType == enums.EVENT_TYPE_ACTIVITY_TASK_STARTED {
+              // 从ActivityID提取Step名称
+              currentStep = event.GetActivityTaskStartedEventAttributes().GetActivityId()
           }
       }
       
       return &models.ProgressInfo{
-          CurrentJob:     "build", // MVP: 单Job
-          CurrentStep:    currentStep,
-          TotalSteps:     totalSteps,
-          CompletedSteps: completedSteps,
+          CurrentJob:      "build", // MVP: 单Job
+          CurrentStep:     currentStep,
+          CompletedSteps:  completedSteps,
+          TotalSteps:      wqs.getTotalSteps(ctx, workflowID), // 见辅助方法
       }, nil
+  }
+  
+  // getTotalSteps 获取工作流总步数 (优化实现)
+  func (wqs *WorkflowQueryService) getTotalSteps(ctx context.Context, workflowID, runID string) int {
+      // 方法1: 从SearchAttributes获取 (推荐,需Story 1.5配合)
+      // 方法2: 从Event History统计 (回退方案)
+      // 方法3: 返回固定值 (MVP临时方案)
+      
+      // 尝试从SearchAttributes获取 (如果Story 1.5已实现存储)
+      describe, err := wqs.temporalClient.GetClient().DescribeWorkflowExecution(ctx, workflowID, runID)
+      if err == nil {
+          if searchAttrs := describe.WorkflowExecutionInfo.GetSearchAttributes(); searchAttrs != nil {
+              if totalStepsPayload, ok := searchAttrs.GetIndexedFields()["TotalSteps"]; ok {
+                  // 解析Payload获取总步数
+                  var totalSteps int
+                  if err := totalStepsPayload.Get(&totalSteps); err == nil {
+                      return totalSteps
+                  }
+              }
+          }
+      }
+      
+      // 回退方案: 从Event History统计ActivityTaskScheduled事件
+      count := wqs.countStepsFromHistory(ctx, workflowID, runID)
+      if count > 0 {
+          return count
+      }
+      
+      // 最后回退: 返回固定值 (MVP临时方案)
+      wqs.logger.Debug("Using fallback total steps", zap.String("workflow_id", workflowID))
+      return 3
+  }
+  
+  // countStepsFromHistory 从Event History统计总步数
+  func (wqs *WorkflowQueryService) countStepsFromHistory(ctx context.Context, workflowID, runID string) int {
+      iter := wqs.temporalClient.GetClient().GetWorkflowHistory(
+          ctx,
+          workflowID,
+          runID,
+          false, // waitNewEvent
+          enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT,
+      )
+      
+      count := 0
+      maxEvents := 1000 // 限制遍历数量防止超时
+      
+      for iter.HasNext() && count < maxEvents {
+          event, err := iter.Next()
+          if err != nil {
+              wqs.logger.Warn("Failed to iterate history for total steps", zap.Error(err))
+              break
+          }
+          
+          // 统计ActivityTaskScheduled事件
+          if event.EventType == enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED {
+              count++
+          }
+      }
+      
+      return count
   }
   
   // extractError 提取失败错误信息
@@ -451,6 +596,150 @@ api/
   }
   ```
 
+### Task 2.3: 实现getTotalSteps优化方案 (可选,提升进度精度)
+
+- [ ] 2.3.1 实现多层回退策略 (已在Task 2.2中实现)
+  ```go
+  // 优先级:
+  // 1. SearchAttributes (最准确,需Story 1.5配合)
+  // 2. Event History统计 (回退方案)
+  // 3. 固定值3 (MVP临时方案)
+  
+  // 代码已在Task 2.2的getTotalSteps方法中实现
+  ```
+
+- [ ] 2.3.2 (可选) 在Story 1.5中存储TotalSteps到SearchAttributes
+  ```go
+  // internal/service/workflow_service.go (Story 1.5修改)
+  
+  func (ws *WorkflowService) SubmitWorkflow(ctx context.Context, yamlContent string, idempotencyKey string) (*models.SubmitWorkflowResponse, error) {
+      // 1. 解析YAML
+      wf, err := ws.parser.Parse(yamlContent)
+      if err != nil {
+          return nil, fmt.Errorf("parse error: %w", err)
+      }
+      
+      // 2. 计算总步数
+      totalSteps := ws.calculateTotalSteps(wf)
+      
+      // 3. 生成WorkflowID
+      workflowID := ws.GenerateWorkflowID()
+      
+      // 4. 提交到Temporal并存储总步数
+      workflowOptions := client.StartWorkflowOptions{
+          ID:                 workflowID,
+          TaskQueue:          "default",
+          WorkflowRunTimeout: 1 * time.Hour,
+          // 存储总步数到SearchAttributes (供Story 1.7查询使用)
+          SearchAttributes: map[string]interface{}{
+              "TotalSteps": totalSteps,
+          },
+      }
+      
+      we, err := ws.temporalClient.GetClient().ExecuteWorkflow(
+          ctx,
+          workflowOptions,
+          "WaterflowWorkflow",
+          wf,
+      )
+      // ... 原有逻辑 ...
+  }
+  
+  // calculateTotalSteps 计算工作流总步数
+  func (ws *WorkflowService) calculateTotalSteps(wf *parser.WorkflowDefinition) int {
+      total := 0
+      for _, job := range wf.Jobs {
+          total += len(job.Steps)
+      }
+      return total
+  }
+  ```
+
+- [ ] 2.3.3 添加getTotalSteps单元测试
+  ```go
+  func TestGetTotalSteps_FromSearchAttributes(t *testing.T) {
+      mockClient := &MockTemporalClient{}
+      
+      // Mock DescribeWorkflowExecution返回SearchAttributes
+      mockClient.On("DescribeWorkflowExecution", mock.Anything, "wf-123", "").Return(
+          &workflowservice.DescribeWorkflowExecutionResponse{
+              WorkflowExecutionInfo: &workflowpb.WorkflowExecutionInfo{
+                  SearchAttributes: &commonpb.SearchAttributes{
+                      IndexedFields: map[string]*commonpb.Payload{
+                          "TotalSteps": {Data: []byte("5")}, // 5个步骤
+                      },
+                  },
+              },
+          }, nil,
+      )
+      
+      wqs := NewWorkflowQueryService(mockClient, zap.NewNop())
+      total := wqs.getTotalSteps(context.Background(), "wf-123", "run-456")
+      
+      assert.Equal(t, 5, total)
+  }
+  
+  func TestGetTotalSteps_FromHistory(t *testing.T) {
+      // 测试Event History回退方案
+      // ... 实现 ...
+  }
+  ```
+
+- [ ] 2.3.4 更新Dev Notes说明MVP权衡
+  ```markdown
+  **getTotalSteps实现策略:**
+  
+  - **方案1 (推荐):** Story 1.5提交时存储TotalSteps到SearchAttributes
+    - 优势: 精确、快速,无需遍历Event History
+    - 实施: 修改Story 1.5的SubmitWorkflow方法
+  
+  - **方案2 (回退):** 从Event History统计ActivityTaskScheduled事件
+    - 优势: 无需修改Story 1.5,适用于已运行的工作流
+    - 劣势: 需要遍历Event History,性能稍差
+  
+  - **方案3 (MVP):** 返回固定值3
+    - 优势: 简单,适用于演示
+    - 劣势: 进度信息不准确
+  
+  **当前实现:** Task 2.2已实现三层回退策略,优先使用方案1,回退到方案2和3。
+  **后续优化:** Epic 2完成后,统一在Story 1.5中实现SearchAttributes存储。
+  ```
+
+### Task 2.5: 添加WorkflowID校验工具函数 (复用代码)
+
+- [ ] 2.5.1 创建`internal/utils/validation.go`
+  ```go
+  package utils
+  
+  import (
+      "fmt"
+      "strings"
+      
+      "github.com/google/uuid"
+  )
+  
+  // ValidateWorkflowID 验证WorkflowID格式
+  // 格式: wf-{uuid}
+  // 复用于Story 1.5 (提交) 和 Story 1.7 (查询)
+  func ValidateWorkflowID(id string) error {
+      if id == "" {
+          return fmt.Errorf("workflow ID is required")
+      }
+      
+      if !strings.HasPrefix(id, "wf-") {
+          return fmt.Errorf("workflow ID must start with 'wf-'")
+      }
+      
+      // 验证UUID部分
+      uuidPart := strings.TrimPrefix(id, "wf-")
+      if _, err := uuid.Parse(uuidPart); err != nil {
+          return fmt.Errorf("invalid workflow ID format: %w", err)
+      }
+      
+      return nil
+  }
+  ```
+
 ### Task 3: 实现HTTP Handler (AC: GET /v1/workflows/{id})
 
 - [ ] 3.1 更新`internal/server/handlers/workflow.go`
@@ -458,14 +747,17 @@ api/
   package handlers
   
   import (
+      "errors"
+      "fmt"
       "net/http"
-      "strings"
       
       "github.com/gin-gonic/gin"
+      "go.temporal.io/api/serviceerror"
       "go.uber.org/zap"
       
       "waterflow/internal/models"
       "waterflow/internal/service"
+      "waterflow/internal/utils"
   )
   
   type WorkflowHandler struct {
@@ -490,10 +782,10 @@ api/
   func (h *WorkflowHandler) GetWorkflow(c *gin.Context) {
       workflowID := c.Param("id")
       
-      // 验证WorkflowID格式
-      if workflowID == "" || !strings.HasPrefix(workflowID, "wf-") {
+      // 验证WorkflowID格式 (复用工具函数)
+      if err := utils.ValidateWorkflowID(workflowID); err != nil {
           c.JSON(http.StatusBadRequest, models.NewBadRequestError(
-              "Invalid workflow ID format",
+              err.Error(),
           ))
           return
       }
@@ -503,9 +795,9 @@ api/
       status, err := h.workflowQueryService.GetWorkflowStatus(ctx, workflowID)
       
       if err != nil {
-          // 检查是否为"not found"错误
-          if strings.Contains(err.Error(), "not found") || 
-             strings.Contains(err.Error(), "NotFoundError") {
+          // 使用Temporal错误类型判断404 (更可靠)
+          var notFoundErr *serviceerror.NotFound
+          if errors.As(err, &notFoundErr) {
               c.JSON(http.StatusNotFound, &models.ErrorResponse{
                   Type:   "https://waterflow.io/errors/not-found",
                   Title:  "Workflow Not Found",
@@ -596,22 +888,21 @@ api/
       "time"
   )
   
-  // StatusCache 状态缓存
+  // StatusCache 状态缓存(带TTL过期策略)
   type StatusCache struct {
-      cache map[string]*cachedStatus
+      cache map[string]*CacheEntry
       mu    sync.RWMutex
-      ttl   time.Duration
   }
   
-  type cachedStatus struct {
-      status    *models.WorkflowStatusResponse
-      expiresAt time.Time
+  // CacheEntry 缓存条目(带过期时间)
+  type CacheEntry struct {
+      Status    *models.WorkflowStatusResponse
+      ExpiresAt time.Time
   }
   
-  func NewStatusCache(ttl time.Duration) *StatusCache {
+  func NewStatusCache() *StatusCache {
       return &StatusCache{
-          cache: make(map[string]*cachedStatus),
-          ttl:   ttl,
+          cache: make(map[string]*CacheEntry),
       }
   }
   
@@ -619,29 +910,38 @@ api/
       sc.mu.RLock()
       defer sc.mu.RUnlock()
       
-      cached, ok := sc.cache[workflowID]
+      entry, ok := sc.cache[workflowID]
       if !ok {
           return nil, false
       }
       
       // 检查是否过期
-      if time.Now().After(cached.expiresAt) {
+      if time.Now().After(entry.ExpiresAt) {
           return nil, false
       }
       
-      return cached.status, true
+      return entry.Status, true
   }
   
   func (sc *StatusCache) Set(workflowID string, status *models.WorkflowStatusResponse) {
       sc.mu.Lock()
       defer sc.mu.Unlock()
       
-      // 只缓存已完成的Workflow
+      // 根据状态设置不同的TTL
+      var ttl time.Duration
       if status.Status == "completed" || status.Status == "failed" || status.Status == "canceled" {
-          sc.cache[workflowID] = &cachedStatus{
-              status:    status,
-              expiresAt: time.Now().Add(sc.ttl),
-          }
+          // 终态状态缓存10分钟 (不会再改变)
+          ttl = 10 * time.Minute
+      } else if status.Status == "running" {
+          // 运行中状态缓存5秒 (频繁变化)
+          ttl = 5 * time.Second
+      } else {
+          return // 其他状态不缓存
+      }
+      
+      sc.cache[workflowID] = &CacheEntry{
+          Status:    status,
+          ExpiresAt: time.Now().Add(ttl),
       }
   }
   ```
@@ -860,7 +1160,26 @@ api/
   
   echo "✅ Status fields validated"
   
-  # 4. 测试404错误
+  # 4. 性能测试 (AC要求<200ms)
+  echo "Running performance test..."
+  if command -v ab &> /dev/null; then
+      ab -n 1000 -c 50 http://localhost:8080/v1/workflows/$WORKFLOW_ID > /tmp/ab_result.txt 2>&1
+      
+      # 提取P95延迟
+      P95=$(grep "95%" /tmp/ab_result.txt | awk '{print $2}')
+      echo "P95 Latency: ${P95}ms"
+      
+      # 验证P95 < 200ms
+      if [ $(echo "$P95 < 200" | bc) -eq 1 ]; then
+          echo "✅ Performance test passed (P95: ${P95}ms < 200ms)"
+      else
+          echo "⚠️  Performance warning (P95: ${P95}ms >= 200ms)"
+      fi
+  else
+      echo "⚠️  Apache Bench (ab) not installed, skipping performance test"
+  fi
+  
+  # 5. 测试404错误
   echo "Testing 404 response..."
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/v1/workflows/wf-nonexist)
   if [ "$HTTP_CODE" = "404" ]; then
@@ -870,7 +1189,17 @@ api/
       exit 1
   fi
   
-  # 5. 清理
+  # 5. 测试404错误
+  echo "Testing 404 response..."
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/v1/workflows/wf-nonexist)
+  if [ "$HTTP_CODE" = "404" ]; then
+      echo "✅ 404 test passed"
+  else
+      echo "❌ Expected 404, got $HTTP_CODE"
+      exit 1
+  fi
+  
+  # 6. 清理
   kill $SERVER_PID
   make dev-env-stop
   
@@ -885,13 +1214,17 @@ api/
     /v1/workflows/{id}:
       get:
         summary: Get workflow status
+        description: Query the current status and progress of a workflow execution
+        tags:
+          - Workflows
         parameters:
           - name: id
             in: path
             required: true
             schema:
               type: string
-            description: Workflow ID
+              pattern: '^wf-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+            description: Workflow ID (format wf-{uuid})
             example: wf-550e8400-e29b-41d4-a716-446655440000
         responses:
           '200':
@@ -900,6 +1233,36 @@ api/
               application/json:
                 schema:
                   $ref: '#/components/schemas/WorkflowStatusResponse'
+                examples:
+                  running:
+                    summary: Running workflow
+                    value:
+                      workflow_id: wf-550e8400-e29b-41d4-a716-446655440000
+                      run_id: temporal-run-uuid
+                      name: Deploy Application
+                      status: running
+                      start_time: "2025-12-16T10:30:00Z"
+                      duration: 125000
+                      progress:
+                        current_job: build
+                        current_step: Build
+                        total_steps: 3
+                        completed_steps: 1
+                  completed:
+                    summary: Completed workflow
+                    value:
+                      workflow_id: wf-550e8400-e29b-41d4-a716-446655440000
+                      status: completed
+                      close_time: "2025-12-16T10:32:05Z"
+                      duration: 125000
+                      result:
+                        success: true
+          '400':
+            description: Invalid workflow ID format
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/ErrorResponse'
           '404':
             description: Workflow not found
             content:
@@ -1233,65 +1596,38 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 **预期创建/修改的文件清单:**
 
 ```
-新建文件 (~5个):
+新建文件 (~4个):
 ├── internal/models/
-│   └── workflow_status.go          # 状态响应模型
+│   └── workflow_status.go          # 详见Task 1
 ├── internal/service/
-│   ├── workflow_query_service.go   # 查询服务层
-│   └── workflow_query_service_test.go
+│   ├── workflow_query_service.go   # 详见Task 2
+│   └── workflow_query_service_test.go  # 详见Task 6
+├── internal/utils/
+│   └── validation.go               # 详见Task 2.5 (WorkflowID校验)
 ├── test/integration/
-│   └── test_workflow_query.sh      # 集成测试
+│   └── test_workflow_query.sh      # 详见Task 7
 
 修改文件 (~3个):
-├── internal/server/handlers/workflow.go  # 添加GetWorkflow方法
-├── internal/server/router.go             # 注册GET /v1/workflows/:id
-└── api/openapi.yaml                      # 添加查询端点文档
+├── internal/server/handlers/workflow.go  # 详见Task 3 (添加GetWorkflow)
+├── internal/server/router.go             # 详见Task 4 (注册GET端点)
+└── api/openapi.yaml                      # 详见Task 8 (API文档)
 ```
 
-**关键代码片段:**
+**详细实现代码请参考Tasks 0-8各小节,此处省略以节省token。**
 
-**workflow_query_service.go (核心):**
-```go
-package service
+**关键技术要点:**
+- Event Sourcing查询 (从Temporal Event History读取状态)
+- 404错误精确判断 (serviceerror.NotFound类型)
+- WorkflowID校验复用 (utils.ValidateWorkflowID)
+- 缓存TTL策略 (completed:10分钟, running:5秒)
+- 性能优化 (AC要求<200ms,P95测试验证)
 
-func (wqs *WorkflowQueryService) GetWorkflowStatus(ctx context.Context, workflowID string) (*models.WorkflowStatusResponse, error) {
-    // 1. 查询Workflow
-    describe, err := wqs.temporalClient.GetClient().DescribeWorkflowExecution(ctx, workflowID, "")
-    if err != nil {
-        return nil, fmt.Errorf("workflow not found: %w", err)
-    }
-    
-    info := describe.WorkflowExecutionInfo
-    
-    // 2. 构建响应
-    response := &models.WorkflowStatusResponse{
-        WorkflowID: info.Execution.WorkflowId,
-        RunID:      info.Execution.RunId,
-        Status:     wqs.mapStatus(info.Status),
-        StartTime:  *info.StartTime,
-        Duration:   wqs.calculateDuration(info.StartTime, info.CloseTime),
-    }
-    
-    // 3. 获取进度
-    if response.Status == "running" {
-        progress, _ := wqs.getProgress(ctx, workflowID, info.Execution.RunId)
-        response.Progress = progress
-    }
-    
-    return response, nil
-}
-```
+---
 
-**workflow.go (Handler):**
-```go
-func (h *WorkflowHandler) GetWorkflow(c *gin.Context) {
-    workflowID := c.Param("id")
-    
-    status, err := h.workflowQueryService.GetWorkflowStatus(c.Request.Context(), workflowID)
-    if err != nil {
-        if strings.Contains(err.Error(), "not found") {
-            c.JSON(404, models.NewNotFoundError(workflowID))
-            return
+**Story Ready for Development** ✅
+
+开发者可基于Story 1.1-1.6的成果,实现工作流状态查询API。
+本Story完成后,用户可以实时查看工作流执行状态和进度。
         }
         c.JSON(500, models.NewInternalError())
         return

@@ -1,6 +1,6 @@
 # Story 1.8: 工作流日志输出
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -25,10 +25,19 @@ So that **调试失败原因和验证执行过程**。
 根据 [docs/architecture.md](docs/architecture.md) §3.1.1 REST API Handler设计:
 
 1. **核心职责**
-   - 处理`GET /v1/workflows/{id}/logs`请求
-   - 从Temporal Event History提取日志事件
-   - 支持日志级别过滤 (query params: `level=info,warn,error`)
-   - 支持实时日志流 (SSE - Server-Sent Events)
+   - 处理 `GET /v1/workflows/{id}/logs` 请求
+   - 从 Temporal Event History 提取日志事件
+   - 返回结构化的日志数据 (JSON)
+   - MVP 阶段支持实时查询,后续可支持流式输出
+
+2. **集成接口** (参考 architecture.md 集成接口)
+   - **FR17 LogHandler 接口**: 支持集成外部日志系统 (ELK/Loki/CloudWatch)
+   - MVP 阶段日志存储在 Temporal Event History
+   - 后续 Story 实现 LogHandler 接口,支持实时日志流
+
+3. **功能需求映射**
+   - **FR7 实时状态跟踪和日志**: 本 Story 实现日志查询 API
+   - **FR3 工作流管理 API**: GET /v1/workflows/{id}/logs 端点
 
 2. **日志来源**
 
@@ -367,6 +376,90 @@ api/
 
 ## Tasks / Subtasks
 
+### Task 0: 验证依赖 (AC: 开发环境就绪)
+
+- [ ] 0.1 验证Temporal连接
+  ```bash
+  # 确保Temporal Server运行
+  curl -s localhost:7233 > /dev/null && echo "✅ Temporal running" || echo "❌ Temporal not running"
+  ```
+
+- [ ] 0.2 验证Go环境
+  ```bash
+  go version | grep "go1.21" && echo "✅ Go 1.21+" || echo "❌ Go version mismatch"
+  ```
+
+- [ ] 0.3 验证前置Story依赖文件
+  ```bash
+  # test/verify-dependencies-story-1-8.sh
+  #!/bin/bash
+  
+  set -e
+  
+  echo "=== Story 1.8 依赖验证 ==="
+  
+  # 函数: 检查文件是否存在
+  check_file() {
+      local file=$1
+      local story=$2
+      
+      if [ -f "$file" ]; then
+          echo "✅ $story: $file"
+      else
+          echo "❌ $story: $file NOT FOUND"
+          exit 1
+      fi
+  }
+  
+  # Story 1.1: Server Framework
+  check_file "internal/config/config.go" "Story 1.1"
+  check_file "cmd/server/main.go" "Story 1.1"
+  
+  # Story 1.2: REST API Framework
+  check_file "internal/server/server.go" "Story 1.2"
+  check_file "internal/server/router.go" "Story 1.2"
+  
+  # Story 1.3: YAML Parser
+  check_file "internal/parser/yaml_parser.go" "Story 1.3"
+  check_file "internal/models/workflow_definition.go" "Story 1.3"
+  
+  # Story 1.4: Temporal SDK Integration
+  check_file "internal/temporal/client.go" "Story 1.4"
+  
+  # Story 1.5: Workflow Submission API
+  check_file "internal/service/workflow_service.go" "Story 1.5"
+  check_file "internal/server/handlers/workflow.go" "Story 1.5"
+  
+  # Story 1.6: Workflow Execution Engine
+  check_file "internal/workflow/waterflow_workflow.go" "Story 1.6"
+  check_file "internal/workflow/activities.go" "Story 1.6"
+  check_file "internal/workflow/worker.go" "Story 1.6"
+  
+  # Story 1.7: Workflow Status Query API
+  check_file "internal/service/workflow_query_service.go" "Story 1.7"
+  check_file "internal/models/workflow_status.go" "Story 1.7"
+  
+  # 验证Temporal连接
+  echo ""
+  echo "检查Temporal Server连接..."
+  if curl -s localhost:7233 > /dev/null 2>&1; then
+      echo "✅ Temporal Server运行中 (localhost:7233)"
+  else
+      echo "❌ Temporal Server未运行 - 请启动Temporal"
+      echo "   提示: make dev-env 或 docker-compose up temporal"
+      exit 1
+  fi
+  
+  echo ""
+  echo "✅ Story 1.8 所有依赖验证通过"
+  ```
+
+- [ ] 0.4 运行验证脚本
+  ```bash
+  chmod +x test/verify-dependencies-story-1-8.sh
+  ./test/verify-dependencies-story-1-8.sh
+  ```
+
 ### Task 1: 定义日志模型 (AC: 结构化日志)
 
 - [ ] 1.1 创建`internal/models/workflow_log.go`
@@ -413,6 +506,7 @@ api/
   import (
       "context"
       "fmt"
+      "sync"
       "time"
       
       "go.temporal.io/api/enums/v1"
@@ -423,21 +517,74 @@ api/
       "waterflow/internal/temporal"
   )
   
+  // LogCache 为已完成工作流提供日志缓存
+  type LogCache struct {
+      mu      sync.RWMutex
+      entries map[string]*CachedLogs
+      ttl     time.Duration
+  }
+  
+  type CachedLogs struct {
+      Logs      *models.WorkflowLogsResponse
+      CachedAt  time.Time
+      ExpiresAt time.Time
+  }
+  
+  func NewLogCache(ttl time.Duration) *LogCache {
+      return &LogCache{
+          entries: make(map[string]*CachedLogs),
+          ttl:     ttl,
+      }
+  }
+  
+  func (lc *LogCache) Get(workflowID string) *models.WorkflowLogsResponse {
+      lc.mu.RLock()
+      defer lc.mu.RUnlock()
+      
+      cached, exists := lc.entries[workflowID]
+      if !exists || time.Now().After(cached.ExpiresAt) {
+          return nil
+      }
+      return cached.Logs
+  }
+  
+  func (lc *LogCache) Set(workflowID string, logs *models.WorkflowLogsResponse) {
+      lc.mu.Lock()
+      defer lc.mu.Unlock()
+      
+      lc.entries[workflowID] = &CachedLogs{
+          Logs:      logs,
+          CachedAt:  time.Now(),
+          ExpiresAt: time.Now().Add(lc.ttl),
+      }
+  }
+  
   type WorkflowLogService struct {
       temporalClient *temporal.Client
       logger         *zap.Logger
+      cache          *LogCache
   }
   
   func NewWorkflowLogService(tc *temporal.Client, logger *zap.Logger) *WorkflowLogService {
       return &WorkflowLogService{
           temporalClient: tc,
           logger:         logger,
+          cache:          NewLogCache(1 * time.Hour), // 缓存1小时
       }
   }
   
   // GetLogs 获取历史日志
   func (wls *WorkflowLogService) GetLogs(ctx context.Context, workflowID string, filter *models.LogFilter) (*models.WorkflowLogsResponse, error) {
-      // 1. 获取Event History
+      // 1. 检查缓存 (仅适用于已完成工作流)
+      if cached := wls.cache.Get(workflowID); cached != nil {
+          wls.logger.Debug("Cache hit for completed workflow",
+              zap.String("workflow_id", workflowID),
+          )
+          // 应用过滤器到缓存结果
+          return wls.applyFilterToResponse(cached, filter), nil
+      }
+      
+      // 2. 获取Event History
       iter := wls.temporalClient.GetClient().GetWorkflowHistory(
           ctx,
           workflowID,
@@ -446,7 +593,7 @@ api/
           enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT,
       )
       
-      // 2. 收集所有事件 (需要完整列表用于关联)
+      // 3. 收集所有事件 (需要完整列表用于关联)
       var allEvents []*historypb.HistoryEvent
       for iter.HasNext() {
           event, err := iter.Next()
@@ -456,36 +603,74 @@ api/
           allEvents = append(allEvents, event)
       }
       
-      // 3. 转换为日志
+      // 4. 转换为日志 (不应用过滤,缓存原始数据)
       var logs []*models.LogEntry
+      var workflowStatus string
+      
       for _, event := range allEvents {
           logEntry := wls.convertEventToLog(event, allEvents)
           if logEntry == nil {
               continue // 跳过不关心的事件类型
           }
-          
-          // 应用过滤
-          if !wls.matchesFilter(logEntry, filter) {
-              continue
-          }
-          
           logs = append(logs, logEntry)
+          
+          // 检测工作流状态
+          if event.EventType == enums.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED {
+              workflowStatus = "completed"
+          } else if event.EventType == enums.EVENT_TYPE_WORKFLOW_EXECUTION_FAILED {
+              workflowStatus = "failed"
+          } else if event.EventType == enums.EVENT_TYPE_WORKFLOW_EXECUTION_CANCELED {
+              workflowStatus = "canceled"
+          }
       }
       
-      // 4. 限制数量
-      total := len(logs)
+      // 5. 创建响应对象
+      response := &models.WorkflowLogsResponse{
+          WorkflowID: workflowID,
+          Logs:       logs,
+          Total:      len(logs),
+          Filtered:   false,
+      }
+      
+      // 6. 缓存已完成的工作流日志
+      if workflowStatus == "completed" || workflowStatus == "failed" || workflowStatus == "canceled" {
+          wls.cache.Set(workflowID, response)
+          wls.logger.Debug("Cached completed workflow logs",
+              zap.String("workflow_id", workflowID),
+              zap.String("status", workflowStatus),
+              zap.Int("log_count", len(logs)),
+          )
+      }
+      
+      // 7. 应用过滤器
+      return wls.applyFilterToResponse(response, filter), nil
+  }
+  
+  // applyFilterToResponse 对响应应用过滤条件
+  func (wls *WorkflowLogService) applyFilterToResponse(response *models.WorkflowLogsResponse, filter *models.LogFilter) *models.WorkflowLogsResponse {
+      filteredLogs := []*models.LogEntry{}
+      
+      for _, log := range response.Logs {
+          if !wls.matchesFilter(log, filter) {
+              continue
+          }
+          filteredLogs = append(filteredLogs, log)
+      }
+      
+      // 限制数量
+      total := len(filteredLogs)
       filtered := false
-      if filter.Limit > 0 && len(logs) > filter.Limit {
-          logs = logs[:filter.Limit]
+      if filter.Limit > 0 && len(filteredLogs) > filter.Limit {
+          filteredLogs = filteredLogs[:filter.Limit]
           filtered = true
       }
       
       return &models.WorkflowLogsResponse{
-          WorkflowID: workflowID,
-          Logs:       logs,
+          WorkflowID: response.WorkflowID,
+          Logs:       filteredLogs,
           Total:      total,
           Filtered:   filtered,
-      }, nil
+      }
   }
   
   // convertEventToLog 转换单个事件为日志
@@ -1020,6 +1205,203 @@ api/
   ```bash
   go test -v ./internal/service -run TestWorkflowLog
   go test -v ./internal/server/handlers -run TestGetLogs
+  ```
+
+- [ ] 6.4 性能基准测试
+  ```go
+  // internal/service/workflow_log_service_benchmark_test.go
+  package service
+  
+  import (
+      "context"
+      "testing"
+      "time"
+      
+      "github.com/stretchr/testify/mock"
+      "go.temporal.io/api/enums/v1"
+      "go.temporal.io/api/history/v1"
+      "go.uber.org/zap"
+      
+      "waterflow/internal/models"
+  )
+  
+  // BenchmarkGetLogs_SmallHistory 测试小型工作流(100事件)的查询性能
+  func BenchmarkGetLogs_SmallHistory(b *testing.B) {
+      wls := setupMockServiceWithEvents(100)
+      filter := &models.LogFilter{Level: "all", Limit: 1000}
+      ctx := context.Background()
+      
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+          _, err := wls.GetLogs(ctx, "wf-test-100", filter)
+          if err != nil {
+              b.Fatal(err)
+          }
+      }
+  }
+  
+  // BenchmarkGetLogs_MediumHistory 测试中型工作流(1000事件)的查询性能
+  func BenchmarkGetLogs_MediumHistory(b *testing.B) {
+      wls := setupMockServiceWithEvents(1000)
+      filter := &models.LogFilter{Level: "all", Limit: 1000}
+      ctx := context.Background()
+      
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+          _, err := wls.GetLogs(ctx, "wf-test-1000", filter)
+          if err != nil {
+              b.Fatal(err)
+          }
+      }
+  }
+  
+  // BenchmarkGetLogs_LargeHistory 测试大型工作流(5000事件)的查询性能
+  func BenchmarkGetLogs_LargeHistory(b *testing.B) {
+      wls := setupMockServiceWithEvents(5000)
+      filter := &models.LogFilter{Level: "all", Limit: 1000}
+      ctx := context.Background()
+      
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+          _, err := wls.GetLogs(ctx, "wf-test-5000", filter)
+          if err != nil {
+              b.Fatal(err)
+          }
+      }
+  }
+  
+  // BenchmarkGetLogs_WithCache 测试缓存性能
+  func BenchmarkGetLogs_WithCache(b *testing.B) {
+      wls := setupMockServiceWithEvents(1000)
+      filter := &models.LogFilter{Level: "all", Limit: 1000}
+      ctx := context.Background()
+      
+      // 预热缓存
+      wls.GetLogs(ctx, "wf-cached", filter)
+      
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+          _, err := wls.GetLogs(ctx, "wf-cached", filter)
+          if err != nil {
+              b.Fatal(err)
+          }
+      }
+  }
+  
+  // BenchmarkConvertEventToLog 测试单个事件转换性能
+  func BenchmarkConvertEventToLog(b *testing.B) {
+      wls := &WorkflowLogService{logger: zap.NewNop()}
+      
+      event := &historypb.HistoryEvent{
+          EventId:   100,
+          EventType: enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED,
+          EventTime: timestamppb.New(time.Now()),
+          Attributes: &historypb.HistoryEvent_ActivityTaskCompletedEventAttributes{
+              ActivityTaskCompletedEventAttributes: &historypb.ActivityTaskCompletedEventAttributes{
+                  ScheduledEventId: 99,
+              },
+          },
+      }
+      
+      scheduledEvent := &historypb.HistoryEvent{
+          EventId:   99,
+          EventType: enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED,
+          EventTime: timestamppb.New(time.Now().Add(-3 * time.Second)),
+          Attributes: &historypb.HistoryEvent_ActivityTaskScheduledEventAttributes{
+              ActivityTaskScheduledEventAttributes: &historypb.ActivityTaskScheduledEventAttributes{
+                  ActivityType: &commonpb.ActivityType{Name: "Build"},
+              },
+          },
+      }
+      
+      allEvents := []*historypb.HistoryEvent{scheduledEvent, event}
+      
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+          wls.convertEventToLog(event, allEvents)
+      }
+  }
+  
+  // BenchmarkMatchesFilter 测试过滤器性能
+  func BenchmarkMatchesFilter(b *testing.B) {
+      wls := &WorkflowLogService{}
+      
+      log := &models.LogEntry{
+          Level:     "info",
+          Timestamp: time.Now(),
+      }
+      
+      filter := &models.LogFilter{
+          Level: "info",
+          Since: func() *time.Time { t := time.Now().Add(-1 * time.Hour); return &t }(),
+      }
+      
+      b.ResetTimer()
+      for i := 0; i < b.N; i++ {
+          wls.matchesFilter(log, filter)
+      }
+  }
+  
+  // setupMockServiceWithEvents 创建包含指定数量事件的Mock服务
+  func setupMockServiceWithEvents(eventCount int) *WorkflowLogService {
+      mockClient := &MockTemporalClient{}
+      
+      events := make([]*historypb.HistoryEvent, eventCount)
+      for i := 0; i < eventCount; i++ {
+          eventType := enums.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED
+          if i%10 == 0 {
+              eventType = enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED
+          } else if i%10 == 5 {
+              eventType = enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED
+          }
+          
+          events[i] = &historypb.HistoryEvent{
+              EventId:   int64(i + 1),
+              EventType: eventType,
+              EventTime: timestamppb.New(time.Now().Add(time.Duration(i) * time.Second)),
+          }
+      }
+      
+      mockClient.On("GetWorkflowHistory", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+          &MockHistoryIterator{events: events},
+      )
+      
+      return NewWorkflowLogService(mockClient, zap.NewNop())
+  }
+  ```
+  
+  **性能目标:**
+  - 100事件工作流: <50ms p95
+  - 1000事件工作流: <200ms p95
+  - 5000事件工作流: <500ms p95
+  - 缓存命中: <5ms p95
+  - convertEventToLog: <1ms per event
+  
+  **运行基准测试:**
+  ```bash
+  # 运行所有基准测试
+  go test -bench=. -benchmem ./internal/service
+  
+  # 运行特定基准测试
+  go test -bench=BenchmarkGetLogs_SmallHistory -benchtime=10s ./internal/service
+  
+  # 生成CPU Profile
+  go test -bench=BenchmarkGetLogs_LargeHistory -cpuprofile=cpu.prof ./internal/service
+  go tool pprof cpu.prof
+  ```
+  
+  **集成到CI:**
+  ```yaml
+  # .github/workflows/performance.yml
+  - name: Run Performance Benchmarks
+    run: |
+      go test -bench=. -benchmem ./internal/service | tee benchmark.txt
+      
+      # 验证性能目标
+      if grep -q "BenchmarkGetLogs_SmallHistory.*[0-9]\{3,\} ns/op" benchmark.txt; then
+        echo "❌ Small history benchmark exceeded 100ms"
+        exit 1
+      fi
   ```
 
 ### Task 7: 集成测试

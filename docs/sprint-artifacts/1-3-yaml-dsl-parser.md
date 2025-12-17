@@ -34,10 +34,22 @@ So that **系统可以解析并验证工作流语法**。
    - **输入:** YAML字符串 (工作流定义)
    - **输出:** `WorkflowDefinition` Go结构体 或 验证错误列表
 
-3. **关键设计约束** (参考 ADR-0004)
-   - 语法必须与GitHub Actions兼容
+3. **关键设计约束** (参考 ADR-0004, ADR-0005, ADR-0006)
+   
+   **YAML DSL 语法** (ADR-0004):
+   - 语法必须与 GitHub Actions 兼容,降低用户学习成本
    - 支持核心字段: `name`, `on`, `jobs`, `steps`, `uses`, `with`, `runs-on`
-   - MVP不支持: matrix策略, container, services, outputs传递
+   - MVP 不支持: matrix 策略, container, services, outputs 传递
+   
+   **表达式系统** (ADR-0005):
+   - 支持 `${{ }}` 语法进行变量引用和动态表达式求值
+   - 与 GitHub Actions 表达式语法兼容
+   - MVP 阶段支持基本变量引用,复杂表达式在后续 Story 实现
+   
+   **Task Queue 路由** (ADR-0006):
+   - `runs-on` 字段直接映射到 Temporal Task Queue 名称
+   - 零配置路由: runs-on: "linux-amd64" → Task Queue: "linux-amd64"
+   - Agent 注册到对应 Task Queue 即可接收任务
 
 ### Dependencies
 
@@ -202,7 +214,23 @@ test/
 
 ## Tasks / Subtasks
 
-### Task 1: 定义工作流数据结构 (AC: 解析结果转换为内部数据结构)
+### Task 1: 安装依赖并定义数据结构 (AC: WorkflowDefinition映射到YAML结构)
+
+- [ ] 1.0 安装YAML解析和验证依赖
+  ```bash
+  # 安装官方YAML库 (支持详细错误定位)
+  go get gopkg.in/yaml.v3
+  
+  # 安装标准验证库 (支持结构体标签验证)
+  go get github.com/go-playground/validator/v10
+  
+  # 整理依赖
+  go mod tidy
+  
+  # 验证安装
+  go list -m gopkg.in/yaml.v3
+  go list -m github.com/go-playground/validator/v10
+  ```
 
 - [ ] 1.1 创建`internal/parser/types.go`
   ```go
@@ -231,9 +259,10 @@ test/
 - [ ] 1.2 添加验证标签
   ```go
   type WorkflowDefinition struct {
-      Name string           `yaml:"name" validate:"required,min=1"`
-      On   string           `yaml:"on" validate:"required,oneof=push schedule webhook"`
-      Jobs map[string]Job   `yaml:"jobs" validate:"required,min=1,dive,keys,job_name,endkeys"`
+      APIVersion string           `yaml:"apiVersion" validate:"omitempty,oneof=v1"` // MVP仅支持v1
+      Name       string           `yaml:"name" validate:"required,min=1"`
+      On         string           `yaml:"on" validate:"required,oneof=push schedule webhook"`
+      Jobs       map[string]Job   `yaml:"jobs" validate:"required,min=1,dive,keys,job_name,endkeys"`
   }
   
   type Job struct {
@@ -330,6 +359,30 @@ test/
   }
   ```
 
+- [ ] 2.4 (可选) 添加OpenAPI Schema生成`internal/parser/schema.go`
+  ```go
+  package parser
+  
+  // GenerateOpenAPISchema 从WorkflowDefinition生成OpenAPI Schema
+  // 用于自动生成API文档和客户端SDK
+  func GenerateOpenAPISchema() map[string]interface{} {
+      return map[string]interface{}{
+          "type": "object",
+          "required": []string{"name", "on", "jobs"},
+          "properties": map[string]interface{}{
+              "apiVersion": map[string]interface{}{"type": "string", "enum": []string{"v1"}, "default": "v1"},
+              "name": map[string]interface{}{"type": "string", "minLength": 1},
+              "on":   map[string]interface{}{"type": "string", "enum": []string{"push", "schedule", "webhook"}},
+              "jobs": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"$ref": "#/components/schemas/Job"}},
+          },
+      }
+  }
+  ```
+  ```bash
+  # 验证Schema生成
+  go test -v ./internal/parser -run TestGenerateOpenAPISchema
+  ```
+
 ### Task 3: 实现Schema验证器 (AC: 验证必需字段存在)
 
 - [ ] 3.1 创建`internal/parser/validator.go`
@@ -391,6 +444,51 @@ test/
 
 - [ ] 3.3 测试验证规则
   ```go
+  func TestValidateRequiredFields(t *testing.T) {
+      p := New()
+      
+      // 缺少name字段
+      yaml := `
+  on: push
+  jobs:
+    build:
+      runs-on: linux-amd64
+      steps: []
+  `
+      _, err := p.Parse(yaml)
+      assert.Error(t, err)
+  }
+  ```
+  ```bash
+  # 验证必需字段检查
+  go test -v ./internal/parser -run TestValidateRequiredFields
+  ```
+
+- [ ] 3.4 (可选) 添加YAML格式化输出`internal/parser/formatter.go`
+  ```go
+  package parser
+  
+  import (
+      "fmt"
+      "gopkg.in/yaml.v3"
+  )
+  
+  // Format 将WorkflowDefinition格式化为YAML字符串
+  // 验证成功后可返回标准格式化的YAML
+  func (p *Parser) Format(wf *WorkflowDefinition) (string, error) {
+      data, err := yaml.Marshal(wf)
+      if err != nil {
+          return "", fmt.Errorf("format workflow: %w", err)
+      }
+      return string(data), nil
+  }
+  ```
+  ```bash
+  # 验证格式化输出
+  go test -v ./internal/parser -run TestFormatWorkflow
+  ```
+
+### Task 4: 实现自定义验证器 (AC: 格式错误时返回清晰提示)
   func TestValidation_MissingName(t *testing.T) {
       p := New()
       yaml := `
@@ -762,6 +860,38 @@ test/
   }
   ```
 
+- [ ] 6.6 (可选) 生成JSON Schema用于IDE自动补全
+  ```bash
+  # 生成workflow.schema.json供VSCode/JetBrains使用
+  mkdir -p testdata
+  cat > testdata/workflow.schema.json <<'EOF'
+  {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Waterflow Workflow Definition",
+    "type": "object",
+    "required": ["name", "on", "jobs"],
+    "properties": {
+      "apiVersion": {"type": "string", "enum": ["v1"], "default": "v1"},
+      "name": {"type": "string", "minLength": 1},
+      "on": {"type": "string", "enum": ["push", "schedule", "webhook"]},
+      "jobs": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": ["runs-on", "steps"],
+          "properties": {
+            "runs-on": {"type": "string"},
+            "steps": {"type": "array", "minItems": 1},
+            "timeout-minutes": {"type": "integer", "minimum": 1, "maximum": 1440}
+          }
+        }
+      }
+    }
+  }
+  EOF
+  ```
+  **用途:** 开发者在VSCode中编辑YAML时可获得自动补全和即时验证
+
 ### Task 7: 添加单元测试和集成测试 (代码质量保障)
 
 - [ ] 7.1 创建`internal/parser/parser_test.go`
@@ -1053,22 +1183,13 @@ kill %1
 
 ### References
 
-**架构设计:**
-- [docs/architecture.md §3.1.2](docs/architecture.md) - YAML Parser职责
-- [docs/adr/0004-yaml-dsl-syntax.md](docs/adr/0004-yaml-dsl-syntax.md) - YAML语法规范
-
 **技术文档:**
-- [gopkg.in/yaml.v3 Documentation](https://pkg.go.dev/gopkg.in/yaml.v3)
-- [go-playground/validator Documentation](https://github.com/go-playground/validator)
-- [GitHub Actions Workflow Syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
+- gopkg.in/yaml.v3: https://pkg.go.dev/gopkg.in/yaml.v3
+- go-playground/validator: https://pkg.go.dev/github.com/go-playground/validator/v10
+- GitHub Actions YAML语法: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 
-**项目上下文:**
-- [docs/epics.md Story 1.1-1.2](docs/epics.md) - 前置Stories
-- [docs/epics.md Story 1.5](docs/epics.md) - 工作流提交API (使用解析器)
-
-**Go规范:**
-- [Effective Go: Errors](https://go.dev/doc/effective_go#errors)
-- [Uber Go Style Guide: Error Handling](https://github.com/uber-go/guide/blob/master/style.md#error-handling)
+**已在Technical Context引用的架构文档:**
+- architecture.md §3.1.2, ADR-0004, ADR-0005, ADR-0006 (详见上文)
 
 ### Dependency Graph
 
@@ -1135,64 +1256,32 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 **预期创建/修改的文件清单:**
 
 ```
-新建文件 (~15个):
+新建文件 (~18个):
 ├── internal/parser/
-│   ├── parser.go                   # 解析器核心逻辑
-│   ├── validator.go                # 自定义验证器
-│   ├── types.go                    # WorkflowDefinition结构体
-│   ├── errors.go                   # 错误类型定义
-│   ├── parser_test.go              # 单元测试
-│   └── parser_bench_test.go        # 性能基准测试
+│   ├── parser.go, validator.go, types.go, errors.go
+│   ├── schema.go, formatter.go                    # 可选增强
+│   ├── parser_test.go, parser_bench_test.go
 ├── internal/server/handlers/
-│   ├── validate.go                 # 验证端点handler
-│   └── validate_test.go            # 端点测试
-├── test/testdata/workflows/
-│   ├── valid_minimal.yaml
-│   ├── valid_complex.yaml
-│   ├── invalid_missing_name.yaml
-│   ├── invalid_empty_steps.yaml
-│   └── invalid_bad_uses_format.yaml
+│   ├── validate.go, validate_test.go
+├── testdata/
+│   ├── valid_minimal.yaml, valid_complex.yaml
+│   ├── invalid_*.yaml (3个错误场景)
+│   └── workflow.schema.json                       # 可选增强
 
-修改文件 (~2个):
+修改文件 (2个):
 ├── internal/server/router.go       # 注册/v1/validate端点
 └── go.mod                          # 添加yaml.v3和validator依赖
 ```
 
-**关键代码片段:**
+**详细实现代码请参考Tasks 1-8各小节,此处省略以节省token。**
 
-**parser.go (核心):**
-```go
-package parser
+---
 
-import (
-    "gopkg.in/yaml.v3"
-    "github.com/go-playground/validator/v10"
-)
+**Story Ready for Development** ✅
 
-type Parser struct {
-    validator *validator.Validate
-}
+开发者可基于Story 1.1-1.2的成果,实现YAML解析器和验证端点。
+解析器将在Story 1.5(工作流提交API)中被复用。
 
-func New() *Parser {
-    v := validator.New()
-    v.RegisterValidation("node_format", validateNodeFormat)
-    v.RegisterValidation("job_name", validateJobName)
-    return &Parser{validator: v}
-}
-
-func (p *Parser) Parse(yamlContent string) (*WorkflowDefinition, error) {
-    var wf WorkflowDefinition
-    
-    // 1. YAML解析
-    if err := yaml.Unmarshal([]byte(yamlContent), &wf); err != nil {
-        return nil, NewParseError(err)
-    }
-    
-    // 2. Schema验证
-    if err := p.validator.Struct(&wf); err != nil {
-        return nil, NewValidationError(err)
-    }
-    
     return &wf, nil
 }
 ```

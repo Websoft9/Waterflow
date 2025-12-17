@@ -1,6 +1,6 @@
 # Story 1.10: Docker Compose 部署方案
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -25,7 +25,12 @@ So that **快速搭建开发环境**。
 
 根据 [docs/architecture.md](docs/architecture.md) §5.2 Docker Compose 配置设计:
 
-1. **服务架构**
+1. **部署目标**
+   - **NFR1 部署简单性**: Docker Compose 一键部署 ≤10 分钟
+   - **FR3 工作流管理 API**: Waterflow Server 提供 REST API
+   - **FR5 Event Sourcing**: Temporal Server 提供持久化执行
+
+2. **服务架构**
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -82,7 +87,7 @@ Waterflow Server (REST API)
   - 使用: Temporal Client 连接配置
 
 **后续 Story 依赖本 Story:**
-- Epic 2-12 的所有 Story - 基于此部署方案进行开发测试
+- Epic 2-11 的所有 Story - 基于此部署方案进行开发测试
 
 ### Technology Stack
 
@@ -231,21 +236,186 @@ API_KEY=waterflow-dev-key
 /data/Waterflow/
 ├── docker-compose.yml           # Docker Compose 配置 (新建)
 ├── docker-compose.dev.yml       # 开发环境覆盖配置 (新建)
+├── docker-compose.monitoring.yml # 监控栈配置 (新建)
 ├── Dockerfile                   # Waterflow Server 镜像 (新建)
 ├── .env.example                 # 环境变量模板 (新建)
 ├── .dockerignore                # Docker 忽略文件 (新建)
 ├── Makefile                     # 构建和部署命令 (新建)
 ├── deployments/
 │   ├── docker/
-│   │   └── README.md            # Docker 部署文档 (新建)
+│   │   ├── README.md            # Docker 部署文档 (新建)
+│   │   ├── prometheus/
+│   │   │   └── prometheus.yml   # Prometheus 配置 (新建)
+│   │   └── grafana/
+│   │       ├── provisioning/
+│   │       │   ├── datasources/
+│   │       │   │   └── prometheus.yml  # Grafana 数据源 (新建)
+│   │       │   └── dashboards/
+│   │       │       └── dashboards.yml  # Dashboard 配置 (新建)
+│   │       └── dashboards/
+│   │           └── waterflow-overview.json # Waterflow 仪表板 (新建)
 │   └── kubernetes/              # (未来扩展)
 │       └── README.md
 └── scripts/
     ├── wait-for-it.sh           # 服务等待脚本 (新建)
-    └── init-dev-env.sh          # 开发环境初始化 (新建)
+    ├── init-dev-env.sh          # 开发环境初始化 (新建)
+    └── test/
+        └── verify-dependencies-story-1-10.sh # 依赖验证脚本 (新建)
 ```
 
 ## Tasks / Subtasks
+
+### Task 0: 验证依赖 (AC: 健康检查端点就绪)
+
+- [ ] 0.1 验证 /health 端点实现
+  ```bash
+  # test/verify-dependencies-story-1-10.sh
+  #!/bin/bash
+  
+  echo "=== Story 1.10 Dependency Verification ==="
+  
+  # Check if health handler exists
+  echo "Checking /health endpoint implementation..."
+  if grep -r "func.*Health" internal/server/handlers/ > /dev/null 2>&1; then
+      echo "✅ Health handler found"
+  else
+      echo "❌ Health handler not found in handlers/"
+      echo "   Story 1.2 should implement GET /health endpoint"
+      echo "   See implementation guide below"
+      exit 1
+  fi
+  
+  # Check if route registered
+  if grep -r '"/health"' internal/server/router.go > /dev/null 2>&1; then
+      echo "✅ /health route registered"
+  else
+      echo "❌ /health route not registered"
+      echo "   Add route registration in router.go"
+      exit 1
+  fi
+  
+  # Check if Dockerfile exists
+  if [ ! -f "Dockerfile" ]; then
+      echo "⚠️  Dockerfile not created yet (expected for Task 1)"
+  fi
+  
+  # Check if docker-compose.yml exists
+  if [ ! -f "docker-compose.yml" ]; then
+      echo "⚠️  docker-compose.yml not created yet (expected for Task 2)"
+  fi
+  
+  echo "✅ Story 1.10 dependency verification passed"
+  ```
+
+- [ ] 0.2 健康检查端点规范
+  
+  **如果 Story 1.2 未实现 /health,添加以下代码:**
+  
+  ```go
+  // internal/server/handlers/health.go
+  package handlers
+  
+  import (
+      "context"
+      "net/http"
+      "time"
+      
+      "github.com/gin-gonic/gin"
+      "go.temporal.io/sdk/client"
+  )
+  
+  type HealthHandler struct {
+      temporalClient client.Client
+  }
+  
+  func NewHealthHandler(temporalClient client.Client) *HealthHandler {
+      return &HealthHandler{
+          temporalClient: temporalClient,
+      }
+  }
+  
+  // GetHealth 返回服务健康状态
+  // Docker Compose 依赖此端点进行 healthcheck
+  func (h *HealthHandler) GetHealth(c *gin.Context) {
+      ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+      defer cancel()
+      
+      response := gin.H{
+          "status":    "healthy",
+          "timestamp": time.Now().UTC().Format(time.RFC3339),
+      }
+      
+      // Check Temporal connection
+      if h.temporalClient != nil {
+          _, err := h.temporalClient.CheckHealth(ctx, &client.CheckHealthRequest{})
+          if err != nil {
+              c.JSON(http.StatusServiceUnavailable, gin.H{
+                  "status":    "unhealthy",
+                  "timestamp": time.Now().UTC().Format(time.RFC3339),
+                  "temporal": gin.H{
+                      "connected": false,
+                      "error":     err.Error(),
+                  },
+              })
+              return
+          }
+          
+          response["temporal"] = gin.H{
+              "connected": true,
+              "namespace": "default",
+              "address":   "temporal:7233",
+          }
+      }
+      
+      c.JSON(http.StatusOK, response)
+  }
+  ```
+  
+  **注册路由 (internal/server/router.go):**
+  ```go
+  func SetupRouter(temporalClient client.Client, apiKey string) *gin.Engine {
+      router := gin.New()
+      router.Use(gin.Logger())
+      router.Use(gin.Recovery())
+      
+      // Health check endpoint (public, no auth)
+      healthHandler := handlers.NewHealthHandler(temporalClient)
+      router.GET("/health", healthHandler.GetHealth)
+      
+      // API routes with authentication
+      api := router.Group("/v1")
+      api.Use(middleware.APIKeyAuth(apiKey))
+      {
+          // ... other routes
+      }
+      
+      return router
+  }
+  ```
+  
+  **健康检查响应示例:**
+  ```json
+  // HTTP 200 OK (所有服务正常)
+  {
+    "status": "healthy",
+    "timestamp": "2025-12-17T10:30:00Z",
+    "temporal": {
+      "connected": true,
+      "namespace": "default",
+      "address": "temporal:7233"
+    }
+  }
+  
+  // HTTP 503 Service Unavailable (Temporal 连接失败)
+  {
+    "status": "unhealthy",
+    "timestamp": "2025-12-17T10:30:00Z",
+    "temporal": {
+      "connected": false,
+      "error": "connection refused"
+    }
+  }
+  ```
 
 ### Task 1: 创建 Dockerfile (AC: Waterflow Server 镜像)
 
@@ -450,9 +620,71 @@ API_KEY=waterflow-dev-key
   volumes:
     postgres_data:
       driver: local
+    prometheus_data:
+      driver: local
+    grafana_data:
+      driver: local
   ```
 
-- [ ] 2.2 创建 `docker-compose.dev.yml` (开发环境覆盖)
+- [ ] 2.2 创建 `docker-compose.monitoring.yml` (可观测性栈)
+  ```yaml
+  version: '3.8'
+  
+  services:
+    # Prometheus - Metrics Collection
+    prometheus:
+      container_name: waterflow-prometheus
+      image: prom/prometheus:v2.45.0
+      command:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus'
+        - '--storage.tsdb.retention.time=7d'
+        - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+        - '--web.console.templates=/usr/share/prometheus/consoles'
+      volumes:
+        - ./deployments/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - prometheus_data:/prometheus
+      ports:
+        - "9090:9090"
+      networks:
+        - waterflow-network
+      restart: unless-stopped
+      depends_on:
+        - waterflow-server
+  
+    # Grafana - Metrics Visualization
+    grafana:
+      container_name: waterflow-grafana
+      image: grafana/grafana:10.0.0
+      environment:
+        - GF_SECURITY_ADMIN_USER=admin
+        - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+        - GF_INSTALL_PLUGINS=grafana-piechart-panel
+        - GF_AUTH_ANONYMOUS_ENABLED=false
+      volumes:
+        - grafana_data:/var/lib/grafana
+        - ./deployments/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+        - ./deployments/docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      ports:
+        - "3000:3000"
+      networks:
+        - waterflow-network
+      restart: unless-stopped
+      depends_on:
+        - prometheus
+  
+  networks:
+    waterflow-network:
+      external: true
+  
+  volumes:
+    prometheus_data:
+      driver: local
+    grafana_data:
+      driver: local
+  ```
+
+- [ ] 2.3 创建 `docker-compose.dev.yml` (开发环境覆盖)
   ```yaml
   version: '3.8'
   
@@ -490,6 +722,7 @@ API_KEY=waterflow-dev-key
   # Variables
   DOCKER_COMPOSE := docker-compose
   DOCKER_COMPOSE_DEV := docker-compose -f docker-compose.yml -f docker-compose.dev.yml
+  DOCKER_COMPOSE_MONITORING := docker-compose -f docker-compose.yml -f docker-compose.monitoring.yml
   
   ## help: Display this help message
   help:
@@ -557,6 +790,20 @@ API_KEY=waterflow-dev-key
   	$(DOCKER_COMPOSE) down -v --remove-orphans
   	docker rmi waterflow-waterflow-server || true
   	@echo "✅ Cleaned up all resources"
+  
+  ## monitoring-up: Start services with Prometheus + Grafana
+  monitoring-up:
+  	$(DOCKER_COMPOSE_MONITORING) up -d
+  	@echo "📊 Monitoring stack started:"
+  	@echo "   Waterflow API:  http://localhost:8080"
+  	@echo "   Temporal UI:    http://localhost:8088"
+  	@echo "   Prometheus:     http://localhost:9090"
+  	@echo "   Grafana:        http://localhost:3000 (admin/admin)"
+  
+  ## monitoring-down: Stop monitoring stack
+  monitoring-down:
+  	$(DOCKER_COMPOSE_MONITORING) down
+  	@echo "✅ Monitoring stack stopped"
   
   ## test: Run integration tests
   test:
@@ -846,9 +1093,104 @@ API_KEY=waterflow-dev-key
   A: 运行 `make clean`,这会删除所有容器和数据卷
   ```
 
-### Task 6: 创建辅助脚本 (AC: 自动化工具)
+### Task 6: 创建辅助脚本和监控配置 (AC: 自动化工具 + 可观测性)
 
-- [ ] 6.1 创建 `scripts/wait-for-it.sh`
+- [ ] 6.1 创建 `deployments/docker/prometheus/prometheus.yml`
+  ```yaml
+  # Prometheus 配置
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+    external_labels:
+      cluster: 'waterflow-local'
+      environment: 'development'
+  
+  scrape_configs:
+    # Waterflow Server Metrics
+    - job_name: 'waterflow'
+      static_configs:
+        - targets: ['waterflow-server:8080']
+      metrics_path: '/metrics'
+      scrape_interval: 10s
+  
+    # Temporal Server Metrics
+    - job_name: 'temporal'
+      static_configs:
+        - targets: ['temporal:9090']
+      metrics_path: '/metrics'
+      scrape_interval: 15s
+  
+    # Prometheus Self-Monitoring
+    - job_name: 'prometheus'
+      static_configs:
+        - targets: ['localhost:9090']
+  ```
+
+- [ ] 6.2 创建 `deployments/docker/grafana/provisioning/datasources/prometheus.yml`
+  ```yaml
+  apiVersion: 1
+  
+  datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true
+  ```
+
+- [ ] 6.3 创建 `deployments/docker/grafana/provisioning/dashboards/dashboards.yml`
+  ```yaml
+  apiVersion: 1
+  
+  providers:
+    - name: 'Waterflow Dashboards'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards
+  ```
+
+- [ ] 6.4 创建 `deployments/docker/grafana/dashboards/waterflow-overview.json`
+  ```json
+  {
+    "dashboard": {
+      "title": "Waterflow Overview",
+      "panels": [
+        {
+          "title": "API Request Rate",
+          "targets": [
+            {
+              "expr": "rate(http_requests_total{job=\"waterflow\"}[5m])"
+            }
+          ]
+        },
+        {
+          "title": "Workflow Execution Count",
+          "targets": [
+            {
+              "expr": "temporal_workflow_execution_count"
+            }
+          ]
+        },
+        {
+          "title": "Service Health",
+          "targets": [
+            {
+              "expr": "up{job=~\"waterflow|temporal\"}"
+            }
+          ]
+        }
+      ]
+    }
+  }
+  ```
+
+- [ ] 6.5 创建 `scripts/wait-for-it.sh`
   ```bash
   #!/usr/bin/env bash
   # wait-for-it.sh - Wait for service to be ready
@@ -1113,6 +1455,67 @@ API_KEY=waterflow-dev-key
 
 ## Dev Notes
 
+**可观测性配置 (Enhancement 1):**
+
+1. **启动监控栈:**
+   ```bash
+   make monitoring-up
+   ```
+   
+   启动服务:
+   - Prometheus: http://localhost:9090 (指标采集)
+   - Grafana: http://localhost:3000 (可视化, admin/admin)
+   - Waterflow API: http://localhost:8080/metrics
+   - Temporal Metrics: http://localhost:9090/metrics
+
+2. **Grafana 仪表板:**
+   - 预配置 "Waterflow Overview" dashboard
+   - 显示 API 请求率、工作流执行数、服务健康状态
+   - 支持自定义查询和告警规则
+
+3. **Prometheus 查询示例:**
+   ```promql
+   # API 请求速率
+   rate(http_requests_total{job="waterflow"}[5m])
+   
+   # 工作流执行数
+   temporal_workflow_execution_count
+   
+   # 服务可用性
+   up{job=~"waterflow|temporal"}
+   
+   # P95 延迟
+   histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+   ```
+
+4. **监控最佳实践:**
+   - 生产环境启用 Prometheus 持久化 (retention: 30d)
+   - 配置 Grafana SMTP 告警通知
+   - 导出自定义 dashboard 到 Git
+   - 定期备份 Grafana 数据库
+
+**健康检查端点 (Enhancement 2):**
+
+1. **端点要求:**
+   - 路径: `GET /health`
+   - 响应时间: <3 秒
+   - 检查 Temporal 连接状态
+   - Docker healthcheck 依赖此端点
+
+2. **验证脚本:**
+   ```bash
+   ./test/verify-dependencies-story-1-10.sh
+   ```
+   检查:
+   - ✅ /health handler 实现
+   - ✅ 路由注册
+   - ✅ Temporal 连接检查
+
+3. **故障排查:**
+   - 如果健康检查失败,容器会重启
+   - 查看日志: `docker logs waterflow-server`
+   - 手动测试: `curl http://localhost:8080/health`
+
 ### Critical Implementation Guidelines
 
 **1. 健康检查顺序 - 确保依赖服务先启动**
@@ -1234,7 +1637,7 @@ depends_on:
     condition: service_healthy
 ```
 
-**为 Epic 2-12 准备:**
+**为 Epic 2-11 准备:**
 
 ```yaml
 # 未来可扩展 Agent 服务
@@ -1378,7 +1781,7 @@ FROM ubuntu:22.04  # ~77MB
                      ↓
 Story 1.10 (Docker Compose 部署) ← 当前 Story
     ↓
-    └→ Epic 2-12 所有开发工作 - 基于此环境进行开发测试
+    └→ Epic 2-11 所有开发工作 - 基于此环境进行开发测试
 ```
 
 ## Dev Agent Record
@@ -1430,23 +1833,35 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 
 **预期创建文件清单:**
 
-```
-新建文件 (~10 个):
-├── Dockerfile                              # Waterflow Server 镜像
-├── .dockerignore                           # Docker 忽略文件
-├── docker-compose.yml                      # 生产环境配置
-├── docker-compose.dev.yml                  # 开发环境覆盖
-├── .env.example                            # 环境变量模板
-├── Makefile                                # 构建和部署命令
-├── deployments/docker/README.md            # 部署文档
-├── scripts/
-│   ├── wait-for-it.sh                      # 服务等待脚本
-│   ├── init-dev-env.sh                     # 环境初始化
-│   └── integration-test.sh                 # 集成测试
+**新增文件:** 18 个
 
-修改文件 (~1 个):
-└── README.md                                # 添加快速启动部分
-```
+**Docker 配置 (5 个):**
+1. `docker-compose.yml` - 主配置文件
+2. `docker-compose.dev.yml` - 开发环境配置
+3. `docker-compose.monitoring.yml` - 监控栈配置 (Enhancement 1)
+4. `Dockerfile` - Waterflow Server 镜像
+5. `.dockerignore` - Docker 忽略文件
+
+**构建和环境 (3 个):**
+6. `.env.example` - 环境变量模板
+7. `Makefile` - 构建命令 (含监控命令)
+8. `deployments/docker/README.md` - 部署文档
+
+**监控配置 (5 个 - Enhancement 1):**
+9. `deployments/docker/prometheus/prometheus.yml` - Prometheus 配置
+10. `deployments/docker/grafana/provisioning/datasources/prometheus.yml` - Grafana 数据源
+11. `deployments/docker/grafana/provisioning/dashboards/dashboards.yml` - Dashboard 配置
+12. `deployments/docker/grafana/dashboards/waterflow-overview.json` - Waterflow 仪表板
+13. `test/verify-dependencies-story-1-10.sh` - 依赖验证脚本 (Enhancement 2)
+
+**辅助脚本 (3 个):**
+14. `scripts/wait-for-it.sh` - 等待脚本
+15. `scripts/init-dev-env.sh` - 初始化脚本
+16. `scripts/integration-test.sh` - 集成测试 (更新)
+
+**文档 (2 个):**
+17. `README.md` - 更新快速开始章节
+18. `internal/server/handlers/health.go` - 健康检查端点实现 (Enhancement 2, 如需要)
 
 **关键代码片段:**
 

@@ -32,10 +32,17 @@ So that **可以利用 Temporal 的持久化执行能力**。
    - 管理连接池和重试逻辑
 
 2. **关键设计约束** (参考 ADR-0001)
-   - Temporal作为底层工作流引擎 (Event Sourcing模式)
-   - 必须使用Temporal Go SDK v1.22+
-   - 连接到Temporal Frontend Service (默认7233端口)
-   - 使用独立Namespace隔离 (推荐: "waterflow")
+   
+   **Event Sourcing 架构**:
+   - Temporal 作为底层工作流引擎,提供 Event Sourcing 模式
+   - 所有工作流状态存储在 Event History,Server 完全无状态
+   - 支持进程崩溃后从 Event History 完全恢夏执行
+   - 提供完整的审计日志和时间旅行查询能力
+   
+   **技术约束**:
+   - 必须使用 Temporal Go SDK v1.22+
+   - 连接到 Temporal Frontend Service (默认 7233 端口)
+   - 使用独立 Namespace 隔离 (推荐: "waterflow")
 
 3. **非功能性需求**
    - 启动时连接失败应重试 (最多3次,间隔5秒)
@@ -200,22 +207,22 @@ deployments/
 
 ## Tasks / Subtasks
 
-### Task 1: 添加Temporal SDK依赖 (AC: 创建Temporal Client实例)
+### Task 1: 安装Temporal SDK依赖 (AC: SDK已正确安装)
 
-- [ ] 1.1 安装Temporal Go SDK
+- [ ] 1.0 安装Temporal Go SDK
   ```bash
-  cd /data/Waterflow
-  go get go.temporal.io/sdk@v1.22.0
+  # 安装Temporal SDK (固定v1.25.0版本,与Story 1.1一致)
+  go get go.temporal.io/sdk@v1.25.0
+  
+  # 整理依赖
   go mod tidy
-  ```
-
-- [ ] 1.2 验证依赖安装
-  ```bash
+  
+  # 验证安装
   go list -m go.temporal.io/sdk
-  # 期望输出: go.temporal.io/sdk v1.22.0
+  # 期望输出: go.temporal.io/sdk v1.25.0
   ```
 
-- [ ] 1.3 创建测试连接程序
+- [ ] 1.1 验证SDK导入
   ```go
   // test/temporal_connection_test.go (临时)
   package main
@@ -249,11 +256,17 @@ deployments/
   }
   
   type TemporalConfig struct {
-      HostPort          string        `mapstructure:"host_port"`
-      Namespace         string        `mapstructure:"namespace"`
-      ConnectionTimeout time.Duration `mapstructure:"connection_timeout"`
-      Retry             RetryConfig   `mapstructure:"retry"`
-      TLS               TLSConfig     `mapstructure:"tls"`
+      HostPort          string           `mapstructure:"host_port"`
+      Namespace         string           `mapstructure:"namespace"`
+      ConnectionTimeout time.Duration    `mapstructure:"connection_timeout"`
+      Retry             RetryConfig      `mapstructure:"retry"`
+      TLS               TLSConfig        `mapstructure:"tls"`
+      ConnectionPool    ConnectionPool   `mapstructure:"connection_pool"` // 新增
+  }
+  
+  type ConnectionPool struct {
+      MaxConcurrentRequests int `mapstructure:"max_concurrent_requests"`
+      MaxIdleConnections    int `mapstructure:"max_idle_connections"`
   }
   
   type RetryConfig struct {
@@ -305,6 +318,9 @@ deployments/
       initial_interval: 5s
     tls:
       enabled: false
+    connection_pool:
+      max_concurrent_requests: 100
+      max_idle_connections: 10
   ```
 
 ### Task 3: 实现Temporal客户端封装 (AC: 成功连接到Temporal Server)
@@ -316,6 +332,8 @@ deployments/
   import (
       "context"
       "fmt"
+      "sync"
+      "sync/atomic"
       "time"
       "go.temporal.io/sdk/client"
       "go.uber.org/zap"
@@ -323,10 +341,34 @@ deployments/
   )
   
   type Client struct {
-      client    client.Client
-      config    *config.TemporalConfig
-      logger    *zap.Logger
-      connected bool
+      client          client.Client
+      config          *config.TemporalConfig
+      logger          *zap.Logger
+      connected       bool
+      wg              sync.WaitGroup  // 用于graceful shutdown
+      requestCount    int64           // 请求计数(metrics)
+      lastHealthCheck time.Time       // 最后健康检查时间
+  }
+      logger         *zap.Logger
+      connected      bool
+      wg             sync.WaitGroup           // 用于graceful shutdown
+      requestCount   int64                    // 请求计数(metrics)
+      lastHealthCheck time.Time               // 最后健康检查时间
+  }
+  
+  // Metrics 返回客户端指标
+  type Metrics struct {
+      ConnectionStatus bool      `json:"connection_status"`
+      LastHealthCheck  time.Time `json:"last_health_check"`
+      RequestCount     int64     `json:"request_count"`
+  }
+  
+  func (tc *Client) Metrics() *Metrics {
+      return &Metrics{
+          ConnectionStatus: tc.IsConnected(),
+          LastHealthCheck:  tc.lastHealthCheck,
+          RequestCount:     atomic.LoadInt64(&tc.requestCount),
+      }
   }
   
   // New 创建Temporal客户端 (带重试)
@@ -391,22 +433,86 @@ deployments/
       return client.DialContext(ctx, options)
   }
   
+  // EnsureNamespace 确保Namespace存在,不存在则自动注册
+  func (tc *Client) EnsureNamespace(ctx context.Context) error {
+      _, err := tc.client.DescribeNamespace(ctx, tc.config.Namespace)
+      if err == nil {
+          tc.logger.Info("Namespace already exists", zap.String("namespace", tc.config.Namespace))
+          return nil
+      }
+      
+      tc.logger.Info("Registering namespace", zap.String("namespace", tc.config.Namespace))
+      
+      return tc.client.Register(ctx, &workflowservice.RegisterNamespaceRequest{
+          Namespace:                        tc.config.Namespace,
+          Description:                      "Waterflow workflow orchestration namespace",
+          WorkflowExecutionRetentionPeriod: durationpb.New(7 * 24 * time.Hour), // 7天
+      })
+  }
+  
   // GetClient 返回底层Temporal客户端
   func (tc *Client) GetClient() client.Client {
       return tc.client
   }
   
-  // Close 关闭连接
-  func (tc *Client) Close() {
-      if tc.client != nil {
-          tc.client.Close()
-          tc.logger.Info("Temporal connection closed")
+  // ExecuteWorkflowWithContext 带上下文传播的工作流提交
+  // 用于分布式追踪(trace ID, span ID等)
+  func (tc *Client) ExecuteWorkflowWithContext(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error) {
+      // 增加请求计数
+      atomic.AddInt64(&tc.requestCount, 1)
+      tc.wg.Add(1)
+      defer tc.wg.Done()
+      
+      // TODO: Story 2.x 实现trace context传播
+      // ctx = propagate.InjectTraceContext(ctx)
+      
+      return tc.client.ExecuteWorkflow(ctx, options, workflow, args...)
+  }
+  
+  // Close 优雅关闭连接
+  func (tc *Client) Close() error {
+      if tc.client == nil {
+          return nil
       }
+      
+      tc.logger.Info("Closing Temporal client gracefully")
+      
+      // 等待进行中的请求完成 (最多30秒)
+      done := make(chan struct{})
+      go func() {
+          tc.wg.Wait()
+          close(done)
+      }()
+      
+      select {
+      case <-done:
+          tc.logger.Info("All requests completed")
+      case <-time.After(30 * time.Second):
+          tc.logger.Warn("Timeout waiting for requests to complete")
+      }
+      
+      tc.connected = false
+      return tc.client.Close()
   }
   
   // IsConnected 检查连接状态
   func (tc *Client) IsConnected() bool {
       return tc.connected && tc.client != nil
+  }
+  
+  // Metrics 返回客户端指标
+  type Metrics struct {
+      ConnectionStatus bool      `json:"connection_status"`
+      LastHealthCheck  time.Time `json:"last_health_check"`
+      RequestCount     int64     `json:"request_count"`
+  }
+  
+  func (tc *Client) Metrics() *Metrics {
+      return &Metrics{
+          ConnectionStatus: tc.IsConnected(),
+          LastHealthCheck:  tc.lastHealthCheck,
+          RequestCount:     atomic.LoadInt64(&tc.requestCount),
+      }
   }
   ```
 
@@ -804,13 +910,174 @@ deployments/
   go test ./internal/temporal
   ```
 
-### Task 8: 创建Docker Compose部署文件 (可选,本地开发)
+### Task 8: 创建Docker Compose部署文件 (AC: 一键启动开发环境)
 
 - [ ] 8.1 创建`deployments/docker-compose.yaml`
   ```yaml
   version: "3.8"
   
   services:
+    temporal:
+      image: temporalio/auto-setup:1.22.0
+      container_name: waterflow-temporal
+      ports:
+        - "7233:7233"  # Frontend gRPC
+        - "8233:8233"  # Web UI
+      environment:
+        - DB=postgresql
+        - POSTGRES_SEEDS=postgres
+        - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+      depends_on:
+        - postgres
+      networks:
+        - waterflow-net
+    
+    postgres:
+      image: postgres:14-alpine
+      container_name: waterflow-postgres
+      environment:
+        POSTGRES_PASSWORD: temporal
+        POSTGRES_USER: temporal
+        POSTGRES_DB: temporal
+      ports:
+        - "5432:5432"
+      volumes:
+        - temporal-postgres-data:/var/lib/postgresql/data
+      networks:
+        - waterflow-net
+    
+    temporal-web:
+      image: temporalio/web:1.17.0
+      container_name: waterflow-temporal-web
+      environment:
+        - TEMPORAL_GRPC_ENDPOINT=temporal:7233
+        - TEMPORAL_PERMIT_WRITE_API=true
+      ports:
+        - "8088:8088"
+      depends_on:
+        - temporal
+      networks:
+        - waterflow-net
+  
+  networks:
+    waterflow-net:
+      driver: bridge
+  
+  volumes:
+    temporal-postgres-data:
+  ```
+
+- [ ] 8.2 创建快速启动脚本`scripts/start_dev_env.sh`
+  ```bash
+  #!/bin/bash
+  
+  set -e
+  
+  echo "🚀 Starting Waterflow development environment..."
+  
+  # 启动Temporal和依赖
+  cd deployments
+  docker-compose up -d
+  
+  echo "⏳ Waiting for Temporal to be ready..."
+  sleep 10
+  
+  # 等待Temporal健康
+  until docker-compose exec -T temporal tctl cluster health | grep -q SERVING; do
+    echo "   Still waiting..."
+    sleep 5
+  done
+  
+  echo "✅ Temporal Server is ready!"
+  echo "📊 Temporal Web UI: http://localhost:8088"
+  echo "🔌 Temporal gRPC: localhost:7233"
+  
+  # 注册namespace
+  echo "📝 Registering waterflow namespace..."
+  ../scripts/setup_temporal_namespace.sh || echo "⚠️  Namespace already exists"
+  
+  echo "✨ Development environment ready!"
+  ```
+
+- [ ] 8.3 使脚本可执行
+  ```bash
+  chmod +x scripts/start_dev_env.sh
+  chmod +x scripts/setup_temporal_namespace.sh
+  ```
+
+- [ ] 8.4 添加停止脚本`scripts/stop_dev_env.sh`
+  ```bash
+  #!/bin/bash
+  cd deployments
+  docker-compose down
+  echo "🛑 Development environment stopped"
+  ```
+  ```bash
+  chmod +x scripts/stop_dev_env.sh
+  ```
+
+### Task 9: 集成Namespace自动注册到启动流程 (AC: Server启动时自动创建Namespace)
+
+- [ ] 9.1 更新`cmd/server/main.go`
+  ```go
+  func main() {
+      // 加载配置
+      cfg, err := config.Load()
+      if err != nil {
+          log.Fatal("Failed to load config:", err)
+      }
+      
+      // 初始化日志
+      logger := logger.New(&cfg.Log)
+      defer logger.Sync()
+      
+      // 连接Temporal
+      logger.Info("Connecting to Temporal Server...")
+      temporalClient, err := temporal.New(&cfg.Temporal, logger)
+      if err != nil {
+          logger.Fatal("Failed to connect to Temporal", zap.Error(err))
+      }
+      defer temporalClient.Close()
+      
+      // 自动注册Namespace
+      ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+      defer cancel()
+      
+      if err := temporalClient.EnsureNamespace(ctx); err != nil {
+          logger.Warn("Failed to register namespace (may already exist)", zap.Error(err))
+      }
+      
+      // 启动HTTP Server
+      srv := server.New(cfg, logger, temporalClient)
+      if err := srv.Run(); err != nil {
+          logger.Fatal("Server error", zap.Error(err))
+      }
+  }
+  ```
+
+- [ ] 9.2 更新`internal/server/handlers/health.go`添加Metrics端点
+  ```go
+  func (h *HealthHandler) Metrics(c *gin.Context) {
+      metrics := h.temporalClient.Metrics()
+      c.JSON(200, gin.H{
+          "temporal": metrics,
+          "server": gin.H{
+              "uptime": time.Since(h.startTime).Seconds(),
+          },
+      })
+  }
+  ```
+
+- [ ] 9.3 在router中注册Metrics端点
+  ```go
+  router.GET("/metrics", healthHandler.Metrics)
+  ```
+
+### Task 10: 编写测试 (AC: 测试覆盖率>80%)
+
+- [ ] 10.1 已在Task 7完成单元测试和集成测试
+
+### Task 9: Namespace自动注册 (AC: 启动时自动创建Namespace)
     temporal:
       image: temporalio/auto-setup:1.22.0
       ports:
@@ -1198,99 +1465,23 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 │   └── docker-compose.yaml         # Temporal本地部署
 
 修改文件 (~5个):
-├── internal/config/config.go       # 添加TemporalConfig
+├── internal/config/config.go       # 添加TemporalConfig + ConnectionPool
 ├── internal/server/server.go       # 集成Temporal Client
 ├── internal/server/router.go       # 传递Temporal Client
-├── internal/server/handlers/health.go  # 更新/ready端点
-├── cmd/server/main.go              # 初始化Temporal连接
+├── internal/server/handlers/health.go  # 更新/ready端点 + Metrics
+├── cmd/server/main.go              # 初始化Temporal连接 + Namespace注册
 └── deployments/config.yaml         # 添加temporal配置段
 ```
 
-**关键代码片段:**
+**详细实现代码请参考Tasks 1-9各小节,此处省略以节省token。**
 
-**client.go (核心):**
-```go
-package temporal
-
-import (
-    "context"
-    "fmt"
-    "time"
-    "go.temporal.io/sdk/client"
-    "go.uber.org/zap"
-)
-
-type Client struct {
-    client    client.Client
-    config    *config.TemporalConfig
-    logger    *zap.Logger
-    connected bool
-}
-
-func New(cfg *config.TemporalConfig, logger *zap.Logger) (*Client, error) {
-    tc := &Client{config: cfg, logger: logger}
-    
-    // 重试连接
-    var lastErr error
-    for attempt := 1; attempt <= cfg.Retry.MaxAttempts; attempt++ {
-        c, err := tc.dial()
-        if err == nil {
-            tc.client = c
-            tc.connected = true
-            logger.Info("✅ Temporal connection successful")
-            return tc, nil
-        }
-        lastErr = err
-        time.Sleep(cfg.Retry.InitialInterval)
-    }
-    
-    return nil, fmt.Errorf("failed to connect: %w", lastErr)
-}
-
-func (tc *Client) dial() (client.Client, error) {
-    ctx, cancel := context.WithTimeout(context.Background(), tc.config.ConnectionTimeout)
-    defer cancel()
-    
-    return client.DialContext(ctx, client.Options{
-        HostPort:  tc.config.HostPort,
-        Namespace: tc.config.Namespace,
-        Logger:    NewTemporalLogger(tc.logger),
-    })
-}
-```
-
-**health.go:**
-```go
-func (tc *Client) HealthCheck(ctx context.Context) error {
-    if !tc.IsConnected() {
-        return fmt.Errorf("temporal client not connected")
-    }
-    
-    ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-    defer cancel()
-    
-    _, err := tc.client.DescribeNamespace(ctx, tc.config.Namespace)
-    return err
-}
-```
-
-**main.go集成:**
-```go
-func main() {
-    cfg, _ := config.Load()
-    logger := logger.New(cfg.Log)
-    
-    // 连接Temporal
-    temporalClient, err := temporal.New(&cfg.Temporal, logger)
-    if err != nil {
-        logger.Fatal("Failed to connect to Temporal", zap.Error(err))
-    }
-    defer temporalClient.Close()
-    
-    srv := server.New(cfg, logger, temporalClient)
-    srv.Start()
-}
-```
+**关键增强:**
+- ✅ Docker Compose一键启动开发环境
+- ✅ Namespace自动注册(EnsureNamespace)
+- ✅ Graceful Shutdown(WaitGroup + 30s超时)
+- ✅ Connection Pool配置
+- ✅ Metrics监控(RequestCount, LastHealthCheck)
+- ✅ Context传播预留(分布式追踪)
 
 ---
 

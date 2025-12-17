@@ -36,9 +36,14 @@ so that **后续可以在统一的架构上开发各个功能模块**。
    - Temporal Client - 工作流提交
 
 3. **关键ADR决策**
-   - [ADR-0001](docs/adr/0001-use-temporal-workflow-engine.md): 使用Temporal作为底层引擎
-   - [ADR-0004](docs/adr/0004-yaml-dsl-syntax.md): YAML DSL语法设计
-   - 要求: 必须支持Temporal Go SDK集成
+   - [ADR-0001](docs/adr/0001-use-temporal-workflow-engine.md): 使用 Temporal 作为底层引擎 (Event Sourcing)
+   - [ADR-0004](docs/adr/0004-yaml-dsl-syntax.md): YAML DSL 语法设计
+   - [ADR-0005](docs/adr/0005-expression-system-syntax.md): 表达式系统语法 (${{ }})
+   - 要求: 必须支持 Temporal Go SDK 集成
+
+4. **功能需求映射**
+   - **FR3 工作流管理 API**: 建立 REST API 基础框架
+   - **NFR1 部署简单性**: 单二进制部署,配置外部化
 
 ### Project Structure Requirements
 
@@ -90,8 +95,8 @@ waterflow/
    - 理由: 比Echo更活跃的社区,更好的性能
    - 备选: Echo (如果需要更简洁的API)
 
-2. **Temporal SDK:** `go.temporal.io/sdk` v1.22+
-   - 必需: 与Temporal Server版本兼容
+2. **Temporal SDK:** `go.temporal.io/sdk` v1.25+
+   - 必需: 与Temporal Server v1.20+版本兼容
    - 配置: 连接参数从环境变量/配置文件加载
 
 3. **配置管理:** Viper v1.16+
@@ -132,29 +137,51 @@ waterflow/
 
 - [ ] 1.3 添加核心依赖
   ```bash
-  go get github.com/gin-gonic/gin@v1.9
-  go get go.temporal.io/sdk@v1.22
-  go get github.com/spf13/viper@v1.16
-  go get go.uber.org/zap@v1.26
+  go get github.com/gin-gonic/gin@v1.9.1
+  go get go.temporal.io/sdk@v1.25.0
+  go get github.com/spf13/viper@v1.16.0
+  go get go.uber.org/zap@v1.26.0
   ```
+  
+  **依赖版本锁定说明:**
+  - 使用精确版本号(如v1.9.1)而非范围(v1.9)以避免意外升级
+  - go.mod会自动记录精确版本,后续`go mod tidy`不会改变major.minor版本
+  - 仅允许patch版本更新(如v1.9.1→v1.9.2)以获取安全修复
 
-- [ ] 1.4 创建main.go骨架
+- [ ] 1.4 创建main.go骨架(包含配置加载和logger初始化)
   - 路径: `cmd/server/main.go`
   - 内容: 基础入口,加载配置,初始化logger
+  - **为Story 1.2预留:** HTTP Server启动接口设计
+    - 预留`internal/server/server.go`中的`Server`结构体
+    - 预留`Run()`和`Shutdown()`方法签名
+    - 预留中间件注册机制(logger, recovery, cors)
+    - 预留路由注册接口`RegisterRoutes()`
   - 验证: `go build ./cmd/server` 成功
 
 ### Task 2: 配置Makefile和构建工具 (AC: 包含Makefile)
 
 - [ ] 2.1 创建Makefile,包含以下目标:
   ```makefile
-  .PHONY: build test lint fmt clean docker-build
+  .PHONY: build test lint fmt clean docker-build install-tools
 
+  install-tools:   # 安装开发工具(golangci-lint, goimports等)
   build:           # 编译server二进制
   test:            # 运行单元测试
   lint:            # 运行golangci-lint
   fmt:             # 格式化代码
   clean:           # 清理构建产物
   docker-build:    # 构建Docker镜像
+  ```
+  
+  **install-tools目标实现:**
+  ```makefile
+  install-tools:
+  	@echo "Installing development tools..."
+  	@command -v golangci-lint >/dev/null 2>&1 || \
+  	  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | \
+  	  sh -s -- -b $(shell go env GOPATH)/bin v1.55.2
+  	@go install golang.org/x/tools/cmd/goimports@latest
+  	@echo "✅ Tools installed successfully"
   ```
 
 - [ ] 2.2 验证构建命令
@@ -164,6 +191,15 @@ waterflow/
   ```
 
 ### Task 3: 配置代码质量工具 (AC: 配置golangci-lint)
+
+- [ ] 3.0 安装golangci-lint v1.55+
+  ```bash
+  # 安装golangci-lint到GOPATH/bin
+  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+  
+  # 验证安装
+  golangci-lint --version
+  ```
 
 - [ ] 3.1 创建`.golangci.yml`配置文件
   - 启用linters: errcheck, gosimple, govet, ineffassign, staticcheck, typecheck, unused, misspell
@@ -175,24 +211,46 @@ waterflow/
   make lint  # 应运行golangci-lint并通过
   ```
 
-- [ ] 3.3 添加pre-commit hook (可选)
+- [ ] 3.3 添加pre-commit hook (必需,质量保障)
   - 路径: `.git/hooks/pre-commit`
-  - 内容: 运行`make fmt lint`
+  - 内容:
+  ```bash
+  #!/bin/sh
+  # Pre-commit hook for code quality
+  make fmt
+  make lint
+  if [ $? -ne 0 ]; then
+    echo "❌ Lint failed. Please fix errors before committing."
+    exit 1
+  fi
+  ```
+  - 添加可执行权限: `chmod +x .git/hooks/pre-commit`
 
 ### Task 4: 创建Dockerfile (AC: 包含Dockerfile)
 
 - [ ] 4.1 创建多阶段Dockerfile
   - 路径: `build/Dockerfile`
   - Stage 1: Builder (基于golang:1.21-alpine)
-    - 复制go.mod, go.sum
-    - 下载依赖 (go mod download)
-    - 复制源代码
+    - **优化:** 先复制go.mod和go.sum利用Docker layer cache
+    ```dockerfile
+    # 第1层: 复制依赖定义(变化频率低)
+    COPY go.mod go.sum ./
+    RUN go mod download
+    
+    # 第2层: 复制源代码(变化频率高)
+    COPY . .
+    ```
     - 编译二进制 (CGO_ENABLED=0 for static binary)
   - Stage 2: Runtime (基于alpine:3.18)
     - 复制二进制
     - 暴露端口8080
     - 设置非root用户运行
     - ENTRYPOINT: `/app/waterflow-server`
+  
+  **Layer cache优化说明:**
+  - go.mod/go.sum很少变化,单独COPY可以缓存依赖下载层
+  - 源代码频繁变化,放在后面避免重复下载依赖
+  - 预计构建时间从5分钟降至30秒(依赖层命中缓存时)
 
 - [ ] 4.2 创建.dockerignore
   - 排除: `.git`, `vendor`, `bin`, `*.md`, `tests`
@@ -207,15 +265,72 @@ waterflow/
 
 - [ ] 5.1 创建CI workflow文件
   - 路径: `.github/workflows/ci.yml`
-  - 触发条件: push到main, PR到main
-  - Jobs:
-    1. **lint** - 运行golangci-lint
-    2. **test** - 运行单元测试,生成覆盖率
-    3. **build** - 编译二进制,验证构建成功
-    4. **docker** - 构建Docker镜像(不推送)
+  - 完整配置示例:
+  ```yaml
+  name: CI
+  
+  on:
+    push:
+      branches: [main]
+    pull_request:
+      branches: [main]
+  
+  jobs:
+    lint:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-go@v5
+          with:
+            go-version: '1.21'
+        - name: golangci-lint
+          uses: golangci/golangci-lint-action@v3
+          with:
+            version: v1.55.2
+    
+    test:
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          go-version: ['1.21', '1.22']
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-go@v5
+          with:
+            go-version: ${{ matrix.go-version }}
+        - name: Run tests
+          run: |
+            go test -v -race -coverprofile=coverage.out ./...
+            go tool cover -func=coverage.out
+        - name: Check coverage
+          run: |
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+            echo "Coverage: $COVERAGE%"
+            if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+              echo "❌ Coverage $COVERAGE% is below 70% threshold"
+              exit 1
+            fi
+    
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-go@v5
+          with:
+            go-version: '1.21'
+        - name: Build
+          run: make build
+    
+    docker:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - name: Build Docker image
+          run: docker build -f build/Dockerfile -t waterflow-server:ci .
+  ```
 
-- [ ] 5.2 配置Go版本矩阵
-  - 测试: Go 1.21, 1.22
+- [ ] 5.2 配置Go版本矩阵(已包含在5.1)
+  - 测试: Go 1.21, 1.22(通过matrix策略)
   - 主版本: Go 1.21
 
 - [ ] 5.3 添加状态徽章到README.md
@@ -258,10 +373,27 @@ waterflow/
     temporal:
       host: localhost:7233
       namespace: waterflow
+      tls_enabled: false
     log:
       level: info
       format: json
     ```
+  
+  **环境变量覆盖(12-factor app):**
+  ```bash
+  # Temporal连接配置
+  WATERFLOW_TEMPORAL_HOST=localhost:7233
+  WATERFLOW_TEMPORAL_NAMESPACE=waterflow
+  WATERFLOW_TEMPORAL_TLS_ENABLED=false
+  
+  # Server配置
+  WATERFLOW_SERVER_PORT=8080
+  WATERFLOW_SERVER_HOST=0.0.0.0
+  
+  # 日志配置
+  WATERFLOW_LOG_LEVEL=info
+  WATERFLOW_LOG_FORMAT=json
+  ```
 
 - [ ] 7.2 实现配置加载逻辑
   - 路径: `internal/config/config.go`
@@ -324,23 +456,11 @@ waterflow/
 
 ### References
 
-本Story实施需要参考以下文档:
+参见Technical Context章节中已引用的架构文档、ADR决策和Epic上下文。
 
-1. **架构设计**
-   - [docs/architecture.md §2.1](docs/architecture.md) - Container View: Waterflow Server职责
-   - [docs/architecture.md §3.1](docs/architecture.md) - Server内部组件结构
-   
-2. **技术决策**
-   - [docs/adr/0001-use-temporal-workflow-engine.md](docs/adr/0001-use-temporal-workflow-engine.md) - Temporal集成要求
-   - [docs/adr/0004-yaml-dsl-syntax.md](docs/adr/0004-yaml-dsl-syntax.md) - DSL解析器设计背景
-
-3. **Epic上下文**
-   - [docs/epics.md Epic 1](docs/epics.md) - 核心工作流引擎基础
-   - [docs/epics.md Story 1.1-1.10](docs/epics.md) - 后续Stories的技术基础
-
-4. **Go项目规范**
-   - [Effective Go](https://go.dev/doc/effective_go)
-   - [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
+**外部规范:**
+- [Effective Go](https://go.dev/doc/effective_go)
+- [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
 
 ### Testing Strategy
 
@@ -370,8 +490,43 @@ waterflow/
 - 不在镜像中包含源代码或编译器
 
 **依赖扫描:**
-- 集成Nancy/Snyk扫描Go依赖漏洞
+- 集成Gosec/Nancy扫描Go依赖漏洞(已在CI中配置)
 - CI中添加安全检查步骤
+
+### Troubleshooting Common Issues
+
+**问题1: go.mod依赖冲突**
+```bash
+# 症状: go mod tidy报错"module declares its path as...but was required as..."
+# 解决: 清理mod cache并重新下载
+go clean -modcache
+go mod tidy
+```
+
+**问题2: Docker构建失败"no space left on device"**
+```bash
+# 症状: Docker构建中途失败
+# 解决: 清理Docker缓存
+docker system prune -a
+```
+
+**问题3: golangci-lint版本不匹配**
+```bash
+# 症状: 本地lint通过但CI失败
+# 解决: 确保本地和CI使用相同版本(v1.55.2)
+golangci-lint --version
+```
+
+**问题4: Temporal连接失败**
+```bash
+# 症状: "connection refused" 或 "context deadline exceeded"
+# 检查1: Temporal Server是否运行
+docker ps | grep temporal
+# 检查2: 端口是否正确(默认7233)
+telnet localhost 7233
+# 检查3: namespace是否存在
+tctl --namespace waterflow namespace describe
+```
 
 ### Performance Considerations
 
@@ -422,86 +577,7 @@ Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
 
 <!-- Developer填写完成时的笔记 -->
 
-### File List
-
-**预期创建的文件清单:**
-
-```
-新建文件 (~20个):
-├── cmd/server/main.go
-├── internal/config/config.go
-├── internal/logger/logger.go
-├── build/Dockerfile
-├── deployments/config.yaml
-├── .github/workflows/ci.yml
-├── Makefile
-├── .golangci.yml
-├── .dockerignore
-├── .gitignore
-├── go.mod
-├── go.sum (go mod tidy生成)
-├── README.md
-├── CONTRIBUTING.md
-├── LICENSE
-└── api/openapi.yaml (骨架)
-
-新建目录 (~15个):
-├── cmd/server/
-├── pkg/api/
-├── pkg/dsl/
-├── pkg/client/
-├── internal/server/
-├── internal/workflow/
-├── internal/config/
-├── internal/logger/
-├── api/
-├── build/
-├── deployments/
-├── scripts/
-├── tests/
-└── .github/workflows/
-```
-
-**关键文件内容要点:**
-
-**go.mod:**
-```go
-module github.com/websoft9/waterflow
-
-go 1.21
-
-require (
-    github.com/gin-gonic/gin v1.9.1
-    go.temporal.io/sdk v1.22.0
-    github.com/spf13/viper v1.16.0
-    go.uber.org/zap v1.26.0
-)
-```
-
-**Makefile:**
-```makefile
-BINARY_NAME=waterflow-server
-BUILD_DIR=bin
-
-build:
-	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/server
-
-test:
-	go test -v -race -coverprofile=coverage.out ./...
-
-lint:
-	golangci-lint run
-
-fmt:
-	gofmt -s -w .
-	goimports -w .
-
-clean:
-	rm -rf $(BUILD_DIR) coverage.out
-
-docker-build:
-	docker build -f build/Dockerfile -t waterflow-server:latest .
-```
+**关键文件清单:** 参见Tasks章节中的详细文件路径和内容要求。
 
 ---
 

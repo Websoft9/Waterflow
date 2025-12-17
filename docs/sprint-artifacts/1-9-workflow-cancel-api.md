@@ -1,6 +1,6 @@
 # Story 1.9: 工作流取消 API
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -16,7 +16,8 @@ So that **停止不需要的执行释放资源**。
 **And** Temporal Workflow 收到取消信号  
 **And** 正在执行的 Step 优雅停止  
 **And** 取消已完成的工作流返回 409  
-**And** 取消成功返回 202
+**And** 取消成功返回 202  
+**And** 重复取消请求返回 202 (幂等性)
 
 ## Technical Context
 
@@ -26,9 +27,18 @@ So that **停止不需要的执行释放资源**。
 
 1. **核心职责**
    - 处理 `POST /v1/workflows/{id}/cancel` 请求
-   - 验证工作流状态 (只能取消 running 状态)
-   - 调用 Temporal `CancelWorkflow` API
-   - 返回异步响应 (202 Accepted)
+   - 通过 Temporal Client 取消工作流
+   - 向 Temporal 发送 Cancel 信号
+   - 返回取消状态和结果
+
+2. **Event Sourcing 架构** (参考 ADR-0001)
+   - 取消操作记录在 Temporal Event History
+   - 支持优雅取消:正在执行的 Activity 会接收取消信号
+   - 已完成的 Step 不会回滚,仅停止后续执行
+
+3. **功能需求映射**
+   - **FR3 工作流管理 API**: 本 Story 实现 POST /v1/workflows/{id}/cancel 端点
+   - **FR7 实时状态跟踪**: 取消状态实时更新
 
 2. **取消流程**
 
@@ -198,6 +208,90 @@ api/
 
 ## Tasks / Subtasks
 
+### Task 0: 验证依赖 (AC: 开发环境就绪)
+
+- [ ] 0.1 验证Temporal连接
+  ```bash
+  # 确保Temporal Server运行
+  curl -s localhost:7233 > /dev/null && echo "✅ Temporal running" || echo "❌ Temporal not running"
+  ```
+
+- [ ] 0.2 验证Go环境
+  ```bash
+  go version | grep "go1.21" && echo "✅ Go 1.21+" || echo "❌ Go version mismatch"
+  ```
+
+- [ ] 0.3 验证前置Story依赖文件
+  ```bash
+  # test/verify-dependencies-story-1-9.sh
+  #!/bin/bash
+  
+  set -e
+  
+  echo "=== Story 1.9 依赖验证 ==="
+  
+  # 函数: 检查文件是否存在
+  check_file() {
+      local file=$1
+      local story=$2
+      
+      if [ -f "$file" ]; then
+          echo "✅ $story: $file"
+      else
+          echo "❌ $story: $file NOT FOUND"
+          exit 1
+      fi
+  }
+  
+  # Story 1.1: Server Framework
+  check_file "internal/config/config.go" "Story 1.1"
+  check_file "cmd/server/main.go" "Story 1.1"
+  
+  # Story 1.2: REST API Framework
+  check_file "internal/server/server.go" "Story 1.2"
+  check_file "internal/server/router.go" "Story 1.2"
+  
+  # Story 1.3: YAML Parser
+  check_file "internal/parser/yaml_parser.go" "Story 1.3"
+  check_file "internal/models/workflow_definition.go" "Story 1.3"
+  
+  # Story 1.4: Temporal SDK Integration (CancelWorkflow API)
+  check_file "internal/temporal/client.go" "Story 1.4"
+  
+  # Story 1.5: Workflow Submission API
+  check_file "internal/service/workflow_service.go" "Story 1.5"
+  check_file "internal/server/handlers/workflow.go" "Story 1.5"
+  
+  # Story 1.6: Workflow Execution Engine (to be enhanced with cancel checks)
+  check_file "internal/workflow/waterflow_workflow.go" "Story 1.6"
+  check_file "internal/workflow/activities.go" "Story 1.6"
+  check_file "internal/workflow/worker.go" "Story 1.6"
+  
+  # Story 1.7: Workflow Status Query API (for isCancelable validation)
+  check_file "internal/service/workflow_query_service.go" "Story 1.7"
+  check_file "internal/models/workflow_status.go" "Story 1.7"
+  
+  # 验证Temporal连接
+  echo ""
+  echo "检查Temporal Server连接..."
+  if curl -s localhost:7233 > /dev/null 2>&1; then
+      echo "✅ Temporal Server运行中 (localhost:7233)"
+  else
+      echo "❌ Temporal Server未运行 - 请启动Temporal"
+      echo "   提示: make dev-env 或 docker-compose up temporal"
+      exit 1
+  fi
+  
+  echo ""
+  echo "✅ Story 1.9 所有依赖验证通过"
+  ```
+
+- [ ] 0.4 运行验证脚本
+  ```bash
+  chmod +x test/verify-dependencies-story-1-9.sh
+  ./test/verify-dependencies-story-1-9.sh
+  ```
+
 ### Task 1: 定义取消响应模型 (AC: 返回 202/409)
 
 - [ ] 1.1 创建 `internal/models/workflow_cancel.go`
@@ -279,7 +373,19 @@ api/
           return nil, fmt.Errorf("workflow not found: %w", err)
       }
       
-      // 2. 验证状态是否可取消
+      // 2. 检查是否已在取消中 (幂等性)
+      if status.Status == "canceling" {
+          wcs.logger.Info("Workflow already canceling, request is idempotent",
+              zap.String("workflow_id", workflowID),
+          )
+          return &models.CancelWorkflowResponse{
+              WorkflowID: workflowID,
+              Status:     "canceling",
+              Message:    "Workflow cancellation already in progress",
+          }, nil
+      }
+      
+      // 3. 验证状态是否可取消
       if !wcs.isCancelable(status.Status) {
           wcs.logger.Warn("Attempted to cancel non-cancelable workflow",
               zap.String("workflow_id", workflowID),
@@ -291,7 +397,7 @@ api/
           }
       }
       
-      // 3. 发送取消信号
+      // 4. 发送取消信号
       err = wcs.temporalClient.GetClient().CancelWorkflow(ctx, workflowID, status.RunID)
       if err != nil {
           wcs.logger.Error("Failed to cancel workflow",
@@ -306,7 +412,7 @@ api/
           zap.String("run_id", status.RunID),
       )
       
-      // 4. 返回成功响应
+      // 5. 返回成功响应
       return &models.CancelWorkflowResponse{
           WorkflowID: workflowID,
           Status:     "canceling",
@@ -317,7 +423,8 @@ api/
   // isCancelable 检查状态是否可取消
   func (wcs *WorkflowCancelService) isCancelable(status string) bool {
       cancelableStates := map[string]bool{
-          "running": true,
+          "running":   true,
+          "canceling": true,  // 支持幂等性: 重复取消返回202
       }
       return cancelableStates[status]
   }
@@ -455,12 +562,16 @@ api/
       logger := workflow.GetLogger(ctx)
       logger.Info("Step started", "step", step.Name)
       
-      // Activity 配置
+      // Activity 配置 (含取消处理)
       activityOptions := workflow.ActivityOptions{
           StartToCloseTimeout: 5 * time.Minute,
+          HeartbeatTimeout:    30 * time.Second,  // 心跳超时
           RetryPolicy: &temporal.RetryPolicy{
               MaximumAttempts: 3,
           },
+          // 取消配置: 等待Activity完成清理
+          WaitForCancellation: true,
+          CancellationType:    enums.CANCEL_TYPE_WAIT_CANCELLATION_COMPLETED,
       }
       
       ctx = workflow.WithActivityOptions(ctx, activityOptions)
@@ -1183,11 +1294,45 @@ status, _ := queryService.GetWorkflowStatus(ctx, workflowID)
 **3. Activity 优雅停止时间**
 
 ```go
-// Activity 应快速响应取消 (< 5秒)
+// Activity 应快速响应取消 (< HeartbeatTimeout)
 activityOptions := workflow.ActivityOptions{
     StartToCloseTimeout:    5 * time.Minute,
-    HeartbeatTimeout:       30 * time.Second, // 心跳超时
-    WaitForCancellation:    true, // 等待 Activity 完成取消清理
+    HeartbeatTimeout:       30 * time.Second,  // 心跳超时
+    WaitForCancellation:    true,              // 等待Activity完成取消清理
+    CancellationType:       enums.CANCEL_TYPE_WAIT_CANCELLATION_COMPLETED,
+}
+```
+
+**优雅停止配置说明:**
+
+| 选项 | 值 | 作用 |
+|------|------|------|
+| WaitForCancellation | true | 等待Activity完成清理工作 |
+| CancellationType | WAIT_CANCELLATION_COMPLETED | 不放弃Activity,等待完成 |
+| HeartbeatTimeout | 30s | Activity清理超时限制 |
+
+**超时行为:**
+- Activity在收到取消后有最多`HeartbeatTimeout`(30秒)完成清理
+- 超过超时,Temporal强制终止Activity
+- 确保取消操作不会无限挂起
+
+**Activity最佳实践:**
+```go
+func ExecuteStepActivity(ctx context.Context, input StepInput) error {
+    // 确保清理总是执行
+    defer cleanup()
+    
+    for {
+        select {
+        case <-ctx.Done():
+            logger.Info("Cancellation received, cleaning up...")
+            // 执行清理逻辑 (必须在HeartbeatTimeout内完成)
+            return ctx.Err()
+        default:
+            doWork()
+            activity.RecordHeartbeat(ctx, progress)
+        }
+    }
 }
 ```
 
