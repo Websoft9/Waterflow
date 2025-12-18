@@ -43,7 +43,7 @@ story_location: docs/sprint-artifacts
 development_status:
   # Epic 1: 核心工作流引擎基础 (10 stories)
   epic-1: in-progress
-  1-1-waterflow-server-framework: ready-for-dev
+  1-1-waterflow-server-framework: review
   1-2-rest-api-service-framework: ready-for-dev
   1-3-yaml-dsl-parsing-and-validation: ready-for-dev
   1-4-expression-engine-and-variables: ready-for-dev

@@ -1,0 +1,64 @@
+# Waterflow Server 配置示例
+
+# HTTP Server 配置
+server:
+  # 监听地址 (0.0.0.0 表示监听所有网络接口)
+  # 环境变量: WATERFLOW_SERVER_HOST
+  host: "0.0.0.0"
+  
+  # HTTP 端口
+  # 环境变量: WATERFLOW_SERVER_PORT
+  port: 8080
+  
+  # 读取请求超时时间
+  # 环境变量: WATERFLOW_SERVER_READ_TIMEOUT
+  read_timeout: "30s"
+  
+  # 写入响应超时时间
+  # 环境变量: WATERFLOW_SERVER_WRITE_TIMEOUT
+  write_timeout: "30s"
+  
+  # 优雅关闭超时时间
+  # 环境变量: WATERFLOW_SERVER_SHUTDOWN_TIMEOUT
+  shutdown_timeout: "30s"
+
+# 日志配置
+log:
+  # 日志级别: debug, info, warn, error
+  # 环境变量: WATERFLOW_LOG_LEVEL
+  level: "info"
+  
+  # 日志格式: json (生产环境推荐), text (开发环境推荐)
+  # 环境变量: WATERFLOW_LOG_FORMAT
+  format: "json"
+  
+  # 日志输出: stdout, stderr, 或文件路径
+  # 环境变量: WATERFLOW_LOG_OUTPUT
+  output: "stdout"
+
+# Temporal 工作流引擎配置
+temporal:
+  # Temporal Server 地址 (格式: host:port)
+  # 环境变量: WATERFLOW_TEMPORAL_HOST
+  host: "localhost:7233"
+  
+  # Temporal Namespace
+  # 环境变量: WATERFLOW_TEMPORAL_NAMESPACE
+  namespace: "waterflow"
+  
+  # Task Queue 名称
+  # 环境变量: WATERFLOW_TEMPORAL_TASK_QUEUE
+  task_queue: "waterflow-server"
+
+# 环境变量配置说明:
+# ==================
+# 所有配置项都可以通过环境变量覆盖，环境变量优先级高于配置文件。
+# 环境变量命名规则: WATERFLOW_ + 配置路径（用下划线分隔层级）
+#
+# 示例:
+#   server.port           -> WATERFLOW_SERVER_PORT=8080
+#   log.level             -> WATERFLOW_LOG_LEVEL=debug
+#   temporal.host         -> WATERFLOW_TEMPORAL_HOST=temporal:7233
+#
+# Docker 部署示例:
+#   docker run -e WATERFLOW_SERVER_PORT=9090 -e WATERFLOW_LOG_LEVEL=debug waterflow:latest

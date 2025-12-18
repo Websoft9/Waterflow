@@ -6,117 +6,59 @@ on:
   pull_request:
     branches: [ main, develop ]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-  pull-requests: read
-
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Check if Go project exists
-        id: check-go
-        run: |
-          if [ -f "go.mod" ]; then
-            echo "has_go=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_go=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No go.mod found, skipping Go checks"
-          fi
-
-      - name: Set up Go
-        if: steps.check-go.outputs.has_go == 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Run gofmt
-        if: steps.check-go.outputs.has_go == 'true'
-        run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Code is not formatted. Please run 'gofmt -w .'"
-            gofmt -l .
-            exit 1
-          fi
-
-      - name: Run go vet
-        if: steps.check-go.outputs.has_go == 'true'
-        run: go vet ./...
-
-  test:
-    name: Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-        go-version: ['1.21', '1.22']
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Check if Go project exists
-        id: check-go
-        run: |
-          if [ -f "go.mod" ]; then
-            echo "has_go=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_go=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No go.mod found, skipping tests"
-          fi
-
-      - name: Set up Go
-        if: steps.check-go.outputs.has_go == 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ matrix.go-version }}
-          cache: true
-
-      - name: Run tests
-        if: steps.check-go.outputs.has_go == 'true'
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-
   build:
-    name: Build
+    name: Build and Test
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for version tags
 
-      - name: Check if Go project exists
-        id: check-go
-        run: |
-          if [ -f "go.mod" ]; then
-            echo "has_go=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_go=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No go.mod found, skipping build"
-          fi
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
 
-      - name: Set up Go
-        if: steps.check-go.outputs.has_go == 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
-      - name: Build
-        if: steps.check-go.outputs.has_go == 'true'
-        run: go build -v ./...
+    - name: Install dependencies
+      run: go mod download
 
-      - name: Verify dependencies
-        if: steps.check-go.outputs.has_go == 'true'
-        run: |
-          go mod verify
-          go mod tidy
-          git diff --exit-code go.mod go.sum
+    - name: Run linters
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        args: --timeout=5m
+
+    - name: Run tests
+      run: make test
+
+    - name: Generate coverage report
+      run: make coverage
+
+    - name: Upload coverage to artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage.html
+
+    - name: Build binary
+      run: make build
+
+    - name: Upload binary to artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: server-binary
+        path: bin/server
+
