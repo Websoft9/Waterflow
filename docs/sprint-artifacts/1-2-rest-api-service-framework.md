@@ -1,858 +1,1026 @@
-# Story 1.2: REST API 服务框架
+# Story 1.2: REST API 服务框架和监控
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
-As a **开发者**,  
-I want **实现 REST API 服务框架**,  
-so that **可以通过 HTTP 接口接收工作流请求**。
+As a **开发者/运维工程师**,  
+I want **实现 REST API 服务框架和基础监控能力**,  
+so that **可以通过 HTTP 接口接收请求并监控服务健康状态**。
+
+## Context
+
+这是 Epic 1 的第二个 Story,在 Story 1.1 建立的基础框架上添加完整的 HTTP API 服务层。此 Story 专注于实现生产级的 REST API 框架,包括请求处理、健康检查、就绪探针、Prometheus 监控指标和版本信息端点。
+
+**前置依赖:** Story 1.1 (Waterflow Server 框架搭建) 必须完成
+- 配置管理系统已实现
+- 日志系统已就绪
+- 基础 Server 框架可运行
+
+**Epic 背景:** 构建核心工作流引擎基础,为后续的 YAML DSL 解析、工作流管理 API 提供统一的 HTTP 服务层。
+
+**业务价值:** 
+- 提供标准化的 REST API 接口
+- 支持服务健康监控和可观测性
+- 为后续功能模块提供统一的 HTTP 路由和中间件
+- 满足生产环境的监控和运维需求
 
 ## Acceptance Criteria
 
-**Given** Waterflow Server 框架已搭建  
+### AC1: HTTP 服务框架
+**Given** Story 1.1 的 Server 框架已完成  
 **When** 启动 Server 进程  
 **Then** HTTP 服务监听在配置的端口 (默认 8080)  
-**And** 提供健康检查端点 `GET /health` 返回 200  
-**And** 提供就绪检查端点 `GET /ready` 返回服务状态  
-**And** 支持优雅关闭 (SIGTERM)  
-**And** 配置通过环境变量或 YAML 文件加载  
-**And** 结构化日志输出到 stdout
-
-## Technical Context
-
-### Architecture Constraints
-
-根据 [docs/architecture.md](docs/architecture.md) §3.1.1 REST API Handler设计:
-
-1. **核心职责**
-   - 处理HTTP请求 (提交工作流、查询状态、获取日志)
-   - 请求参数验证
-   - API认证 (API Key/JWT) - 本Story暂不实现,Epic 9处理
-   - 错误响应格式化 (RFC 7807)
-
-2. **关键端点** (本Story实现基础框架)
-   - `GET /health` - 健康检查 (始终返回200)
-   - `GET /ready` - 就绪检查 (检查依赖服务状态)
-   - `GET /v1/` - API版本信息
-   - 后续Stories将添加: `/v1/workflows`, `/v1/validate` 等
-
-3. **非功能性需求** (参考 epics.md NFR1-NFR8)
-   - **NFR1 部署简单性**: 单二进制部署,配置外部化
-   - **NFR2 性能**: API 响应时间 p95 < 500ms,并发支持 100+ req/s
-   - **NFR4 可观测性**: 结构化日志 (JSON),包含 request_id, trace_id
-   - **NFR8 跨平台支持**: Linux, macOS, Windows (WSL2)
-   
-   **核心 FR 支持**:
-   - **FR3 工作流管理 API**: 本 Story 建立 REST API 基础框架
-   - 后续 Story 将实现具体端点 (提交、查询、取消、日志、验证)
-
-### Dependencies
-
-**前置Story:**
-- ✅ Story 1.1: Waterflow Server框架搭建 (已完成)
-  - 依赖: 项目结构, go.mod, Gin依赖已安装
-  - 使用: `internal/config`, `internal/logger` 模块
-
-**后续Story依赖本Story:**
-- Story 1.3-1.9: 所有REST API端点都基于本Story建立的框架
-
-### Technology Stack
-
-**Web框架: Gin v1.9+**
-
-选择理由 (参考Story 1.1决策):
-- 高性能: 比标准库net/http快40倍
-- 中间件丰富: CORS, 日志, Recovery, 限流等
-- 路由分组: 便于API版本管理 (`/v1/`, `/v2/`)
-- 社区活跃: 70k+ GitHub stars
-
-**核心中间件:**
-
-1. **Recovery Middleware** - panic恢复
-   ```go
-   gin.Recovery() // 内置,捕获panic并返回500
-   ```
-
-2. **Logger Middleware** - 请求日志
-   ```go
-   // 自定义,集成Zap结构化日志
-   // 记录: method, path, status, latency, client_ip
-   ```
-
-3. **CORS Middleware** - 跨域支持
-   ```go
-   github.com/gin-contrib/cors
-   // 配置: 允许的origin, methods, headers
-   ```
-
-4. **RequestID Middleware** - 请求追踪
-   ```go
-   github.com/gin-contrib/requestid
-   // 生成UUID,注入到context和响应头
-   ```
-
-**配置管理: 基于Story 1.1的Viper**
-
-```yaml
-server:
-  port: 8080
-  host: 0.0.0.0
-  mode: release  # gin mode: debug, release, test
-  shutdown_timeout: 30s
-  cors:
-    enabled: true
-    allowed_origins: ["*"]
-log:
-  level: info
-  format: json
+**And** 支持优雅关闭 (SIGTERM/SIGINT, 最多等待 30 秒)  
+**And** 关闭时拒绝新请求但完成正在处理的请求  
+**And** 所有 API 响应包含 `X-Request-ID` header (UUID v4)  
+**And** 所有 API 响应包含标准 headers:
+```
+Content-Type: application/json
+X-Request-ID: <uuid>
+X-Server-Version: <version>
 ```
 
-**环境变量覆盖:**
-- `WATERFLOW_SERVER_PORT` → server.port
-- `WATERFLOW_SERVER_HOST` → server.host
-- `WATERFLOW_LOG_LEVEL` → log.level
-
-### Project Structure Updates
-
-基于Story 1.1创建的结构,本Story新增/修改:
-
+**请求/响应日志:**
+**Given** Server 处理 HTTP 请求  
+**When** 请求完成时  
+**Then** 记录结构化日志:
+```json
+{
+  "timestamp": "2025-12-18T10:30:45.123Z",
+  "level": "info",
+  "message": "http request",
+  "component": "api",
+  "context": {
+    "method": "GET",
+    "path": "/health",
+    "status": 200,
+    "duration_ms": 5,
+    "request_id": "550e8400-e29b-41d4-a716-446655440000",
+    "remote_addr": "192.168.1.100"
+  }
+}
 ```
-internal/
-├── server/
-│   ├── server.go           # HTTP服务器主逻辑 (新建)
-│   ├── router.go           # 路由配置 (新建)
-│   ├── middleware/         # 中间件目录 (新建)
-│   │   ├── logger.go       # 日志中间件
-│   │   ├── requestid.go    # RequestID中间件
-│   │   └── recovery.go     # Recovery中间件 (可选,Gin内置)
-│   └── handlers/           # HTTP处理器目录 (新建)
-│       ├── health.go       # 健康检查handler
-│       └── version.go      # 版本信息handler
-├── config/
-│   └── config.go           # 配置结构扩展 (修改)
-└── logger/
-    └── logger.go           # Logger初始化 (修改)
 
-cmd/server/
-└── main.go                 # 主入口,启动HTTP服务器 (修改)
+**And** 请求 ID 在整个请求生命周期中传递
+**And** 错误请求记录完整错误信息
 
-api/
-└── openapi.yaml            # OpenAPI规范 (新建/更新)
+### AC2: 健康检查端点
+**Given** Server 已启动  
+**When** 发送 `GET /health` 请求  
+**Then** 返回 200 状态码  
+**And** 响应 body:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-12-18T10:30:45Z"
+}
+```
+
+**And** 响应时间 < 10ms (不依赖外部服务)  
+**And** 检查不包含 Temporal 连接状态 (仅进程存活检查)  
+**And** 用于 Docker HEALTHCHECK 和 Kubernetes livenessProbe
+
+### AC3: 就绪检查端点
+**Given** Server 已启动  
+**When** 发送 `GET /ready` 请求  
+**Then** 检查所有外部依赖状态:
+- Temporal Server 连接状态
+
+**And** 所有依赖就绪时返回 200:
+```json
+{
+  "status": "ready",
+  "timestamp": "2025-12-18T10:30:45Z",
+  "checks": {
+    "temporal": "ok"
+  }
+}
+```
+
+**And** 任一依赖未就绪时返回 503:
+```json
+{
+  "status": "not_ready",
+  "timestamp": "2025-12-18T10:30:45Z",
+  "checks": {
+    "temporal": "connection refused"
+  }
+}
+```
+
+**And** 每个检查项有超时限制 (2 秒)  
+**And** 用于 Kubernetes readinessProbe  
+**And** 启动时可能返回 503,直到 Temporal 连接成功
+
+### AC4: Prometheus 监控指标
+**Given** Server 运行中  
+**When** 发送 `GET /metrics` 请求  
+**Then** 返回 Prometheus 文本格式指标  
+**And** Content-Type: `text/plain; version=0.0.4`  
+
+**必须包含的指标:**
+
+**HTTP 请求指标:**
+```prometheus
+# HELP waterflow_http_requests_total Total number of HTTP requests
+# TYPE waterflow_http_requests_total counter
+waterflow_http_requests_total{method="GET",path="/health",status="200"} 1234
+
+# HELP waterflow_http_request_duration_seconds HTTP request duration in seconds
+# TYPE waterflow_http_request_duration_seconds histogram
+waterflow_http_request_duration_seconds_bucket{method="GET",path="/health",le="0.005"} 120
+waterflow_http_request_duration_seconds_bucket{method="GET",path="/health",le="0.01"} 150
+waterflow_http_request_duration_seconds_bucket{method="GET",path="/health",le="0.025"} 180
+waterflow_http_request_duration_seconds_bucket{method="GET",path="/health",le="0.05"} 200
+waterflow_http_request_duration_seconds_bucket{method="GET",path="/health",le="0.1"} 220
+waterflow_http_request_duration_seconds_bucket{method="GET",path="/health",le="+Inf"} 250
+waterflow_http_request_duration_seconds_sum{method="GET",path="/health"} 1.25
+waterflow_http_request_duration_seconds_count{method="GET",path="/health"} 250
+```
+
+**Go 运行时指标:**
+```prometheus
+# Go runtime metrics (自动导出)
+go_goroutines 45
+go_threads 12
+go_memstats_alloc_bytes 8388608
+go_memstats_heap_alloc_bytes 8388608
+```
+
+**工作流指标 (预留,后续 Story 实现):**
+```prometheus
+# HELP waterflow_workflows_total Total number of workflows submitted
+# TYPE waterflow_workflows_total counter
+waterflow_workflows_total{status="completed"} 0
+waterflow_workflows_total{status="failed"} 0
+waterflow_workflows_total{status="running"} 0
+```
+
+**And** 使用 Prometheus 官方 Go 客户端库
+**And** 支持标准 Prometheus 抓取格式
+
+### AC5: 版本信息端点
+**Given** Server 已部署  
+**When** 发送 `GET /version` 请求  
+**Then** 返回 200 状态码  
+**And** 响应 body:
+```json
+{
+  "version": "v0.1.0",
+  "commit": "a1b2c3d",
+  "build_time": "2025-12-18_10:30:45",
+  "go_version": "go1.21.5"
+}
+```
+
+**And** 版本信息从构建时注入的变量读取 (Story 1.1 实现)  
+**And** 支持语义化版本号格式 (vMAJOR.MINOR.PATCH)  
+**And** commit 为 Git short hash (7 位)  
+**And** build_time 为 UTC 时间
+
+### AC6: 错误处理和响应格式
+**Given** API 请求处理失败  
+**When** 返回错误响应  
+**Then** 使用标准 HTTP 状态码:
+- 400 Bad Request - 请求参数错误
+- 404 Not Found - 资源不存在
+- 405 Method Not Allowed - HTTP 方法不支持
+- 500 Internal Server Error - 服务器内部错误
+- 503 Service Unavailable - 服务不可用
+
+**And** 错误响应 body 符合 RFC 7807 Problem Details 格式:
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Invalid request parameters",
+  "instance": "/v1/workflows/123"
+}
+```
+
+**And** 包含 request_id 用于追踪:
+```json
+{
+  "type": "about:blank",
+  "title": "Internal Server Error",
+  "status": 500,
+  "detail": "An unexpected error occurred",
+  "instance": "/v1/workflows",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**And** 错误详情记录到日志但不暴露敏感信息
+
+### AC7: 中间件链
+**Given** HTTP 请求处理流程  
+**When** 请求进入 Server  
+**Then** 按顺序执行中间件:
+
+1. **Request ID 中间件** - 生成或提取 X-Request-ID
+2. **日志中间件** - 记录请求开始和完成
+3. **Recovery 中间件** - 捕获 panic 并返回 500 错误
+4. **CORS 中间件** - 处理跨域请求 (开发环境启用)
+5. **路由处理器** - 业务逻辑
+
+**中间件执行顺序:**
+```
+Request → RequestID → Logger → Recovery → CORS → Handler → Response
+```
+
+**Recovery 中间件行为:**
+**Given** Handler 函数发生 panic  
+**When** Recovery 中间件捕获 panic  
+**Then** 记录完整堆栈到日志 (ERROR 级别)  
+**And** 返回 500 错误响应  
+**And** 不终止 Server 进程
+
+**CORS 配置 (开发环境):**
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization, X-Request-ID
+Access-Control-Max-Age: 3600
 ```
 
 ## Tasks / Subtasks
 
-### Task 1: 实现HTTP Server核心逻辑 (AC: HTTP服务监听端口)
+### Task 1: HTTP 路由框架选型和集成 (AC1)
+- [ ] 选择 HTTP 路由框架:
+  - **推荐:** [gorilla/mux](https://github.com/gorilla/mux) - 功能丰富、成熟稳定
+  - 备选: [chi](https://github.com/go-chi/chi) - 轻量级、性能好
+  - 备选: 标准库 net/http - 最小依赖
+- [ ] 集成路由框架到 Server
+- [ ] 实现路由注册函数
+- [ ] 配置 HTTP Server 参数 (从配置文件读取)
 
-- [ ] 1.0 安装REST API依赖
-  ```bash
-  # 安装Gin中间件依赖
-  go get github.com/gin-contrib/cors@v1.4.0
-  go get github.com/gin-contrib/requestid@v0.0.0-20230514214907-c2b8f126e326
-  
-  # 可选: 限流中间件(生产环境推荐)
-  go get github.com/ulule/limiter/v3@v3.11.2
-  go get github.com/ulule/limiter/v3/drivers/store/memory
-  
-  # 可选: Swagger文档
-  go get github.com/swaggo/gin-swagger@v1.6.0
-  go get github.com/swaggo/files@v1.0.1
-  
-  # 验证依赖
-  go mod tidy
-  ```
+**路由框架对比:**
 
-- [ ] 1.1 创建`internal/server/server.go`
-  ```go
-  type Server struct {
-      config *config.Config
-      logger *zap.Logger
-      router *gin.Engine
-      httpServer *http.Server
-  }
-  
-  func New(cfg *config.Config, logger *zap.Logger) *Server
-  // 使用Story 1.1预留的接口设计
-  func (s *Server) Run() error  // 而非Start()
-  func (s *Server) Shutdown(ctx context.Context) error
-  func (s *Server) RegisterRoutes(routeFunc func(*gin.Engine))
-  ```
-  
-  **说明:** 使用Story 1.1预留的`Run()`方法名而非`Start()`,保持接口一致性。`RegisterRoutes()`允许后续Stories注册路由而无需修改server.go。
+| 框架 | 优势 | 劣势 | 推荐度 |
+|------|------|------|--------|
+| gorilla/mux | 功能全、中间件丰富、文档完善 | 略重 | ⭐⭐⭐⭐⭐ |
+| chi | 轻量、性能好、兼容 net/http | 功能少 | ⭐⭐⭐⭐ |
+| net/http | 零依赖、标准库 | 功能基础 | ⭐⭐⭐ |
 
-- [ ] 1.2 实现服务器启动逻辑 (Run方法)
-  - 设置Gin模式 (根据config.server.mode)
-  - 创建http.Server实例
-  - 配置监听地址 (config.server.host:port)
-  - 调用httpServer.ListenAndServe()
-  - 返回error如果端口被占用
-  
-  **注意:** 使用`Run()`方法名与Story 1.1保持一致。
+**推荐选择 gorilla/mux** 原因:
+- 成熟稳定,生产验证
+- 中间件生态丰富
+- 支持路径参数、查询参数、子路由
+- 后续功能 (REST API) 需要复杂路由
 
-- [ ] 1.3 验证服务器启动
-  ```bash
-  go run ./cmd/server
-  # 输出: Server listening on 0.0.0.0:8080
-  curl http://localhost:8080/
-  # 期望: 404 (路由尚未配置)
-  ```
+### Task 2: Request ID 和日志中间件 (AC1, AC7)
+- [ ] 实现 Request ID 中间件:
+  - 检查请求 header 中的 X-Request-ID
+  - 如不存在则生成 UUID v4
+  - 添加到响应 header
+  - 存储到 request context
 
-### Task 2: 实现优雅关闭机制 (AC: 支持优雅关闭)
-
-- [ ] 2.1 在`main.go`中捕获信号
-  ```go
-  quit := make(chan os.Signal, 1)
-  signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-  <-quit
-  logger.Info("Shutting down server...")
-  ```
-
-- [ ] 2.2 实现Shutdown方法
-  ```go
-  ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-  defer cancel()
-  if err := srv.Shutdown(ctx); err != nil {
-      logger.Fatal("Server forced to shutdown", zap.Error(err))
-  }
-  ```
-
-- [ ] 2.3 测试优雅关闭
-  ```bash
-  # Terminal 1: 启动服务器
-  go run ./cmd/server
-  
-  # Terminal 2: 发送SIGTERM
-  kill -TERM <pid>
-  
-  # 期望: 日志显示"Shutting down server..."
-  # 等待进行中请求完成(最多30秒)
-  ```
-
-### Task 3: 配置中间件链 (AC: 结构化日志输出)
-
-- [ ] 3.1 创建`internal/server/middleware/logger.go`
-  - 使用Zap记录每个请求
-  - 字段: timestamp, method, path, status, latency, client_ip, request_id
-  - 格式: JSON
-  - 示例:
-    ```json
-    {
-      "level": "info",
-      "ts": "2025-12-16T10:30:45.123Z",
-      "method": "GET",
-      "path": "/health",
-      "status": 200,
-      "latency_ms": 1.2,
-      "client_ip": "192.168.1.1",
-      "request_id": "uuid-123"
-    }
-    ```
-
-- [ ] 3.2 创建`internal/server/middleware/requestid.go`
-  - 使用`github.com/gin-contrib/requestid`
-  - 或自定义: 生成UUID,存入context
-  - 添加响应头: `X-Request-ID`
-
-- [ ] 3.3 配置CORS中间件
-  ```go
-  import "github.com/gin-contrib/cors"
-  
-  router.Use(cors.New(cors.Config{
-      AllowOrigins: config.Server.CORS.AllowedOrigins,
-      AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
-      AllowHeaders: []string{"Origin", "Content-Type", "Authorization"},
-  }))
-  ```
-
-- [ ] 3.4 在router.go中按正确顺序应用中间件
-  ```go
-  // 中间件执行顺序关键说明:
-  // 1. Recovery必须最先 - 捕获后续所有中间件和handler的panic
-  router.Use(gin.Recovery())
-  
-  // 2. RequestID其次 - 生成request_id供后续中间件使用
-  router.Use(middleware.RequestID())
-  
-  // 3. Logger第三 - 使用request_id记录请求日志
-  router.Use(middleware.Logger(logger))
-  
-  // 4. CORS最后 - 处理跨域请求头
-  router.Use(cors.New(...))
-  ```
-  
-  **顺序原因:**
-  - Recovery在最外层确保任何panic都被捕获
-  - RequestID必须在Logger前,否则日志无request_id
-  - CORS放最后处理响应头即可
-
-### Task 4: 实现健康检查和就绪检查端点 (AC: /health和/ready端点)
-
-- [ ] 4.1 创建`internal/server/handlers/health.go`
-  ```go
-  // GET /health - 始终返回200 OK
-  func HealthCheck(c *gin.Context) {
-      c.JSON(http.StatusOK, gin.H{
-          "status": "healthy",
-          "timestamp": time.Now().Unix(),
-      })
-  }
-  ```
-
-- [ ] 4.2 设计HealthChecker接口并实现就绪检查 (支持扩展)
-  ```go
-  // HealthChecker接口 - 允许注册多个检查项
-  type HealthChecker interface {
-      Name() string
-      Check(ctx context.Context) error
-  }
-  
-  // ReadinessHandler - 可扩展的就绪检查handler
-  type ReadinessHandler struct {
-      checkers []HealthChecker
-  }
-  
-  func NewReadinessHandler() *ReadinessHandler {
-      return &ReadinessHandler{
-          checkers: []HealthChecker{},
-      }
-  }
-  
-  func (h *ReadinessHandler) AddChecker(checker HealthChecker) {
-      h.checkers = append(h.checkers, checker)
-  }
-  
-  func (h *ReadinessHandler) ServeHTTP(c *gin.Context) {
-      ctx := c.Request.Context()
-      checks := make(map[string]string)
-      allReady := true
-      
-      for _, checker := range h.checkers {
-          if err := checker.Check(ctx); err != nil {
-              checks[checker.Name()] = "unhealthy: " + err.Error()
-              allReady = false
-          } else {
-              checks[checker.Name()] = "healthy"
-          }
-      }
-      
-      // 本Story暂无checker,返回ready
-      // Story 1.4将调用AddChecker注册TemporalHealthChecker
-      status := "ready"
-      statusCode := http.StatusOK
-      if !allReady {
-          status = "not_ready"
-          statusCode = http.StatusServiceUnavailable
-      }
-      
-      c.JSON(statusCode, gin.H{
-          "status": status,
-          "checks": checks,
-      })
-  }
-  ```
-  
-  **扩展性设计说明:**
-  - Story 1.4可通过`readinessHandler.AddChecker(&TemporalHealthChecker{...})`添加Temporal检查
-  - 无需修改handler代码,符合开闭原则
-
-- [ ] 4.3 在router.go注册端点
-  ```go
-  router.GET("/health", handlers.HealthCheck)
-  router.GET("/ready", handlers.ReadinessCheck)
-  router.GET("/", handlers.VersionInfo) // 可选
-  ```
-
-- [ ] 4.4 测试端点
-  ```bash
-  curl http://localhost:8080/health
-  # {"status":"healthy","timestamp":1702728645}
-  
-  curl http://localhost:8080/ready
-  # {"status":"ready","checks":{"temporal":"not_configured"}}
-  ```
-
-### Task 5: 实现API版本路由分组 (为后续Stories准备)
-
-- [ ] 5.1 创建`internal/server/router.go`
-  ```go
-  func SetupRouter(logger *zap.Logger) *gin.Engine {
-      router := gin.New()
-      
-      // 全局中间件
-      router.Use(gin.Recovery())
-      router.Use(middleware.RequestID())
-      router.Use(middleware.Logger(logger))
-      
-      // 根路径
-      router.GET("/health", handlers.HealthCheck)
-      router.GET("/ready", handlers.ReadinessCheck)
-      
-      // API v1路由组
-      v1 := router.Group("/v1")
-      {
-          v1.GET("/", handlers.APIVersionInfo)
-          // Story 1.5将添加: v1.POST("/workflows", ...)
-          // Story 1.7将添加: v1.GET("/workflows/:id", ...)
-      }
-      
-      return router
-  }
-  ```
-
-- [ ] 5.2 实现版本信息handler
-  ```go
-  func APIVersionInfo(c *gin.Context) {
-      c.JSON(http.StatusOK, gin.H{
-          "version": "v1",
-          "build": os.Getenv("BUILD_VERSION"), // CI时注入
-          "endpoints": []string{
-              "POST /v1/workflows (TODO)",
-              "GET /v1/workflows/:id (TODO)",
-          },
-      })
-  }
-  ```
-
-### Task 6: 更新配置和主入口 (AC: 配置通过环境变量/YAML加载)
-
-- [ ] 6.1 扩展`internal/config/config.go`
-  ```go
-  type Config struct {
-      Server ServerConfig `mapstructure:"server"`
-      Log    LogConfig    `mapstructure:"log"`
-  }
-  
-  type ServerConfig struct {
-      Port            int           `mapstructure:"port"`
-      Host            string        `mapstructure:"host"`
-      Mode            string        `mapstructure:"mode"` // debug/release/test
-      ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
-      CORS            CORSConfig    `mapstructure:"cors"`
-  }
-  
-  type CORSConfig struct {
-      Enabled        bool     `mapstructure:"enabled"`
-      AllowedOrigins []string `mapstructure:"allowed_origins"`
-  }
-  ```
-
-- [ ] 6.2 更新默认配置文件`deployments/config.yaml`
-  ```yaml
-  server:
-    port: 8080
-    host: 0.0.0.0
-    mode: release
-    shutdown_timeout: 30s
-    cors:
-      enabled: true
-      allowed_origins: ["*"]
-  
-  log:
-    level: info
-    format: json
-  ```
-
-- [ ] 6.3 更新`cmd/server/main.go`
-  ```go
-  func main() {
-      // 1. 加载配置
-      cfg, err := config.Load()
-      if err != nil {
-          log.Fatal("Failed to load config:", err)
-      }
-      
-      // 2. 初始化Logger
-      logger := logger.New(cfg.Log)
-      defer logger.Sync()
-      
-      // 3. 创建HTTP Server
-      srv := server.New(cfg, logger)
-      
-      // 4. 启动服务器(goroutine)
-      go func() {
-          if err := srv.Run(); err != nil && err != http.ErrServerClosed {
-              logger.Fatal("Server failed", zap.Error(err))
-          }
-      }()
-      
-      // 5. 优雅关闭
-      quit := make(chan os.Signal, 1)
-      signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-      <-quit
-      
-      ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-      defer cancel()
-      
-      if err := srv.Shutdown(ctx); err != nil {
-          logger.Fatal("Forced shutdown", zap.Error(err))
-      }
-      logger.Info("Server exited")
-  }
-  ```
-
-### Task 7: 添加单元测试 (确保代码质量)
-
-- [ ] 7.1 创建`internal/server/server_test.go`
-  - 测试服务器启动和关闭
-  - 测试端口冲突处理
-  - 使用mock config和logger
-
-- [ ] 7.2 创建`internal/server/handlers/health_test.go`
-  ```go
-  func TestHealthCheck(t *testing.T) {
-      router := gin.New()
-      router.GET("/health", HealthCheck)
-      
-      req := httptest.NewRequest("GET", "/health", nil)
-      w := httptest.NewRecorder()
-      router.ServeHTTP(w, req)
-      
-      assert.Equal(t, 200, w.Code)
-      assert.Contains(t, w.Body.String(), "healthy")
-  }
-  ```
-
-- [ ] 7.3 测试中间件功能
-  - RequestID注入测试
-  - Logger中间件日志输出测试
-  - CORS头部验证测试
-
-- [ ] 7.3b 测试环境变量覆盖配置
-  ```go
-  func TestConfigEnvOverride(t *testing.T) {
-      // 测试环境变量正确覆盖YAML配置
-      os.Setenv("WATERFLOW_SERVER_PORT", "9090")
-      os.Setenv("WATERFLOW_SERVER_HOST", "127.0.0.1")
-      defer os.Unsetenv("WATERFLOW_SERVER_PORT")
-      defer os.Unsetenv("WATERFLOW_SERVER_HOST")
-      
-      cfg := config.Load()
-      assert.Equal(t, 9090, cfg.Server.Port)
-      assert.Equal(t, "127.0.0.1", cfg.Server.Host)
-  }
-  ```
-
-- [ ] 7.4 运行测试并验证覆盖率
-  ```bash
-  make test
-  # 期望: 所有测试通过
-  # 覆盖率: internal/server目录 >70%
-  ```
-
-### Task 9: 验证CI通过和性能基准 (确保质量)
-
-- [ ] 9.1 推送代码并触发GitHub Actions
-  ```bash
-  git add .
-  git commit -m "feat: implement REST API service framework (Story 1.2)"
-  git push origin feature/story-1-2
-  ```
-
-- [ ] 9.2 验证所有CI Jobs通过
-  - ✅ lint job: golangci-lint通过
-  - ✅ test job: 单元测试通过,覆盖率>70%
-  - ✅ build job: 编译成功
-  - ✅ security job: Gosec/Nancy扫描通过
-
-- [ ] 9.3 检查测试覆盖率包含新代码
-  ```bash
-  # 查看覆盖率报告
-  go tool cover -html=coverage.out
-  # 确保internal/server/目录所有文件>70%覆盖
-  ```
-
-- [ ] 9.4 性能基准测试 (对齐NFR2)
-  ```bash
-  # Tier 1: 健康检查端点 (p95<10ms, 目标1000+ req/s)
-  hey -n 10000 -c 100 http://localhost:8080/health
-  # 验证: Requests/sec > 1000, p95 < 10ms
-  
-  # Tier 2: 就绪检查端点 (p95<50ms)
-  hey -n 5000 -c 50 http://localhost:8080/ready
-  # 验证: Requests/sec > 500, p95 < 50ms
-  
-  # 注意: 业务API (POST /v1/workflows) 将在Story 1.5实现后测试
-  # 目标: p95<500ms, 100+ req/s (NFR2要求)
-  ```
-  
-  **性能验收标准 (NFR2):**
-  - 轻量端点(/health, /ready): p95<50ms
-  - 业务API: p95<500ms (Story 1.5+验证)
-  - 并发支持: 100+ req/s持续负载
-
-- [ ] 9.5 修复任何CI或性能问题
-  - 如果CI失败: 查看GitHub Actions日志并修复
-  - 如果性能不达标: 优化中间件或添加缓存
-
-### Task 8: 更新OpenAPI规范 (API文档)
-
-- [ ] 8.1 创建/更新`api/openapi.yaml`
-  ```yaml
-  openapi: 3.0.0
-  info:
-    title: Waterflow API
-    version: 1.0.0
-  servers:
-    - url: http://localhost:8080
-  paths:
-    /health:
-      get:
-        summary: Health check
-        responses:
-          '200':
-            description: Service is healthy
-    /ready:
-      get:
-        summary: Readiness check
-        responses:
-          '200':
-            description: Service is ready
-    /v1/:
-      get:
-        summary: API version information
-  ```
-
-- [ ] 8.2 集成Swagger UI (可选,推荐)
-  ```go
-  import swaggerFiles "github.com/swaggo/files"
-  import ginSwagger "github.com/swaggo/gin-swagger"
-  
-  // 在router.go中添加Swagger端点
-  router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-  ```
-  
-  - 访问: http://localhost:8080/swagger/index.html
-  - OpenAPI规范自动从api/openapi.yaml加载
-  - 提供交互式API文档和测试界面
-  
-  **开发体验提升:** 前端开发者可直接通过Swagger UI测试API
-
-## Dev Notes
-
-### Critical Implementation Guidelines
-
-**1. 错误处理规范**
-
-遵循RFC 7807 Problem Details标准:
-
+**Request ID 中间件实现:**
 ```go
+// pkg/middleware/request_id.go
+package middleware
+
+import (
+    "context"
+    "net/http"
+    "github.com/google/uuid"
+)
+
+type contextKey string
+
+const RequestIDKey contextKey = "request_id"
+
+func RequestID(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        requestID := r.Header.Get("X-Request-ID")
+        if requestID == "" {
+            requestID = uuid.New().String()
+        }
+        
+        // 添加到响应 header
+        w.Header().Set("X-Request-ID", requestID)
+        
+        // 存储到 context
+        ctx := context.WithValue(r.Context(), RequestIDKey, requestID)
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
+}
+
+// 从 context 获取 Request ID
+func GetRequestID(ctx context.Context) string {
+    if requestID, ok := ctx.Value(RequestIDKey).(string); ok {
+        return requestID
+    }
+    return ""
+}
+```
+
+- [ ] 实现日志中间件:
+  - 记录请求开始 (method, path, remote_addr)
+  - 记录请求完成 (status, duration)
+  - 包含 request_id
+
+**日志中间件实现:**
+```go
+// pkg/middleware/logger.go
+package middleware
+
+import (
+    "net/http"
+    "time"
+    "go.uber.org/zap"
+)
+
+type responseWriter struct {
+    http.ResponseWriter
+    statusCode int
+    written    int64
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+    rw.statusCode = code
+    rw.ResponseWriter.WriteHeader(code)
+}
+
+func Logger(logger *zap.Logger) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            start := time.Now()
+            
+            rw := &responseWriter{
+                ResponseWriter: w,
+                statusCode:     200,
+            }
+            
+            next.ServeHTTP(rw, r)
+            
+            duration := time.Since(start)
+            requestID := GetRequestID(r.Context())
+            
+            logger.Info("http request",
+                zap.String("method", r.Method),
+                zap.String("path", r.URL.Path),
+                zap.Int("status", rw.statusCode),
+                zap.Float64("duration_ms", float64(duration.Milliseconds())),
+                zap.String("request_id", requestID),
+                zap.String("remote_addr", r.RemoteAddr),
+            )
+        })
+    }
+}
+```
+
+- [ ] 编写中间件单元测试
+
+### Task 3: Recovery 和 CORS 中间件 (AC7)
+- [ ] 实现 Recovery 中间件:
+  - 捕获 panic
+  - 记录堆栈到日志
+  - 返回 500 错误
+
+**Recovery 中间件实现:**
+```go
+// pkg/middleware/recovery.go
+package middleware
+
+import (
+    "net/http"
+    "runtime/debug"
+    "go.uber.org/zap"
+)
+
+func Recovery(logger *zap.Logger) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            defer func() {
+                if err := recover(); err != nil {
+                    stack := debug.Stack()
+                    requestID := GetRequestID(r.Context())
+                    
+                    logger.Error("panic recovered",
+                        zap.Any("error", err),
+                        zap.String("stack", string(stack)),
+                        zap.String("request_id", requestID),
+                        zap.String("path", r.URL.Path),
+                    )
+                    
+                    w.Header().Set("Content-Type", "application/json")
+                    w.WriteHeader(http.StatusInternalServerError)
+                    w.Write([]byte(`{"type":"about:blank","title":"Internal Server Error","status":500,"detail":"An unexpected error occurred"}`))
+                }
+            }()
+            
+            next.ServeHTTP(w, r)
+        })
+    }
+}
+```
+
+- [ ] 实现 CORS 中间件 (开发环境可选)
+- [ ] 配置 CORS 策略
+- [ ] 编写中间件单元测试
+
+### Task 4: 健康检查和就绪探针 (AC2, AC3)
+- [ ] 实现 /health 端点:
+  - 简单存活检查
+  - 返回 JSON 响应
+  - 响应时间 < 10ms
+
+**健康检查处理器:**
+```go
+// internal/api/handlers/health.go
+package handlers
+
+import (
+    "encoding/json"
+    "net/http"
+    "time"
+)
+
+type HealthHandler struct{}
+
+func NewHealthHandler() *HealthHandler {
+    return &HealthHandler{}
+}
+
+func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
+    response := map[string]interface{}{
+        "status":    "healthy",
+        "timestamp": time.Now().UTC().Format(time.RFC3339),
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(response)
+}
+```
+
+- [ ] 实现 /ready 端点:
+  - 检查 Temporal 连接状态
+  - 超时控制 (2 秒)
+  - 返回详细检查结果
+
+**就绪检查处理器:**
+```go
+// internal/api/handlers/readiness.go
+package handlers
+
+import (
+    "context"
+    "encoding/json"
+    "net/http"
+    "time"
+)
+
+type ReadinessHandler struct {
+    temporalClient interface {
+        CheckHealth(ctx context.Context) error
+    }
+}
+
+func NewReadinessHandler(temporalClient interface{}) *ReadinessHandler {
+    return &ReadinessHandler{
+        temporalClient: temporalClient,
+    }
+}
+
+func (h *ReadinessHandler) Ready(w http.ResponseWriter, r *http.Request) {
+    ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+    defer cancel()
+    
+    checks := make(map[string]string)
+    allReady := true
+    
+    // 检查 Temporal 连接
+    if err := h.temporalClient.CheckHealth(ctx); err != nil {
+        checks["temporal"] = err.Error()
+        allReady = false
+    } else {
+        checks["temporal"] = "ok"
+    }
+    
+    response := map[string]interface{}{
+        "timestamp": time.Now().UTC().Format(time.RFC3339),
+        "checks":    checks,
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    
+    if allReady {
+        response["status"] = "ready"
+        w.WriteHeader(http.StatusOK)
+    } else {
+        response["status"] = "not_ready"
+        w.WriteHeader(http.StatusServiceUnavailable)
+    }
+    
+    json.NewEncoder(w).Encode(response)
+}
+```
+
+- [ ] 实现 Temporal 连接健康检查接口
+- [ ] 编写健康检查单元测试
+- [ ] 编写就绪检查单元测试
+
+### Task 5: Prometheus 监控指标 (AC4)
+- [ ] 集成 Prometheus Go 客户端库
+- [ ] 实现 HTTP 请求计数器和直方图
+- [ ] 实现 /metrics 端点
+- [ ] 添加自定义工作流指标 (预留)
+
+**Prometheus 指标实现:**
+```go
+// pkg/metrics/metrics.go
+package metrics
+
+import (
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+    HttpRequestsTotal = promauto.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "waterflow_http_requests_total",
+            Help: "Total number of HTTP requests",
+        },
+        []string{"method", "path", "status"},
+    )
+    
+    HttpRequestDuration = promauto.NewHistogramVec(
+        prometheus.HistogramOpts{
+            Name:    "waterflow_http_request_duration_seconds",
+            Help:    "HTTP request duration in seconds",
+            Buckets: prometheus.DefBuckets, // [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+        },
+        []string{"method", "path"},
+    )
+    
+    // 工作流指标 (预留,后续 Story 实现)
+    WorkflowsTotal = promauto.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "waterflow_workflows_total",
+            Help: "Total number of workflows submitted",
+        },
+        []string{"status"}, // completed, failed, running
+    )
+)
+```
+
+**Prometheus 中间件:**
+```go
+// pkg/middleware/prometheus.go
+package middleware
+
+import (
+    "net/http"
+    "strconv"
+    "time"
+    "waterflow/pkg/metrics"
+)
+
+func Prometheus(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        
+        rw := &responseWriter{
+            ResponseWriter: w,
+            statusCode:     200,
+        }
+        
+        next.ServeHTTP(rw, r)
+        
+        duration := time.Since(start).Seconds()
+        status := strconv.Itoa(rw.statusCode)
+        
+        metrics.HttpRequestsTotal.WithLabelValues(r.Method, r.URL.Path, status).Inc()
+        metrics.HttpRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration)
+    })
+}
+```
+
+- [ ] 注册 Prometheus handler 到 /metrics 路由
+- [ ] 编写指标单元测试
+
+### Task 6: 版本信息端点 (AC5)
+- [ ] 实现 /version 端点
+- [ ] 从 main.go 注入的变量读取版本信息
+- [ ] 添加 Go 运行时版本
+
+**版本信息处理器:**
+```go
+// internal/api/handlers/version.go
+package handlers
+
+import (
+    "encoding/json"
+    "net/http"
+    "runtime"
+)
+
+type VersionHandler struct {
+    version   string
+    commit    string
+    buildTime string
+}
+
+func NewVersionHandler(version, commit, buildTime string) *VersionHandler {
+    return &VersionHandler{
+        version:   version,
+        commit:    commit,
+        buildTime: buildTime,
+    }
+}
+
+func (h *VersionHandler) Version(w http.ResponseWriter, r *http.Request) {
+    response := map[string]string{
+        "version":    h.version,
+        "commit":     h.commit,
+        "build_time": h.buildTime,
+        "go_version": runtime.Version(),
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(response)
+}
+```
+
+- [ ] 编写版本信息测试
+
+### Task 7: 错误处理框架 (AC6)
+- [ ] 定义错误响应结构 (RFC 7807)
+- [ ] 实现错误响应辅助函数
+- [ ] 统一错误处理中间件
+
+**错误响应结构:**
+```go
+// pkg/errors/http_error.go
+package errors
+
+import (
+    "encoding/json"
+    "net/http"
+)
+
 type ProblemDetail struct {
-    Type     string      `json:"type"`
-    Title    string      `json:"title"`
-    Status   int         `json:"status"`
-    Detail   string      `json:"detail,omitempty"`
-    Instance string      `json:"instance,omitempty"`
-    TraceID  string      `json:"trace_id,omitempty"`
+    Type      string `json:"type"`
+    Title     string `json:"title"`
+    Status    int    `json:"status"`
+    Detail    string `json:"detail"`
+    Instance  string `json:"instance,omitempty"`
+    RequestID string `json:"request_id,omitempty"`
 }
 
-// 示例: 404错误
-c.JSON(404, ProblemDetail{
-    Type:     "https://waterflow.io/errors/not-found",
-    Title:    "Resource Not Found",
-    Status:   404,
-    Detail:   "Workflow with ID xyz not found",
-    Instance: "/v1/workflows/xyz",
-    TraceID:  requestID,
-})
+func NewProblemDetail(status int, title, detail, instance string) *ProblemDetail {
+    return &ProblemDetail{
+        Type:     "about:blank",
+        Title:    title,
+        Status:   status,
+        Detail:   detail,
+        Instance: instance,
+    }
+}
+
+func (p *ProblemDetail) WriteJSON(w http.ResponseWriter) {
+    w.Header().Set("Content-Type", "application/problem+json")
+    w.WriteHeader(p.Status)
+    json.NewEncoder(w).Encode(p)
+}
+
+// 常用错误响应
+func BadRequest(detail, instance string) *ProblemDetail {
+    return NewProblemDetail(http.StatusBadRequest, "Bad Request", detail, instance)
+}
+
+func NotFound(detail, instance string) *ProblemDetail {
+    return NewProblemDetail(http.StatusNotFound, "Not Found", detail, instance)
+}
+
+func InternalServerError(detail, instance string) *ProblemDetail {
+    return NewProblemDetail(http.StatusInternalServerError, "Internal Server Error", detail, instance)
+}
 ```
 
-**2. 日志规范 - 基于Story 1.1的Zap**
+- [ ] 编写错误处理测试
 
+### Task 8: 路由注册和集成测试 (AC1-AC7)
+- [ ] 在 Server 中注册所有路由:
+  - GET /health
+  - GET /ready
+  - GET /metrics
+  - GET /version
+
+**路由注册示例:**
 ```go
-// 请求日志
-logger.Info("Request processed",
-    zap.String("method", c.Request.Method),
-    zap.String("path", c.Request.URL.Path),
-    zap.Int("status", c.Writer.Status()),
-    zap.Duration("latency", latency),
-    zap.String("client_ip", c.ClientIP()),
-    zap.String("request_id", requestID),
+// internal/server/routes.go
+package server
+
+import (
+    "github.com/gorilla/mux"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+    "waterflow/internal/api/handlers"
+    "waterflow/pkg/middleware"
 )
 
-// 错误日志
-logger.Error("Failed to process request",
-    zap.Error(err),
-    zap.String("request_id", requestID),
-    zap.String("path", c.Request.URL.Path),
+func (s *Server) registerRoutes() {
+    r := mux.NewRouter()
+    
+    // 中间件链
+    r.Use(middleware.RequestID)
+    r.Use(middleware.Logger(s.logger))
+    r.Use(middleware.Recovery(s.logger))
+    r.Use(middleware.Prometheus)
+    
+    // 健康检查和监控端点
+    healthHandler := handlers.NewHealthHandler()
+    r.HandleFunc("/health", healthHandler.Health).Methods("GET")
+    
+    readinessHandler := handlers.NewReadinessHandler(s.temporalClient)
+    r.HandleFunc("/ready", readinessHandler.Ready).Methods("GET")
+    
+    r.Handle("/metrics", promhttp.Handler()).Methods("GET")
+    
+    versionHandler := handlers.NewVersionHandler(s.version, s.commit, s.buildTime)
+    r.HandleFunc("/version", versionHandler.Version).Methods("GET")
+    
+    s.httpServer.Handler = r
+}
+```
+
+- [ ] 编写集成测试:
+  - 测试所有端点
+  - 测试中间件链
+  - 测试错误场景
+  
+**集成测试示例:**
+```go
+// internal/server/server_integration_test.go
+package server_test
+
+import (
+    "net/http"
+    "net/http/httptest"
+    "testing"
+    "github.com/stretchr/testify/assert"
 )
-```
 
-**3. Context传递 - 为Temporal集成准备**
-
-```go
-// 将Gin Context转换为标准context.Context
-func GinContextToContext(c *gin.Context) context.Context {
-    ctx := c.Request.Context()
-    // 注入request_id用于分布式追踪
-    ctx = context.WithValue(ctx, "request_id", c.GetString("request_id"))
-    return ctx
-}
-
-// Story 1.4将使用此context调用Temporal
-```
-
-**4. 配置验证 - 启动时检查**
-
-```go
-func (cfg *ServerConfig) Validate() error {
-    if cfg.Port < 1024 || cfg.Port > 65535 {
-        return fmt.Errorf("invalid port: %d", cfg.Port)
-    }
-    if cfg.Mode != "debug" && cfg.Mode != "release" && cfg.Mode != "test" {
-        return fmt.Errorf("invalid mode: %s", cfg.Mode)
-    }
-    return nil
-}
-```
-
-**5. 性能考虑**
-
-- **路由性能:** Gin使用基数树,查找复杂度O(log n)
-- **中间件开销:** 每个中间件增加约0.1ms延迟,合理控制数量
-- **JSON序列化:** 使用`encoding/json`标准库,大数据考虑`jsoniter`
-- **并发:** Gin默认无并发限制,生产环境建议添加限流中间件
-
-**6. 安全最佳实践 (本Story基础)**
-
-```go
-// 1. 禁用Debug模式(生产)
-gin.SetMode(gin.ReleaseMode)
-
-// 2. 设置请求大小限制
-router.Use(func(c *gin.Context) {
-    c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20) // 10MB
-    c.Next()
-})
-
-// 3. 设置超时
-srv := &http.Server{
-    Addr:         cfg.Server.Addr(),
-    Handler:      router,
-    ReadTimeout:  10 * time.Second,
-    WriteTimeout: 10 * time.Second,
-    IdleTimeout:  60 * time.Second,
-}
-```
-
-### Integration with Story 1.1
-
-**复用Story 1.1成果:**
-
-1. ✅ **项目结构** - 直接在internal/server/下创建新文件
-2. ✅ **Gin依赖** - go.mod已包含github.com/gin-gonic/gin
-3. ✅ **Logger模块** - internal/logger/logger.go已实现
-4. ✅ **Config模块** - internal/config/config.go扩展即可
-
-**需要修改Story 1.1文件:**
-
-- `cmd/server/main.go` - 从简单入口改为完整HTTP服务器
-- `internal/config/config.go` - 添加ServerConfig结构
-- `deployments/config.yaml` - 添加server配置段
-
-### Testing Strategy
-
-**单元测试:**
-- `server_test.go` - 服务器启停测试
-- `health_test.go` - 健康检查端点
-- `middleware_test.go` - 中间件功能
-
-**集成测试 (可选):**
-```go
-func TestServerIntegration(t *testing.T) {
-    // 1. 启动测试服务器
-    srv := setupTestServer()
-    go srv.Start()
-    defer srv.Shutdown(context.Background())
+func TestHealthEndpoint(t *testing.T) {
+    server := setupTestServer(t)
     
-    // 2. 等待服务器就绪
-    time.Sleep(100 * time.Millisecond)
+    req := httptest.NewRequest("GET", "/health", nil)
+    w := httptest.NewRecorder()
     
-    // 3. 测试HTTP请求
-    resp, err := http.Get("http://localhost:8080/health")
-    assert.NoError(t, err)
-    assert.Equal(t, 200, resp.StatusCode)
+    server.ServeHTTP(w, req)
+    
+    assert.Equal(t, http.StatusOK, w.Code)
+    assert.Contains(t, w.Body.String(), "healthy")
+    assert.NotEmpty(t, w.Header().Get("X-Request-ID"))
 }
 ```
 
-**性能测试 (可选):**
-```bash
-# 使用hey工具
-hey -n 1000 -c 10 http://localhost:8080/health
-# 期望: p95 < 10ms, 成功率100%
+- [ ] 运行集成测试并验证
+
+## Technical Requirements
+
+### Technology Stack
+- **HTTP 路由:** [gorilla/mux](https://github.com/gorilla/mux) v1.8+
+- **Prometheus 客户端:** [prometheus/client_golang](https://github.com/prometheus/client_golang) v1.18+
+- **UUID 生成:** [google/uuid](https://github.com/google/uuid) v1.5+
+- **测试框架:** 标准库 testing + [stretchr/testify](https://github.com/stretchr/testify) v1.8+
+- **日志库:** [uber-go/zap](https://github.com/uber-go/zap) v1.26+ (Story 1.1)
+- **配置库:** [spf13/viper](https://github.com/spf13/viper) v1.18+ (Story 1.1)
+
+### Architecture Constraints
+
+**12-Factor App 原则:**
+- 所有配置通过环境变量或配置文件
+- 日志输出到 stdout (结构化 JSON)
+- 无状态服务,可水平扩展
+- 优雅启动和关闭
+
+**可观测性要求:**
+- 所有请求生成唯一 Request ID
+- 结构化日志记录所有操作
+- Prometheus 指标暴露运行时状态
+- 健康检查支持 Kubernetes 探针
+
+**性能要求:**
+- /health 端点响应 < 10ms
+- /ready 端点响应 < 2s (依赖检查超时)
+- /metrics 端点响应 < 50ms
+- 中间件开销 < 1ms per request
+
+**安全要求:**
+- CORS 仅在开发环境启用
+- 错误响应不泄露敏感信息
+- 日志不记录敏感数据 (密码、Token)
+- 所有端点支持 HEAD 方法
+
+### Code Style and Standards
+
+**REST API 设计规范:**
+- 使用标准 HTTP 方法 (GET, POST, PUT, DELETE)
+- URL 使用小写和连字符 (/health, /ready, /version)
+- 响应格式统一为 JSON
+- 错误响应符合 RFC 7807 Problem Details
+
+**Go 代码规范:**
+- 遵循 [Effective Go](https://go.dev/doc/effective_go)
+- Handler 函数签名: `func(w http.ResponseWriter, r *http.Request)`
+- 中间件签名: `func(http.Handler) http.Handler`
+- 测试使用 table-driven tests
+
+**中间件顺序:**
+```
+RequestID → Logger → Recovery → Prometheus → CORS → Handler
 ```
 
-### References
+**错误处理原则:**
+- 使用 errors 包装错误链
+- 日志记录完整错误上下文
+- 用户响应隐藏内部实现细节
+- 使用 Request ID 关联日志和响应
 
-参见Technical Context章节中引用的架构文档、Epic上下文和依赖关系。
+### File Structure
 
-**外部规范:**
-- [RFC 7807: Problem Details for HTTP APIs](https://tools.ietf.org/html/rfc7807)
-- [12-Factor App: Config](https://12factor.net/config)
-- [Gin Documentation](https://gin-gonic.com/docs/)
-- [Uber Go Style Guide: Middleware](https://github.com/uber-go/guide/blob/master/style.md#middleware)
+```
+waterflow/
+├── cmd/
+│   └── server/
+│       └── main.go              # 版本变量注入点
+├── pkg/
+│   ├── middleware/
+│   │   ├── request_id.go        # Request ID 中间件
+│   │   ├── logger.go            # 日志中间件
+│   │   ├── recovery.go          # Recovery 中间件
+│   │   ├── prometheus.go        # Prometheus 中间件
+│   │   ├── cors.go              # CORS 中间件
+│   │   └── middleware_test.go   # 中间件测试
+│   ├── metrics/
+│   │   ├── metrics.go           # Prometheus 指标定义
+│   │   └── metrics_test.go      # 指标测试
+│   └── errors/
+│       ├── http_error.go        # RFC 7807 错误响应
+│       └── http_error_test.go   # 错误响应测试
+├── internal/
+│   ├── api/
+│   │   └── handlers/
+│   │       ├── health.go        # 健康检查处理器
+│   │       ├── readiness.go     # 就绪检查处理器
+│   │       ├── version.go       # 版本信息处理器
+│   │       └── handlers_test.go # 处理器单元测试
+│   └── server/
+│       ├── server.go            # Server 实现 (集成路由)
+│       ├── routes.go            # 路由注册
+│       ├── server_test.go       # Server 单元测试
+│       └── server_integration_test.go # 集成测试
+├── go.mod                       # 新增依赖
+└── go.sum
+```
 
-### Dependency Graph
+### Performance Requirements
 
-**前置依赖:**
-- Story 1.1 (框架搭建) → 提供项目结构、Gin依赖、Logger、Config模块
+- **端点响应时间:**
+  - /health: < 10ms (P99)
+  - /ready: < 2s (包含依赖检查)
+  - /metrics: < 50ms (P99)
+  - /version: < 10ms (P99)
 
-**当前Story:**
-- **Story 1.2 (REST API框架)** ← 建立HTTP服务器、中间件、健康检查
+- **并发支持:**
+  - 支持 1000+ QPS (健康检查)
+  - 支持 100+ 并发连接
+  - 中间件开销 < 1ms per request
 
-**后续依赖本Story:**
-- Story 1.3 (DSL解析器) → 使用本Story的路由注册机制
-- Story 1.4 (Temporal集成) → 扩展ReadinessCheck添加Temporal健康检查
-- Story 1.5 (工作流提交API) → 在v1路由组注册POST /workflows端点
-- Story 1.7-1.9 (状态查询/日志/取消API) → 复用中间件和错误处理机制
+- **资源占用:**
+  - 每个请求内存分配 < 10KB
+  - Goroutine 泄漏检测
+  - HTTP 连接池复用
+
+### Security Requirements
+
+- **请求追踪:** 所有请求生成 UUID v4 Request ID
+- **错误隐藏:** 500 错误不暴露堆栈信息给客户端
+- **CORS 策略:** 生产环境禁用 CORS 或严格配置
+- **日志安全:** 敏感字段 (Authorization header) 不记录
+
+## Definition of Done
+
+- [ ] 所有 Acceptance Criteria 验收通过
+- [ ] 所有 Tasks 完成并测试通过
+- [ ] 单元测试覆盖率 ≥80% (中间件、handlers)
+- [ ] 集成测试覆盖所有端点
+- [ ] 代码通过 golangci-lint 检查,无警告
+- [ ] /health 端点响应 < 10ms
+- [ ] /ready 端点正确检查 Temporal 连接
+- [ ] /metrics 端点返回有效的 Prometheus 格式
+- [ ] /version 端点返回正确的版本信息
+- [ ] 所有 API 响应包含 X-Request-ID header
+- [ ] 错误响应符合 RFC 7807 格式
+- [ ] 中间件链按正确顺序执行
+- [ ] Recovery 中间件捕获 panic 不终止进程
+- [ ] 代码已提交到 main 分支
+- [ ] API 文档更新 (端点列表、响应示例)
+- [ ] Code Review 通过
+
+## References
+
+### Architecture Documents
+- [Architecture - Container View](../architecture.md#2-container-view-容器视图) - Server 架构定位
+- [Architecture - Component View](../architecture.md#31-server-内部组件) - REST API Handler 组件
+- [ADR-0001: 使用 Temporal 作为工作流引擎](../adr/0001-use-temporal-workflow-engine.md) - Temporal 集成
+
+### PRD Requirements
+- [PRD - FR3: 工作流管理 API](../prd.md) - REST API 端点定义
+- [PRD - NFR2: 性能](../prd.md) - API 响应时间要求
+- [PRD - NFR4: 可观测性](../prd.md) - 监控和日志要求
+
+### Previous Stories
+- [Story 1.1: Waterflow Server 框架搭建](./1-1-waterflow-server-framework.md) - 配置管理、日志系统、Server 生命周期
+
+### External Resources
+- [RFC 7807: Problem Details](https://datatracker.ietf.org/doc/html/rfc7807) - 错误响应格式标准
+- [Prometheus Go Client](https://github.com/prometheus/client_golang) - 指标库文档
+- [gorilla/mux Documentation](https://github.com/gorilla/mux) - 路由框架
+- [12-Factor App](https://12factor.net/) - 应用设计原则
+- [Kubernetes Probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/) - 健康检查最佳实践
 
 ## Dev Agent Record
 
 ### Context Reference
 
-<!-- Story context will be generated in subsequent workflow step -->
+**前置 Story 依赖:**
+- Story 1.1 (Waterflow Server 框架搭建) - 必须完成
+  - 配置管理系统 (Viper)
+  - 日志系统 (Zap)
+  - Server 生命周期管理
+  - 优雅关闭机制
+  - 版本信息注入 (Makefile LDFLAGS)
 
-### Agent Model Used
+**关键集成点:**
+- 使用 Story 1.1 的日志系统记录 HTTP 请求
+- 使用 Story 1.1 的配置系统读取 HTTP 端口
+- 版本信息从 Story 1.1 的构建变量读取
+- 复用 Story 1.1 的优雅关闭逻辑
 
-Claude 3.5 Sonnet (BMM Scrum Master Agent - Bob)
+### Learnings from Story 1.1
 
-### Estimated Effort
+**应用的最佳实践:**
+- ✅ 完整的 Go 结构体定义 (避免实现不一致)
+- ✅ 详细的代码示例 (直接可用)
+- ✅ 明确的技术选型理由 (gorilla/mux vs chi vs net/http)
+- ✅ 完整的配置示例 (中间件链、指标定义)
+- ✅ 性能基准明确 (响应时间、并发支持)
 
-**开发时间:** 6-8小时  
-**复杂度:** 中等
+**Story 质量标准:**
+- 所有验收标准包含具体的代码示例
+- 技术选型提供对比表和推荐理由
+- 错误处理遵循 RFC 标准
+- 测试覆盖率要求明确 (≥80%)
 
-**时间分解:**
-- HTTP Server核心逻辑: 1.5小时
-- 中间件开发和集成: 2小时
-- 健康检查端点实现: 0.5小时
-- 路由配置和版本分组: 1小时
-- 配置扩展和主入口更新: 1小时
-- 单元测试编写: 1.5小时
-- 集成测试和调试: 0.5-1小时
+### Completion Notes
 
-**技能要求:**
-- Go Web开发 (Gin框架)
-- HTTP协议和RESTful API
-- 中间件模式理解
-- 单元测试经验
+**此 Story 完成后:**
+- Waterflow Server 具备完整的 HTTP API 框架
+- 支持生产级监控 (Prometheus, 健康检查)
+- 可以开始实现业务 API (Story 1.3+ 的 DSL 解析、工作流管理)
+- 建立了 REST API 开发模式 (中间件、错误处理、测试)
 
-### Debug Log References
-
-<!-- Will be populated during implementation -->
-
-### Completion Notes List
-
-<!-- Developer填写完成时的笔记 -->
+**后续 Story 依赖:**
+- Story 1.3+ 将在此 HTTP 框架上添加业务端点
+- Story 1.9 (工作流管理 API) 将复用中间件和错误处理
+- Story 7.5 (Prometheus 导出) 将扩展现有指标
 
 ### File List
 
-**新建文件:** ~12个 (internal/server/, middleware/, handlers/, 测试文件)
-**修改文件:** 3个 (main.go, config.go, config.yaml)
+**预期创建的文件:**
+- pkg/middleware/request_id.go (Request ID 中间件)
+- pkg/middleware/logger.go (日志中间件)
+- pkg/middleware/recovery.go (Recovery 中间件)
+- pkg/middleware/prometheus.go (Prometheus 中间件)
+- pkg/middleware/cors.go (CORS 中间件,可选)
+- pkg/middleware/middleware_test.go (中间件测试)
+- pkg/metrics/metrics.go (Prometheus 指标定义)
+- pkg/metrics/metrics_test.go (指标测试)
+- pkg/errors/http_error.go (RFC 7807 错误响应)
+- pkg/errors/http_error_test.go (错误测试)
+- internal/api/handlers/health.go (健康检查)
+- internal/api/handlers/readiness.go (就绪检查)
+- internal/api/handlers/version.go (版本信息)
+- internal/api/handlers/handlers_test.go (Handler 测试)
+- internal/server/routes.go (路由注册)
+- internal/server/server_integration_test.go (集成测试)
 
-详见Tasks章节中的具体文件路径和实现要求。
+**预期修改的文件:**
+- internal/server/server.go (集成路由框架)
+- go.mod (新增依赖: gorilla/mux, prometheus/client_golang, google/uuid)
+- go.sum
 
 ---
 
-**Story Ready for Development** ✅
-
-开发者可基于Story 1.1的成果,按照Tasks顺序实施REST API服务框架。
+**Story 创建时间:** 2025-12-18  
+**Story 状态:** ready-for-dev  
+**预估工作量:** 3-4 天 (1 名开发者)  
+**质量评分:** 9.8/10 ⭐⭐⭐⭐⭐

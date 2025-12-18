@@ -1,4 +1,4 @@
-# generated: 2025-12-17
+# generated: 2025-12-18
 # project: Waterflow
 # project_key: waterflow
 # tracking_system: file-system
@@ -34,73 +34,67 @@
 # - SM typically drafts next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2025-12-17
+generated: 2025-12-18
 project: Waterflow
 project_key: waterflow
 tracking_system: file-system
 story_location: docs/sprint-artifacts
 
 development_status:
-  # Epic 1: 核心工作流引擎基础 (14 Stories)
+  # Epic 1: 核心工作流引擎基础 (10 stories)
   epic-1: in-progress
-  1-1-waterflow-server-framework: drafted
-  1-2-rest-api-service-framework: drafted
-  1-3-yaml-dsl-parser: drafted
-  1-4-temporal-sdk-integration: drafted
-  1-5-workflow-submission-api: drafted
-  1-6-basic-workflow-execution-engine: ready-for-dev
-  1-7-workflow-status-query-api: ready-for-dev
-  1-8-workflow-log-output: ready-for-dev
-  1-9-workflow-cancel-api: ready-for-dev
+  1-1-waterflow-server-framework: ready-for-dev
+  1-2-rest-api-service-framework: ready-for-dev
+  1-3-yaml-dsl-parsing-and-validation: ready-for-dev
+  1-4-expression-engine-and-variables: ready-for-dev
+  1-5-conditional-execution-and-control-flow: ready-for-dev
+  1-6-matrix-parallel-execution: ready-for-dev
+  1-7-timeout-and-retry-strategy: ready-for-dev
+  1-8-temporal-sdk-integration: ready-for-dev
+  1-9-workflow-management-api: ready-for-dev
   1-10-docker-compose-deployment: ready-for-dev
-  1-11-variable-system-implementation: ready-for-dev
-  1-12-expression-evaluation-engine: ready-for-dev
-  1-13-conditional-execution-support: ready-for-dev
-  1-14-step-output-reference: ready-for-dev
   epic-1-retrospective: optional
 
-  # Epic 2: 分布式 Agent 系统 (10 Stories)
+  # Epic 2: 分布式 Agent 系统 (10 stories)
   epic-2: backlog
-  2-1-agent-worker-basic-framework: backlog
+  2-1-agent-worker-framework: backlog
   2-2-server-group-task-queue-mapping: backlog
-  2-3-server-group-provider-interface: backlog
+  2-3-servergrouprovider-interface: backlog
   2-4-agent-registration-heartbeat: backlog
   2-5-task-distribution-to-agent: backlog
-  2-6-parallel-multi-server-tasks: backlog
+  2-6-parallel-multi-server-execution: backlog
   2-7-agent-health-monitoring: backlog
   2-8-simple-load-balancing: backlog
   2-9-agent-docker-image: backlog
   2-10-agent-configuration-guide: backlog
   epic-2-retrospective: optional
 
-  # Epic 3: 核心节点插件库 (12 Stories)
+  # Epic 3: 核心节点插件库 (10 stories)
   epic-3: backlog
   3-1-node-interface-design: backlog
   3-2-shell-command-execution-node: backlog
   3-3-script-file-execution-node: backlog
-  3-4-conditional-judgment-node: backlog
-  3-5-loop-iteration-node: backlog
-  3-6-delay-wait-node: backlog
-  3-7-http-request-node: backlog
-  3-8-file-transfer-node: backlog
-  3-9-docker-command-execution-node: backlog
-  3-10-docker-compose-up-node: backlog
-  3-11-docker-compose-down-node: backlog
-  3-12-node-reference-documentation: backlog
+  3-4-sleep-delay-node: backlog
+  3-5-http-request-node: backlog
+  3-6-file-transfer-node: backlog
+  3-7-docker-exec-node: backlog
+  3-8-docker-compose-up-node: backlog
+  3-9-docker-compose-down-node: backlog
+  3-10-node-reference-documentation: backlog
   epic-3-retrospective: optional
 
-  # Epic 4: 节点扩展系统 (5 Stories)
+  # Epic 4: 节点扩展系统 (5 stories)
   epic-4: backlog
-  4-1-plugin-manager-node-registry: backlog
+  4-1-plugin-manager-noderegistry: backlog
   4-2-node-parameter-schema-validation: backlog
   4-3-node-retry-strategy-configuration: backlog
   4-4-custom-node-plugin-development-example: backlog
   4-5-custom-node-development-guide: backlog
   epic-4-retrospective: optional
 
-  # Epic 5: 客户端工具和 SDK (原 Epic 6)
+  # Epic 5: 客户端工具和 SDK (8 stories)
   epic-5: backlog
-  5-1-cli-basic-framework: backlog
+  5-1-cli-framework: backlog
   5-2-cli-validate-command: backlog
   5-3-cli-submit-command: backlog
   5-4-cli-status-command: backlog
@@ -110,59 +104,59 @@ development_status:
   5-8-go-sdk-documentation: backlog
   epic-5-retrospective: optional
 
-  # Epic 6: 工作流模板库 (原 Epic 7)
+  # Epic 6: 工作流模板库 (5 stories)
   epic-6: backlog
   6-1-single-server-deployment-template: backlog
   6-2-multi-server-health-check-template: backlog
   6-3-distributed-stack-deployment-template: backlog
   6-4-template-api-endpoint: backlog
-  6-5-template-documentation-examples: backlog
+  6-5-template-documentation-and-examples: backlog
   epic-6-retrospective: optional
 
-  # Epic 7: 生产级可靠性 (原 Epic 8)
+  # Epic 7: 生产级可靠性 (7 stories)
   epic-7: backlog
   7-1-typed-error-handling: backlog
   7-2-structured-logging-system: backlog
-  7-3-performance-benchmark-testing: backlog
-  7-4-stress-testing-fault-tolerance-validation: backlog
+  7-3-performance-benchmarking: backlog
+  7-4-stress-testing-and-fault-tolerance: backlog
   7-5-prometheus-metrics-export: backlog
-  7-6-event-handler-interface: backlog
-  7-7-log-handler-interface: backlog
+  7-6-eventhandler-interface: backlog
+  7-7-loghandler-interface: backlog
   epic-7-retrospective: optional
 
-  # Epic 8: 部署和运维 (原 Epic 9)
+  # Epic 8: 部署和运维 (5 stories)
   epic-8: backlog
   8-1-waterflow-server-docker-image: backlog
-  8-2-docker-compose-enhancement: backlog
+  8-2-docker-compose-complete-stack: backlog
   8-3-configuration-management: backlog
-  8-4-health-check-readiness-probe: backlog
+  8-4-health-check-readiness-probes: backlog
   8-5-deployment-documentation: backlog
   epic-8-retrospective: optional
 
-  # Epic 9: 安全和认证 (原 Epic 10)
+  # Epic 9: 安全和认证 (5 stories)
   epic-9: backlog
   9-1-api-key-authentication: backlog
   9-2-https-tls-support: backlog
-  9-3-secret-provider-interface: backlog
+  9-3-secretprovider-interface: backlog
   9-4-audit-logging: backlog
   9-5-security-best-practices-documentation: backlog
   epic-9-retrospective: optional
 
-  # Epic 10: 完整文档体系 (原 Epic 11)
+  # Epic 10: 完整文档体系 (6 stories)
   epic-10: backlog
   10-1-quick-start-guide: backlog
-  10-2-rest-api-specification-documentation: backlog
+  10-2-rest-api-specification-openapi: backlog
   10-3-yaml-dsl-syntax-reference: backlog
   10-4-troubleshooting-guide: backlog
-  10-5-workflow-examples-library: backlog
-  10-6-architecture-concepts-documentation: backlog
+  10-5-workflow-example-library: backlog
+  10-6-core-architecture-concepts-documentation: backlog
   epic-10-retrospective: optional
 
-  # Epic 11: 质量保证和发布 (原 Epic 12)
+  # Epic 11: 质量保证和发布 (5 stories)
   epic-11: backlog
   11-1-unit-testing-framework: backlog
   11-2-integration-testing: backlog
-  11-3-acceptance-test-scenarios: backlog
+  11-3-acceptance-testing-scenarios: backlog
   11-4-github-actions-cicd: backlog
-  11-5-release-distribution: backlog
+  11-5-release-and-distribution: backlog
   epic-11-retrospective: optional
