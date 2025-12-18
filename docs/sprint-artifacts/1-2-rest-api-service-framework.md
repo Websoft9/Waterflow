@@ -1,6 +1,6 @@
 # Story 1.2: REST API 服务框架和监控
 
-Status: in-progress
+Status: done
 
 ## Story
 
