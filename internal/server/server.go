@@ -3,11 +3,12 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
+	"github.com/Websoft9/waterflow/internal/api"
 	"github.com/Websoft9/waterflow/pkg/config"
+	"github.com/Websoft9/waterflow/pkg/middleware"
 	"go.uber.org/zap"
 )
 
@@ -31,15 +32,22 @@ func New(cfg *config.Config, logger *zap.Logger) *Server {
 
 // Start starts the HTTP server.
 func (s *Server) Start() error {
-	mux := http.NewServeMux()
+	// Create router with all API endpoints
+	router := api.NewRouter(s.logger)
 
-	// Register routes
-	mux.HandleFunc("/health", s.healthHandler)
+	// Apply middleware chain: RequestID -> Logger -> Recovery -> CORS -> Router
+	handler := middleware.RequestID(
+		middleware.Logger(s.logger)(
+			middleware.Recovery(s.logger)(
+				middleware.CORS(router),
+			),
+		),
+	)
 
 	// Create HTTP server
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port),
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  s.config.Server.ReadTimeout,
 		WriteTimeout: s.config.Server.WriteTimeout,
 	}
@@ -66,15 +74,4 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// healthHandler handles the /health endpoint.
-func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{
-		"status": "healthy",
-	}); err != nil {
-		s.logger.Error("failed to encode health response", zap.Error(err))
-	}
 }

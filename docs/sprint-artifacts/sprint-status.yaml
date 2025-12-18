@@ -44,7 +44,7 @@ development_status:
   # Epic 1: 核心工作流引擎基础 (10 stories)
   epic-1: in-progress
   1-1-waterflow-server-framework: done
-  1-2-rest-api-service-framework: ready-for-dev
+  1-2-rest-api-service-framework: in-progress
   1-3-yaml-dsl-parsing-and-validation: ready-for-dev
   1-4-expression-engine-and-variables: ready-for-dev
   1-5-conditional-execution-and-control-flow: ready-for-dev

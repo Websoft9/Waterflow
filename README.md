@@ -17,7 +17,7 @@ Waterflow 是一个现代化的工作流编排系统，通过声明式 YAML DSL 
 
 ### 前置要求
 
-- Go 1.21+
+- Go 1.24+
 - Docker（可选，用于容器化部署）
 - Temporal Server（用于生产环境）
 

@@ -1,11 +1,14 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
 
 # Set working directory
 WORKDIR /build
+
+# Set Go proxy for faster downloads (especially in China)
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
 
 # Copy go mod files
 COPY go.mod go.sum ./

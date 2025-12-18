@@ -19,7 +19,7 @@ so that **后续可以在统一的架构上开发各个功能模块**。
 ## Acceptance Criteria
 
 ### AC1: 标准 Go 项目结构
-**Given** Go 1.21+ 开发环境已配置  
+**Given** Go 1.24+ 开发环境已配置  
 **When** 执行项目初始化命令  
 **Then** 创建标准 Go 项目结构:
 ```
@@ -135,7 +135,7 @@ issues:
 ```
 
 **And** 创建 `.github/workflows/ci.yml` 包含:
-- Go 版本: 1.21
+- Go 版本: 1.24
 - 步骤: checkout → setup-go → lint → test → build
 - 触发条件: push, pull_request
 - 测试覆盖率报告
@@ -537,7 +537,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
   
   ## 快速开始
   ### 前置要求
-  - Go 1.21+
+  - Go 1.24+
   - Docker (可选)
   
   ### 安装
@@ -568,10 +568,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 ## Technical Requirements
 
 ### Technology Stack
-- **语言:** Go 1.21+
+- **语言:** Go 1.24+
 - **配置管理:** [spf13/viper](https://github.com/spf13/viper) v1.18+
 - **日志库:** [uber-go/zap](https://github.com/uber-go/zap) v1.26+
-  - 选择 zap 而非 Go 1.21 的 log/slog 原因:
+  - 选择 zap 而非 Go 1.24 的 log/slog 原因:
     - **性能:** zap 提供 >1M logs/sec,比 slog 快 4-10x
     - **生产验证:** Uber 等大规模生产环境验证
     - **生态成熟:** 丰富的插件和集成
@@ -686,7 +686,7 @@ waterflow/
 - [ADR-0001: 使用 Temporal 作为工作流引擎](../adr/0001-use-temporal-workflow-engine.md) - Event Sourcing 架构
 
 ### PRD Requirements
-- [PRD - AR1: 技术栈选型](../prd.md) - Go 1.21+, Viper, Zap, 容器化
+- [PRD - AR1: 技术栈选型](../prd.md) - Go 1.24+, Viper, Zap, 容器化
 - [PRD - NFR2: 性能](../prd.md) - Server 启动 < 5s, 内存 < 100MB
 
 ### External Resources
