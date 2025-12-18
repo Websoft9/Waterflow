@@ -1086,22 +1086,24 @@ steps:
 **Waterflow Server:**
 ```go
 require (
-    go.temporal.io/sdk v1.25.0        // Temporal Go SDK
-    github.com/gin-gonic/gin v1.9.0   // REST API 框架
-    github.com/spf13/viper v1.16.0    // 配置管理
-    go.uber.org/zap v1.25.0           // 结构化日志
-    gopkg.in/yaml.v3 v3.0.1           // YAML 解析
-    github.com/antonmedv/expr v1.15.0 // 表达式引擎
+    go.temporal.io/sdk v1.25.0              // Temporal Go SDK
+    github.com/gorilla/mux v1.8.1           // HTTP 路由器
+    github.com/spf13/viper v1.21.0          // 配置管理
+    go.uber.org/zap v1.27.1                 // 结构化日志
+    github.com/prometheus/client_golang v1.23.2 // Prometheus 指标
+    github.com/google/uuid v1.6.0           // UUID 生成
+    gopkg.in/yaml.v3 v3.0.1                 // YAML 解析
+    github.com/antonmedv/expr v1.15.0       // 表达式引擎
 )
 ```
 
 **Waterflow Agent:**
 ```go
 require (
-    go.temporal.io/sdk v1.25.0        // Temporal Worker SDK
-    go.uber.org/zap v1.25.0           // 日志
-    github.com/docker/docker v24.0.0  // Docker SDK
-    github.com/fsnotify/fsnotify v1.6.0 // 文件监控(热加载)
+    go.temporal.io/sdk v1.25.0          // Temporal Worker SDK
+    go.uber.org/zap v1.27.1             // 日志
+    github.com/docker/docker v24.0.0    // Docker SDK
+    github.com/fsnotify/fsnotify v1.9.0 // 文件监控(热加载)
 )
 ```
 
