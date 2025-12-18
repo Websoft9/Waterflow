@@ -146,7 +146,7 @@ Waterflow 系统由 3 个核心容器组成:
 
 #### Container 1: Waterflow Server
 
-**技术:** Go + Gin/Echo  
+**技术:** Go + gorilla/mux  
 **职责:**
 - 提供 REST API 端点
 - 解析和验证 YAML DSL
