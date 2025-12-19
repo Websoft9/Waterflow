@@ -1,0 +1,45 @@
+name: Arithmetic Expressions Test
+vars:
+  num1: 10
+  num2: 5
+  num3: 2
+
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - name: Addition
+        uses: run@v1
+        with:
+          result: ${{ vars.num1 + vars.num2 }}
+          # Expected: 15
+
+      - name: Subtraction
+        uses: run@v1
+        with:
+          result: ${{ vars.num1 - vars.num2 }}
+          # Expected: 5
+
+      - name: Multiplication
+        uses: run@v1
+        with:
+          result: ${{ vars.num1 * vars.num2 }}
+          # Expected: 50
+
+      - name: Division
+        uses: run@v1
+        with:
+          result: ${{ vars.num1 / vars.num2 }}
+          # Expected: 2
+
+      - name: Modulo
+        uses: run@v1
+        with:
+          result: ${{ vars.num1 % vars.num3 }}
+          # Expected: 0
+
+      - name: Complex Expression
+        uses: run@v1
+        with:
+          result: ${{ (vars.num1 + vars.num2) * vars.num3 }}
+          # Expected: 30

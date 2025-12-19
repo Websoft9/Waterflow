@@ -396,7 +396,7 @@ if: ${{ vars.undefined }}  # ❌ 错误: undefined variable
 ## Tasks / Subtasks
 
 ### Task 1: 表达式引擎集成 (AC2)
-- [ ] 集成 antonmedv/expr 库
+- [x] 集成 antonmedv/expr 库
 
 **expr 库安装:**
 ```bash
@@ -512,12 +512,12 @@ func (e *ExpressionError) Error() string {
 }
 ```
 
-- [ ] 实现运算符支持 (算术、比较、逻辑)
-- [ ] 实现类型检查和转换
-- [ ] 编写表达式引擎单元测试
+- [x] 实现运算符支持 (算术、比较、逻辑)
+- [x] 实现类型检查和转换
+- [x] 编写表达式引擎单元测试
 
 ### Task 2: 内置函数实现 (AC3)
-- [ ] 实现字符串函数 (len, upper, lower, trim, split, join, format)
+- [x] 实现字符串函数 (len, upper, lower, trim, split, join, format)
 
 **内置函数实现:**
 ```go
@@ -614,7 +614,7 @@ func builtinCancelled(ctx *EvalContext) bool {
 }
 ```
 
-- [ ] 使用 expr.Function() 注册函数:
+- [x] 使用 expr.Function() 注册函数:
 ```go
 program, err := expr.Compile(expression, 
     expr.Env(EvalContext{}),
@@ -624,12 +624,12 @@ program, err := expr.Compile(expression,
 )
 ```
 
-- [ ] 实现 JSON 函数 (toJSON, fromJSON)
-- [ ] 实现条件函数 (success, failure, always, cancelled)
-- [ ] 编写函数单元测试
+- [x] 实现 JSON 函数 (toJSON, fromJSON)
+- [x] 实现条件函数 (success, failure, always, cancelled)
+- [x] 编写函数单元测试
 
 ### Task 3: 上下文变量系统 (AC4)
-- [ ] 扩展 Workflow 数据结构支持 vars 字段
+- [x] 扩展 Workflow 数据结构支持 vars 字段
 
 **扩展 Workflow 结构:**
 ```go
@@ -647,7 +647,7 @@ type Workflow struct {
 }
 ```
 
-- [ ] 实现 EvalContext 构建器
+- [x] 实现 EvalContext 构建器
 
 **上下文构建器实现:**
 ```go
@@ -729,7 +729,7 @@ func (b *ContextBuilder) mergeEnv() map[string]string {
 }
 ```
 
-- [ ] 实现 Steps 输出存储和引用
+- [x] 实现 Steps 输出存储和引用
 
 **Steps 输出管理:**
 ```go
@@ -779,11 +779,11 @@ func (m *StepsOutputManager) ToContext() map[string]interface{} {
 }
 ```
 
-- [ ] 实现 Runner 信息获取 (os, arch, name, temp)
-- [ ] 编写上下文单元测试
+- [x] 实现 Runner 信息获取 (os, arch, name, temp)
+- [x] 编写上下文单元测试
 
 ### Task 4: 环境变量三级合并 (AC5)
-- [ ] 实现环境变量合并逻辑
+- [x] 实现环境变量合并逻辑
 
 **环境变量合并器:**
 ```go
@@ -848,11 +848,11 @@ func (m *EnvMerger) renderEnvValue(value string, ctx *EvalContext) (string, erro
 }
 ```
 
-- [ ] 支持环境变量中的表达式求值
-- [ ] 编写环境变量合并测试
+- [x] 支持环境变量中的表达式求值
+- [x] 编写环境变量合并测试
 
 ### Task 5: 表达式替换器 (AC6)
-- [ ] 实现表达式替换器 (识别 `${{ }}` 并求值)
+- [x] 实现表达式替换器 (识别 `${{ }}` 并求值)
 
 **表达式替换器实现:**
 ```go
@@ -965,7 +965,7 @@ func (r *ExpressionReplacer) ReplaceInArray(arr []interface{}, ctx *EvalContext)
 }
 ```
 
-- [ ] 支持类型保持 (int, bool 等)
+- [x] 支持类型保持 (int, bool 等)
 
 **类型智能推断:**
 ```go
@@ -981,11 +981,11 @@ func (r *ExpressionReplacer) EvaluateTyped(expr string, ctx *EvalContext) (inter
 }
 ```
 
-- [ ] 支持部分替换 (字符串中包含多个表达式)
-- [ ] 编写替换器单元测试
+- [x] 支持部分替换 (字符串中包含多个表达式)
+- [x] 编写替换器单元测试
 
 ### Task 6: 条件表达式求值 (AC7)
-- [ ] 实现 if 表达式求值器
+- [x] 实现 if 表达式求值器
 
 **条件求值器实现:**
 ```go
@@ -1026,12 +1026,12 @@ func (e *ConditionEvaluator) Evaluate(condition string, ctx *EvalContext) (bool,
 }
 ```
 
-- [ ] 类型检查 (if 必须返回 bool)
-- [ ] 集成到 Step/Job 执行流程
-- [ ] 编写条件求值测试
+- [x] 类型检查 (if 必须返回 bool)
+- [x] 集成到 Step/Job 执行流程
+- [x] 编写条件求值测试
 
 ### Task 7: 完整集成和测试 (AC1-AC7)
-- [ ] 集成到 Workflow 渲染流程
+- [x] 集成到 Workflow 渲染流程
 
 **Workflow 渲染器:**
 ```go
@@ -1140,8 +1140,8 @@ func (r *WorkflowRenderer) renderStep(
 }
 ```
 
-- [ ] 编写完整集成测试 (端到端)
-- [ ] 性能测试和优化
+- [x] 编写完整集成测试 (端到端)
+- [x] 性能测试和优化
 
 **性能测试:**
 ```go
@@ -1161,7 +1161,7 @@ func BenchmarkExpressionEvaluation(b *testing.B) {
 }
 ```
 
-- [ ] 添加到 REST API (POST /v1/workflows/render 端点)
+- [x] 添加到 REST API (POST /v1/workflows/render 端点)
 
 ## Technical Requirements
 
@@ -1285,26 +1285,26 @@ waterflow/
 
 ## Definition of Done
 
-- [ ] 所有 Acceptance Criteria 验收通过
-- [ ] 所有 Tasks 完成并测试通过
-- [ ] 单元测试覆盖率 ≥85% (Engine, Functions, Replacer, Condition)
-- [ ] 集成测试覆盖表达式渲染流程
-- [ ] 性能基准测试通过 (<1ms 变量引用, <10ms 复杂表达式)
-- [ ] 代码通过 golangci-lint 检查,无警告
-- [ ] antonmedv/expr 库集成正常工作
-- [ ] 支持所有算术、比较、逻辑运算符
-- [ ] 支持所有内置函数 (字符串、JSON、条件)
-- [ ] 上下文变量系统完整 (workflow, job, steps, vars, env, runner)
-- [ ] 环境变量三级合并正确 (step > job > workflow)
-- [ ] 表达式替换器支持类型保持
-- [ ] if 条件求值正常工作 (bool 类型检查)
-- [ ] 表达式错误提示友好 (原表达式、位置、建议)
-- [ ] 超时保护生效 (1 秒)
-- [ ] 沙箱安全验证通过 (无文件/网络访问)
-- [ ] REST API 端点 POST /v1/workflows/render 正常工作
-- [ ] 代码已提交到 main 分支
-- [ ] API 文档更新 (新增渲染端点)
-- [ ] Code Review 通过
+- [x] 所有 Acceptance Criteria 验收通过
+- [x] 所有 Tasks 完成并测试通过
+- [x] 单元测试覆盖率 ≥85% (Engine, Functions, Replacer, Condition)
+- [x] 集成测试覆盖表达式渲染流程
+- [x] 性能基准测试通过 (<1ms 变量引用, <10ms 复杂表达式)
+- [x] 代码通过 golangci-lint 检查,无警告
+- [x] antonmedv/expr 库集成正常工作
+- [x] 支持所有算术、比较、逻辑运算符
+- [x] 支持所有内置函数 (字符串、JSON、条件)
+- [x] 上下文变量系统完整 (workflow, job, steps, vars, env, runner)
+- [x] 环境变量三级合并正确 (step > job > workflow)
+- [x] 表达式替换器支持类型保持
+- [x] if 条件求值正常工作 (bool 类型检查)
+- [x] 表达式错误提示友好 (原表达式、位置、建议)
+- [x] 超时保护生效 (1 秒)
+- [x] 沙箱安全验证通过 (无文件/网络访问)
+- [x] REST API 端点 POST /v1/workflows/render 正常工作
+- [x] 代码已提交到 main 分支
+- [x] API 文档更新 (新增渲染端点)
+- [x] Code Review 通过
 
 ## References
 

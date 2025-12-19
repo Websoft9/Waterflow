@@ -1,0 +1,21 @@
+name: Expression Test
+vars:
+  env: production
+  version: v1.2.3
+  image: myapp
+env:
+  APP_ENV: ${{ vars.env }}
+  VERSION: ${{ vars.version }}
+jobs:
+  build:
+    name: Build Job
+    env:
+      IMAGE_TAG: ${{ format("{0}:{1}", vars.image, vars.version) }}
+    steps:
+      - name: Checkout
+        uses: checkout@v1
+      - name: Build
+        if: ${{ vars.env == 'production' }}
+        uses: run@v1
+        with:
+          command: ${{ format("build {0}", vars.image) }}

@@ -1,0 +1,29 @@
+name: CI/CD Pipeline
+on: push
+env:
+  GO_VERSION: "1.21"
+  DB_HOST: localhost
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      - uses: checkout@v1
+        with:
+          repository: https://github.com/websoft9/waterflow
+      - uses: run@v1
+        with:
+          command: go build ./...
+  test:
+    runs-on: linux-amd64
+    needs: [build]
+    steps:
+      - uses: run@v1
+        with:
+          command: go test ./...
+  deploy:
+    runs-on: linux-amd64
+    needs: [test]
+    steps:
+      - uses: run@v1
+        with:
+          command: echo "Deploying..."

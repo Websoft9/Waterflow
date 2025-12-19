@@ -1,0 +1,164 @@
+name: Medium Benchmark Workflow
+on: push
+env:
+  GO_VERSION: "1.21"
+  NODE_VERSION: "20"
+jobs:
+  lint:
+    runs-on: linux-amd64
+    timeout-minutes: 10
+    steps:
+      - uses: checkout@v1
+        with:
+          repository: https://github.com/websoft9/waterflow
+      - uses: run@v1
+        with:
+          command: golangci-lint run
+      - uses: run@v1
+        with:
+          command: npm run lint
+  
+  test-backend:
+    runs-on: linux-amd64
+    timeout-minutes: 20
+    steps:
+      - uses: checkout@v1
+        with:
+          repository: https://github.com/websoft9/waterflow
+      - uses: run@v1
+        with:
+          command: go test ./...
+      - uses: run@v1
+        with:
+          command: go test -race ./...
+      - uses: run@v1
+        with:
+          command: go test -cover ./...
+      - uses: run@v1
+        with:
+          command: go test -bench=. ./...
+      - uses: run@v1
+        with:
+          command: go vet ./...
+      - uses: run@v1
+        with:
+          command: staticcheck ./...
+      - uses: run@v1
+        with:
+          command: gosec ./...
+      - uses: run@v1
+        with:
+          command: go mod verify
+      - uses: run@v1
+        with:
+          command: go mod tidy
+  
+  test-frontend:
+    runs-on: linux-amd64
+    timeout-minutes: 15
+    steps:
+      - uses: checkout@v1
+        with:
+          repository: https://github.com/websoft9/waterflow
+      - uses: run@v1
+        with:
+          command: npm install
+      - uses: run@v1
+        with:
+          command: npm test
+      - uses: run@v1
+        with:
+          command: npm run test:coverage
+      - uses: run@v1
+        with:
+          command: npm run test:e2e
+      - uses: run@v1
+        with:
+          command: npm run test:integration
+      - uses: run@v1
+        with:
+          command: npm run test:unit
+      - uses: run@v1
+        with:
+          command: npm run build
+      - uses: run@v1
+        with:
+          command: npm run validate
+      - uses: run@v1
+        with:
+          command: npm audit
+  
+  build:
+    runs-on: linux-amd64
+    needs: [lint, test-backend, test-frontend]
+    timeout-minutes: 30
+    steps:
+      - uses: checkout@v1
+        with:
+          repository: https://github.com/websoft9/waterflow
+      - uses: run@v1
+        with:
+          command: go build -o bin/server ./cmd/server
+      - uses: run@v1
+        with:
+          command: npm run build
+      - uses: run@v1
+        with:
+          command: docker build -t waterflow:latest .
+      - uses: run@v1
+        with:
+          command: docker push waterflow:latest
+      - uses: run@v1
+        with:
+          command: docker tag waterflow:latest waterflow:dev
+      - uses: run@v1
+        with:
+          command: docker push waterflow:dev
+      - uses: run@v1
+        with:
+          command: echo "Build completed"
+      - uses: run@v1
+        with:
+          command: ls -la bin/
+      - uses: run@v1
+        with:
+          command: file bin/server
+      - uses: run@v1
+        with:
+          command: sha256sum bin/server
+  
+  integration-test:
+    runs-on: linux-amd64
+    needs: [build]
+    timeout-minutes: 40
+    steps:
+      - uses: checkout@v1
+        with:
+          repository: https://github.com/websoft9/waterflow
+      - uses: run@v1
+        with:
+          command: docker-compose up -d
+      - uses: run@v1
+        with:
+          command: sleep 10
+      - uses: run@v1
+        with:
+          command: curl http://localhost:8080/health
+      - uses: run@v1
+        with:
+          command: npm run test:integration
+      - uses: run@v1
+        with:
+          command: docker-compose logs
+      - uses: run@v1
+        with:
+          command: docker-compose down
+      - uses: run@v1
+        with:
+          command: echo "Integration tests passed"
+      - uses: run@v1
+        with:
+          command: ls -la
+      - uses: run@v1
+        with:
+          command: cat logs/test.log

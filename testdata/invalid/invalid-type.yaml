@@ -1,0 +1,9 @@
+name: Invalid Pattern
+on: push
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      - uses: invalid_node_name
+        with:
+          repository: https://github.com/websoft9/waterflow

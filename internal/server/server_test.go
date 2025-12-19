@@ -29,7 +29,7 @@ func TestServerStartAndShutdown(t *testing.T) {
 	}
 
 	// Create server
-	srv := New(cfg, logger.Log)
+	srv := New(cfg, logger.Log, "v1.0.0-test", "abc123", "2025-12-19")
 	assert.NotNil(t, srv)
 
 	// Start server in background
@@ -79,7 +79,7 @@ func TestHealthEndpoint(t *testing.T) {
 		},
 	}
 
-	srv := New(cfg, logger.Log)
+	srv := New(cfg, logger.Log, "v1.0.0-test", "abc123", "2025-12-19")
 
 	go func() {
 		if err := srv.Start(); err != nil {

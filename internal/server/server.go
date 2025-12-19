@@ -20,26 +20,41 @@ type Server struct {
 	config *config.Config
 	// logger is the structured logger instance.
 	logger *zap.Logger
+	// version is the server version.
+	version string
+	// commit is the git commit hash.
+	commit string
+	// buildTime is the build timestamp.
+	buildTime string
 }
 
 // New creates a new Server instance.
-func New(cfg *config.Config, logger *zap.Logger) *Server {
+func New(cfg *config.Config, logger *zap.Logger, version, commit, buildTime string) *Server {
 	return &Server{
-		config: cfg,
-		logger: logger,
+		config:    cfg,
+		logger:    logger,
+		version:   version,
+		commit:    commit,
+		buildTime: buildTime,
 	}
 }
 
 // Start starts the HTTP server.
 func (s *Server) Start() error {
 	// Create router with all API endpoints
-	router := api.NewRouter(s.logger)
+	router := api.NewRouter(s.logger, s.version, s.commit, s.buildTime)
 
-	// Apply middleware chain: RequestID -> Logger -> Recovery -> CORS -> Router
+	// Apply middleware chain: RequestID -> Logger -> Recovery -> Metrics -> CORS -> Version -> Router
+	// Order follows AC7: RequestID first for tracing, Logger for request logging,
+	// Recovery to catch panics, Metrics for monitoring, CORS for security, Version for info
 	handler := middleware.RequestID(
 		middleware.Logger(s.logger)(
 			middleware.Recovery(s.logger)(
-				middleware.CORS(router),
+				middleware.Metrics(
+					middleware.CORS(
+						middleware.Version(s.version)(router),
+					),
+				),
 			),
 		),
 	)

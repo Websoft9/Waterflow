@@ -1,0 +1,242 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://waterflow.dev/schema/workflow.json",
+  "title": "Waterflow Workflow Schema",
+  "description": "Schema for Waterflow YAML workflow definitions",
+  "type": "object",
+  "required": [
+    "name",
+    "on",
+    "jobs"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Workflow name",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "on": {
+      "description": "Trigger configuration",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "push",
+            "pull_request",
+            "schedule",
+            "webhook"
+          ]
+        },
+        {
+          "$ref": "#/definitions/triggerConfig"
+        }
+      ]
+    },
+    "env": {
+      "type": "object",
+      "description": "Global environment variables",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "vars": {
+      "type": "object",
+      "description": "Workflow-level variables for expressions",
+      "additionalProperties": true
+    },
+    "jobs": {
+      "type": "object",
+      "description": "Jobs to execute",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "$ref": "#/definitions/job"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "job": {
+      "type": "object",
+      "required": [
+        "runs-on",
+        "steps"
+      ],
+      "properties": {
+        "runs-on": {
+          "type": "string",
+          "description": "Task queue name (server group)",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "timeout-minutes": {
+          "type": "integer",
+          "description": "Job timeout in minutes",
+          "minimum": 1,
+          "maximum": 1440
+        },
+        "needs": {
+          "type": "array",
+          "description": "Job dependencies",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "description": "Job environment variables",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "strategy": {
+          "$ref": "#/definitions/strategy",
+          "description": "Matrix strategy for parallel execution"
+        },
+        "steps": {
+          "type": "array",
+          "description": "Steps to execute",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/step"
+          }
+        },
+        "continue-on-error": {
+          "type": "boolean",
+          "description": "Continue workflow if job fails"
+        }
+      },
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "uses"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Step name"
+        },
+        "uses": {
+          "type": "string",
+          "description": "Node to use (name@version)",
+          "pattern": "^[a-z0-9-]+@v[0-9]+$"
+        },
+        "with": {
+          "type": "object",
+          "description": "Node parameters"
+        },
+        "timeout-minutes": {
+          "type": "integer",
+          "description": "Step timeout in minutes",
+          "minimum": 1,
+          "maximum": 1440
+        },
+        "continue-on-error": {
+          "type": "boolean",
+          "description": "Continue job if step fails"
+        },
+        "if": {
+          "type": "string",
+          "description": "Conditional expression"
+        },
+        "env": {
+          "type": "object",
+          "description": "Step environment variables",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "strategy": {
+      "type": "object",
+      "required": [
+        "matrix"
+      ],
+      "properties": {
+        "matrix": {
+          "type": "object",
+          "description": "Matrix strategy for parallel execution",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {}
+          }
+        },
+        "max-parallel": {
+          "type": "integer",
+          "description": "Maximum parallel instances",
+          "minimum": 1
+        },
+        "fail-fast": {
+          "type": "boolean",
+          "description": "Cancel other instances on failure",
+          "default": true
+        },
+        "include": {
+          "type": "array",
+          "description": "Additional matrix combinations (reserved for future use)",
+          "items": {
+            "type": "object"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "Exclude matrix combinations (reserved for future use)",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "triggerConfig": {
+      "type": "object",
+      "properties": {
+        "push": {
+          "type": "object",
+          "properties": {
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "schedule": {
+          "type": "object",
+          "required": [
+            "cron"
+          ],
+          "properties": {
+            "cron": {
+              "type": "string",
+              "description": "Cron expression"
+            }
+          }
+        },
+        "webhook": {
+          "type": "object",
+          "required": [
+            "events"
+          ],
+          "properties": {
+            "events": {
+              "type": "array",
+              "description": "Webhook event types",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

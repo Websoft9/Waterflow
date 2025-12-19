@@ -16,6 +16,7 @@ coverage.html
 # Build artifacts
 bin/
 dist/
+server
 
 # Dependency directories
 vendor/

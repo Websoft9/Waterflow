@@ -1,6 +1,6 @@
 # Story 1.3: YAML DSL 解析和验证
 
-Status: ready-for-dev
+Status: completed
 
 ## Story
 
@@ -314,7 +314,7 @@ waterflow/
 ## Tasks / Subtasks
 
 ### Task 1: YAML 解析器实现 (AC1, AC2)
-- [ ] 选择 YAML 解析库:
+- [x] 选择 YAML 解析库:
   - **推荐:** [go-yaml/yaml](https://github.com/go-yaml/yaml) v3 - 官方推荐、功能全
   - 备选: [goccy/go-yaml](https://github.com/goccy/go-yaml) - 更好的错误提示
   
@@ -331,7 +331,7 @@ waterflow/
 - 文档完善,问题解决方案多
 - 后续可封装自定义错误提示
 
-- [ ] 定义 Workflow 数据结构
+- [x] 定义 Workflow 数据结构
 
 **Workflow 数据结构:**
 ```go
@@ -399,7 +399,7 @@ type WebhookTrigger struct {
 }
 ```
 
-- [ ] 实现 YAML 解析函数
+- [x] 实现 YAML 解析函数
 
 **YAML 解析实现:**
 ```go
@@ -477,11 +477,11 @@ func (p *Parser) extractLineNumbers(workflow *Workflow, node *yaml.Node) error {
 }
 ```
 
-- [ ] 实现 YAML 错误提示增强 (代码片段、建议)
-- [ ] 编写解析器单元测试 (正常 YAML、错误 YAML)
+- [x] 实现 YAML 错误提示增强 (代码片段、建议)
+- [x] 编写解析器单元测试 (正常 YAML、错误 YAML)
 
 ### Task 2: JSON Schema 验证器 (AC3)
-- [ ] 定义完整的 JSON Schema
+- [x] 定义完整的 JSON Schema
 
 **JSON Schema 定义:**
 ```json
@@ -628,7 +628,7 @@ func (p *Parser) extractLineNumbers(workflow *Workflow, node *yaml.Node) error {
 }
 ```
 
-- [ ] 集成 JSON Schema 验证库:
+- [x] 集成 JSON Schema 验证库:
   - **推荐:** [xeipuuv/gojsonschema](https://github.com/xeipuuv/gojsonschema)
   
 **JSON Schema 验证实现:**
@@ -699,12 +699,12 @@ func (v *SchemaValidator) convertSchemaErrors(errs []gojsonschema.ResultError) e
 }
 ```
 
-- [ ] 实现字段类型检查 (int, bool, string, array, map)
-- [ ] 实现字段格式检查 (正则表达式)
-- [ ] 编写 Schema 验证单元测试
+- [x] 实现字段类型检查 (int, bool, string, array, map)
+- [x] 实现字段格式检查 (正则表达式)
+- [x] 编写 Schema 验证单元测试
 
 ### Task 3: 语义验证器 (AC4)
-- [ ] 实现节点注册表 (Node Registry)
+- [x] 实现节点注册表 (Node Registry)
 
 **节点注册表实现:**
 ```go
@@ -782,8 +782,8 @@ func (r *Registry) List() []string {
 }
 ```
 
-- [ ] 实现内置节点 (checkout@v1, run@v1) - MVP 阶段
-- [ ] 实现节点参数验证
+- [x] 实现内置节点 (checkout@v1, run@v1) - MVP 阶段
+- [x] 实现节点参数验证
 
 **语义验证器实现:**
 ```go
@@ -924,12 +924,12 @@ func (v *SemanticValidator) detectCyclicDependency(workflow *Workflow) []string 
 }
 ```
 
-- [ ] 实现 Job 依赖验证 (needs)
-- [ ] 实现循环依赖检测 (DFS 算法)
-- [ ] 编写语义验证单元测试
+- [x] 实现 Job 依赖验证 (needs)
+- [x] 实现循环依赖检测 (DFS 算法)
+- [x] 编写语义验证单元测试
 
 ### Task 4: 错误收集和报告 (AC5)
-- [ ] 定义统一的错误结构
+- [x] 定义统一的错误结构
 
 **错误结构定义:**
 ```go
@@ -975,12 +975,12 @@ func (e *ValidationError) ToHTTPError() map[string]interface{} {
 }
 ```
 
-- [ ] 实现错误收集器 (收集多个错误)
-- [ ] 实现错误优先级排序 (语法 > Schema > 语义)
-- [ ] 限制错误数量 (最多 20 个)
+- [x] 实现错误收集器 (收集多个错误)
+- [x] 实现错误优先级排序 (语法 > Schema > 语义)
+- [x] 限制错误数量 (最多 20 个)
 
 ### Task 5: 完整验证流程 (AC1-AC5 集成)
-- [ ] 实现 Validator 门面模式
+- [x] 实现 Validator 门面模式
 
 **Validator 门面实现:**
 ```go
@@ -1060,7 +1060,7 @@ func (v *Validator) ValidateYAML(content []byte) (*Workflow, error) {
 }
 ```
 
-- [ ] 集成到 REST API Handler
+- [x] 集成到 REST API Handler
 
 **REST API 集成:**
 ```go
@@ -1117,12 +1117,12 @@ func (h *WorkflowHandler) ValidateWorkflow(w http.ResponseWriter, r *http.Reques
 }
 ```
 
-- [ ] 编写完整验证集成测试
-- [ ] 性能测试和优化
+- [x] 编写完整验证集成测试
+- [x] 性能测试和优化
 
 ### Task 6: JSON Schema 发布和 IDE 集成 (AC6)
-- [ ] 创建 schema/workflow-schema.json 文件
-- [ ] 编写 IDE 集成文档
+- [x] 创建 schema/workflow-schema.json 文件
+- [x] 编写 IDE 集成文档
 
 **IDE 集成文档:**
 ```markdown
@@ -1158,13 +1158,13 @@ https://waterflow.dev/schema/v1/workflow.json
 ```
 ```
 
-- [ ] 配置 schema 嵌入到二进制 (embed.FS)
-- [ ] 提供 HTTP 端点 GET /schema/workflow.json
+- [x] 配置 schema 嵌入到二进制 (embed.FS)
+- [x] 提供 HTTP 端点 GET /schema/workflow.json
 
 ### Task 7: 性能优化和测试 (AC7)
-- [ ] 实现流式解析 (大文件支持)
-- [ ] 并发验证测试
-- [ ] 性能基准测试
+- [x] 实现流式解析 (大文件支持)
+- [x] 并发验证测试
+- [x] 性能基准测试
 
 **性能基准测试:**
 ```go
@@ -1206,8 +1206,8 @@ func BenchmarkValidateLargeWorkflow(b *testing.B) {
 }
 ```
 
-- [ ] 内存占用测试
-- [ ] 并发安全测试
+- [x] 内存占用测试
+- [x] 并发安全测试
 
 ## Technical Requirements
 
@@ -1345,24 +1345,24 @@ waterflow/
 
 ## Definition of Done
 
-- [ ] 所有 Acceptance Criteria 验收通过
-- [ ] 所有 Tasks 完成并测试通过
-- [ ] 单元测试覆盖率 ≥85% (Parser, SchemaValidator, SemanticValidator)
-- [ ] 集成测试覆盖所有验证流程
-- [ ] 性能基准测试通过 (小/中/大型工作流)
-- [ ] 代码通过 golangci-lint 检查,无警告
-- [ ] JSON Schema 文件完整,支持 IDE 自动补全
-- [ ] YAML 语法错误提示友好 (行号、代码片段、建议)
-- [ ] Schema 错误包含字段路径和类型信息
-- [ ] 语义错误包含可用选项列表
-- [ ] 批量错误收集正常工作 (最多 20 个)
-- [ ] 循环依赖检测算法正确
-- [ ] 节点注册表线程安全
-- [ ] REST API 端点 POST /v1/workflows/validate 正常工作
-- [ ] IDE 集成文档完整 (VS Code, IntelliJ)
-- [ ] 代码已提交到 main 分支
-- [ ] API 文档更新 (新增验证端点)
-- [ ] Code Review 通过
+- [x] 所有 Acceptance Criteria 验收通过
+- [x] 所有 Tasks 完成并测试通过
+- [x] 单元测试覆盖率 ≥85% (Parser, SchemaValidator, SemanticValidator)
+- [x] 集成测试覆盖所有验证流程
+- [x] 性能基准测试通过 (小/中/大型工作流)
+- [x] 代码通过 golangci-lint 检查,无警告
+- [x] JSON Schema 文件完整,支持 IDE 自动补全
+- [x] YAML 语法错误提示友好 (行号、代码片段、建议)
+- [x] Schema 错误包含字段路径和类型信息
+- [x] 语义错误包含可用选项列表
+- [x] 批量错误收集正常工作 (最多 20 个)
+- [x] 循环依赖检测算法正确
+- [x] 节点注册表线程安全
+- [x] REST API 端点 POST /v1/workflows/validate 正常工作
+- [x] IDE 集成文档完整 (VS Code, IntelliJ)
+- [x] 代码已提交到 main 分支
+- [x] API 文档更新 (新增验证端点)
+- [x] Code Review 通过
 
 ## References
 

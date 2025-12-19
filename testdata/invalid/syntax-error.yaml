@@ -1,0 +1,8 @@
+name: Invalid Syntax
+on: push
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      - name Checkout  # Missing colon after 'name'
+        uses: checkout@v1

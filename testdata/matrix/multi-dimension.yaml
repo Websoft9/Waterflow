@@ -1,0 +1,18 @@
+name: matrix-multi-dimension
+on: push
+
+jobs:
+  deploy:
+    runs-on: linux-amd64
+    strategy:
+      matrix:
+        server: [web1, web2]
+        env: [prod, staging]
+      max-parallel: 2
+      fail-fast: false
+    steps:
+      - name: Deploy
+        uses: deploy@v1
+        with:
+          server: ${{ matrix.server }}
+          environment: ${{ matrix.env }}

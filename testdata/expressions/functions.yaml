@@ -1,0 +1,75 @@
+name: Built-in Functions Test
+vars:
+  app_name: MyApplication
+  version: v1.2.3
+  servers:
+    - web1
+    - web2
+    - web3
+  config:
+    host: localhost
+    port: 8080
+
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - name: String Upper
+        uses: run@v1
+        with:
+          value: ${{ upper(vars.app_name) }}
+          # Expected: MYAPPLICATION
+
+      - name: String Lower
+        uses: run@v1
+        with:
+          value: ${{ lower(vars.app_name) }}
+          # Expected: myapplication
+
+      - name: String Length
+        uses: run@v1
+        with:
+          value: ${{ len(vars.app_name) }}
+          # Expected: 13
+
+      - name: Array Length
+        uses: run@v1
+        with:
+          value: ${{ len(vars.servers) }}
+          # Expected: 3
+
+      - name: Format String
+        uses: run@v1
+        with:
+          value: ${{ format("{0} {1}", vars.app_name, vars.version) }}
+          # Expected: MyApplication v1.2.3
+
+      - name: Contains
+        uses: run@v1
+        with:
+          value: ${{ contains(vars.app_name, "App") }}
+          # Expected: true
+
+      - name: Starts With
+        uses: run@v1
+        with:
+          value: ${{ startsWith(vars.version, "v") }}
+          # Expected: true
+
+      - name: Ends With
+        uses: run@v1
+        with:
+          value: ${{ endsWith(vars.version, "3") }}
+          # Expected: true
+
+      - name: JSON Conversion
+        uses: run@v1
+        with:
+          value: ${{ toJSON(vars.config) }}
+          # Expected: {"host":"localhost","port":8080}
+
+      - name: Always Function
+        uses: run@v1
+        with:
+          value: ${{ always() }}
+          # Expected: true

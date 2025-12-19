@@ -1,0 +1,46 @@
+name: Logical Expressions Test
+vars:
+  is_production: true
+  is_staging: false
+  version: 2
+  min_version: 1
+
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - name: Logical AND - both true
+        uses: run@v1
+        with:
+          condition: ${{ vars.is_production && vars.version > vars.min_version }}
+          # Expected: true
+
+      - name: Logical AND - one false
+        uses: run@v1
+        with:
+          condition: ${{ vars.is_production && vars.is_staging }}
+          # Expected: false
+
+      - name: Logical OR - one true
+        uses: run@v1
+        with:
+          condition: ${{ vars.is_production || vars.is_staging }}
+          # Expected: true
+
+      - name: Logical OR - both false
+        uses: run@v1
+        with:
+          condition: ${{ vars.is_staging || false }}
+          # Expected: false
+
+      - name: Logical NOT
+        uses: run@v1
+        with:
+          condition: ${{ !vars.is_staging }}
+          # Expected: true
+
+      - name: Complex Logical Expression
+        uses: run@v1
+        with:
+          condition: ${{ (vars.is_production && vars.version >= 2) || vars.is_staging }}
+          # Expected: true

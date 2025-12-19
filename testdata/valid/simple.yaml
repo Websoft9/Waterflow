@@ -1,0 +1,15 @@
+name: Build and Test
+on: push
+jobs:
+  build:
+    runs-on: linux-amd64
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Code
+        uses: checkout@v1
+        with:
+          repository: https://github.com/websoft9/waterflow
+      - name: Run Tests
+        uses: run@v1
+        with:
+          command: go test ./...

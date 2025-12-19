@@ -1,0 +1,51 @@
+name: Comparison Expressions Test
+vars:
+  env: production
+  version: 2
+  flag: true
+
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - name: Equal String
+        uses: run@v1
+        with:
+          condition: ${{ vars.env == "production" }}
+          # Expected: true
+
+      - name: Not Equal
+        uses: run@v1
+        with:
+          condition: ${{ vars.env != "development" }}
+          # Expected: true
+
+      - name: Greater Than
+        uses: run@v1
+        with:
+          condition: ${{ vars.version > 1 }}
+          # Expected: true
+
+      - name: Less Than
+        uses: run@v1
+        with:
+          condition: ${{ vars.version < 10 }}
+          # Expected: true
+
+      - name: Greater or Equal
+        uses: run@v1
+        with:
+          condition: ${{ vars.version >= 2 }}
+          # Expected: true
+
+      - name: Less or Equal
+        uses: run@v1
+        with:
+          condition: ${{ vars.version <= 5 }}
+          # Expected: true
+
+      - name: Boolean Comparison
+        uses: run@v1
+        with:
+          condition: ${{ vars.flag == true }}
+          # Expected: true

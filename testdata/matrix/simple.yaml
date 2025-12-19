@@ -1,0 +1,14 @@
+name: matrix-simple
+on: push
+
+jobs:
+  deploy:
+    runs-on: linux-amd64
+    strategy:
+      matrix:
+        server: [web1, web2, web3]
+    steps:
+      - name: Deploy to Server
+        uses: deploy@v1
+        with:
+          server: ${{ matrix.server }}

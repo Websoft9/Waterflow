@@ -13,7 +13,7 @@ import (
 
 func TestNewRouter(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger)
+	router := NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
 	require.NotNil(t, router)
 
 	// Should be a mux.Router
@@ -23,7 +23,7 @@ func TestNewRouter(t *testing.T) {
 
 func TestRouterHealthEndpoint(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger)
+	router := NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -31,13 +31,13 @@ func TestRouterHealthEndpoint(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "ok")
+	assert.Contains(t, w.Body.String(), "healthy")
 	assert.Contains(t, w.Body.String(), "timestamp")
 }
 
 func TestRouterReadyEndpoint(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger)
+	router := NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
@@ -46,11 +46,13 @@ func TestRouterReadyEndpoint(t *testing.T) {
 
 	// Initially ready without Temporal
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "checks")
+	assert.Contains(t, w.Body.String(), "temporal")
 }
 
 func TestRouterVersionEndpoint(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger)
+	router := NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
 
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
 	w := httptest.NewRecorder()
@@ -64,7 +66,7 @@ func TestRouterVersionEndpoint(t *testing.T) {
 
 func TestRouterMetricsEndpoint(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger)
+	router := NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	w := httptest.NewRecorder()
@@ -78,7 +80,7 @@ func TestRouterMetricsEndpoint(t *testing.T) {
 
 func TestRouterNotFoundHandler(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger)
+	router := NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
 
 	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -94,7 +96,7 @@ func TestRouterNotFoundHandler(t *testing.T) {
 
 func TestRouterMethodNotAllowedHandler(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger)
+	router := NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
 
 	// POST to health (only GET allowed)
 	req := httptest.NewRequest(http.MethodPost, "/health", nil)

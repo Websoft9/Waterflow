@@ -68,7 +68,7 @@ func main() {
 		zap.String("log_format", cfg.Log.Format),
 	)
 
-	srv := server.New(cfg, logger.Log)
+	srv := server.New(cfg, logger.Log, Version, Commit, BuildTime)
 
 	go func() {
 		if err := srv.Start(); err != nil {

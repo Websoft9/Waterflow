@@ -388,7 +388,7 @@ test
 - [x] 测试 CI 流水线 (push 触发构建)
 
 ### Task 3: 配置管理实现 (AC3)
-- [ ] 定义配置结构体 (ServerConfig, LogConfig, TemporalConfig):
+- [x] 定义配置结构体 (ServerConfig, LogConfig, TemporalConfig):
 
 **完整配置结构体定义:**
 ```go
@@ -719,7 +719,7 @@ waterflow/
 - ✅ GitHub Actions CI配置完成
 - ✅ 代码已提交: commit 857406c on develop branch
 
-**代码审查修复内容**:
+**代码审查修复内容 (2025-12-18 首次审查)**:
 1. 修复所有errcheck警告 (16处):
    - pkg/config/config_test.go: os.Remove, tmpFile.Close, os.Setenv/Unsetenv 错误处理
    - internal/server/server.go: json.Encode 错误记录
@@ -730,6 +730,21 @@ waterflow/
    - Server 结构体字段
 3. 添加缺失README (api/, scripts/, test/已存在)
 4. 代码格式化: make fmt 应用gofmt -s
+
+**代码审查修复内容 (2025-12-19 第二次审查)**:
+1. 修复Story 1.2/1.3实现引入的所有errcheck警告 (23处):
+   - pkg/middleware/metrics_test.go: w.Write 错误处理
+   - pkg/dsl/parser.go: fmt.Sscanf 错误处理
+   - pkg/dsl/validator.go: nodeRegistry.Register 错误处理 (2处)
+   - internal/api/handlers.go: r.Body.Close, json.Encode 错误处理 (5处)
+   - 测试文件中15处错误未检查
+2. 修复所有gofmt违规 (7个文件):
+   - pkg/dsl/context_builder.go, env_merger.go, renderer.go
+   - pkg/dsl/expr_condition_test.go, expr_engine_bench_test.go, expr_engine_test.go, expr_replacer_test.go
+3. 修复gosec G304警告:
+   - pkg/dsl/schema_validator_test.go: 添加 #nosec 注释(测试文件路径硬编码安全)
+4. 更新.gitignore: 添加server二进制文件
+5. 代码质量: golangci-lint 零警告 ✅
 
 **技术亮点**:
 1. **配置管理**: Viper 支持文件+环境变量+默认值三层优先级,完整验证逻辑
@@ -765,7 +780,7 @@ feat(story-1-1): waterflow server framework
 
 ### File List
 
-**预期创建的文件:**
+**Story 1.1 核心文件 (按AC创建):**
 - cmd/server/main.go (包含版本变量: Version, Commit, BuildTime)
 - pkg/config/config.go (完整配置结构体)
 - pkg/config/config_test.go
@@ -776,9 +791,9 @@ feat(story-1-1): waterflow server framework
 - .github/workflows/ci.yml
 - Makefile (包含版本注入、coverage 目标)
 - Dockerfile (多阶段构建,支持多平台)
-- .gitignore (包含 coverage 文件)
-- .golangci.yml (完整 linter 配置)
+- .gitignore (包含 coverage 文件, server 二进制)
 - .dockerignore
+- .golangci.yml (完整 linter 配置)
 - config.example.yaml (完整环境变量注释)
 - README.md (完整章节结构)
 - docs/development.md
@@ -786,10 +801,75 @@ feat(story-1-1): waterflow server framework
 - go.mod
 - go.sum
 
+**Story 1.2 扩展文件 (REST API 框架):**
+- internal/api/router.go (路由注册)
+- internal/api/router_test.go
+- internal/api/handlers.go (健康检查、版本信息处理器)
+- pkg/middleware/logger.go (请求日志中间件)
+- pkg/middleware/logger_test.go
+- pkg/middleware/recovery.go (panic恢复中间件)
+- pkg/middleware/recovery_test.go
+- pkg/middleware/request_id.go (请求ID中间件)
+- pkg/middleware/request_id_test.go
+- pkg/middleware/cors.go (CORS中间件)
+- pkg/middleware/cors_test.go
+- pkg/middleware/version.go (版本头中间件)
+- pkg/middleware/version_test.go
+- pkg/middleware/metrics.go (Prometheus指标中间件)
+- pkg/middleware/metrics_test.go
+- pkg/metrics/metrics.go (Prometheus指标定义)
+- internal/server/server.go (更新: 集成中间件链)
+
+**Story 1.3 扩展文件 (YAML DSL 解析和验证):**
+- pkg/dsl/types.go (Workflow、Job、Step数据结构)
+- pkg/dsl/parser.go (YAML解析器)
+- pkg/dsl/parser_test.go
+- pkg/dsl/errors.go (验证错误类型)
+- pkg/dsl/schema_validator.go (Schema验证器)
+- pkg/dsl/schema_validator_test.go
+- pkg/dsl/semantic_validator.go (语义验证器)
+- pkg/dsl/semantic_validator_test.go
+- pkg/dsl/validator.go (统一验证器)
+- pkg/dsl/validator_test.go
+- pkg/dsl/validator_bench_test.go
+- pkg/node/registry.go (节点注册表)
+- pkg/node/builtin/builtin.go (内置节点: checkout, run)
+- internal/api/handlers.go (新增: ValidateWorkflow处理器)
+- internal/api/workflow_test.go
+- testdata/valid/*.yaml (有效YAML示例)
+- testdata/invalid/*.yaml (无效YAML示例)
+- testdata/benchmark/*.yaml (性能测试数据)
+- docs/schema-integration.md
+
+**Story 1.4 扩展文件 (表达式引擎和变量):**
+- pkg/dsl/expr_engine.go (表达式引擎)
+- pkg/dsl/expr_engine_test.go
+- pkg/dsl/expr_engine_bench_test.go
+- pkg/dsl/expr_errors.go (表达式错误)
+- pkg/dsl/expr_functions.go (内置函数)
+- pkg/dsl/expr_functions_test.go
+- pkg/dsl/expr_context.go (表达式上下文)
+- pkg/dsl/expr_context_test.go
+- pkg/dsl/expr_replacer.go (变量替换器)
+- pkg/dsl/expr_replacer_test.go
+- pkg/dsl/expr_condition.go (条件表达式)
+- pkg/dsl/expr_condition_test.go
+- pkg/dsl/expr_steps_output.go (steps输出访问)
+- pkg/dsl/context_builder.go (上下文构建器)
+- pkg/dsl/context_builder_test.go
+- pkg/dsl/env_merger.go (环境变量合并)
+- pkg/dsl/env_merger_test.go
+- pkg/dsl/renderer.go (工作流渲染器)
+- pkg/dsl/renderer_test.go
+- pkg/dsl/expr_test_helpers.go (测试辅助函数)
+- internal/api/handlers.go (新增: RenderWorkflow处理器)
+- testdata/expressions/*.yaml (表达式测试数据)
+
 **构建产物 (gitignore):**
 - bin/server
 - coverage.out
 - coverage.html
+- server (根目录二进制,已添加到.gitignore)
 
 ---
 
