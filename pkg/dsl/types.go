@@ -47,14 +47,23 @@ type Step struct {
 	Name            string                 `yaml:"name,omitempty" json:"name,omitempty"`
 	Uses            string                 `yaml:"uses" json:"uses"` // node@version
 	With            map[string]interface{} `yaml:"with,omitempty" json:"with,omitempty"`
-	TimeoutMinutes  int                    `yaml:"timeout-minutes,omitempty" json:"timeout_minutes,omitempty"`
+	TimeoutMinutes  int                    `yaml:"timeout-minutes,omitempty" json:"timeout_minutes,omitempty"` // Story 1.7: Step超时
 	ContinueOnError bool                   `yaml:"continue-on-error,omitempty" json:"continue_on_error,omitempty"`
-	If              string                 `yaml:"if,omitempty" json:"if,omitempty"` // Story 1.5
+	If              string                 `yaml:"if,omitempty" json:"if,omitempty"`                               // Story 1.5
+	RetryStrategy   *RetryStrategy         `yaml:"retry-strategy,omitempty" json:"retry_strategy,omitempty"`       // Story 1.7: 重试策略
 	Env             map[string]string      `yaml:"env,omitempty" json:"env,omitempty"`
 
 	// 内部字段
 	Index   int `yaml:"-" json:"index"`
 	LineNum int `yaml:"-" json:"-"`
+}
+
+// RetryStrategy 重试策略 (Story 1.7)
+type RetryStrategy struct {
+	MaxAttempts        int     `yaml:"max-attempts,omitempty" json:"max_attempts,omitempty"`                   // 最大尝试次数 (默认 3)
+	InitialInterval    string  `yaml:"initial-interval,omitempty" json:"initial_interval,omitempty"`           // 首次重试间隔 (默认 1s)
+	BackoffCoefficient float64 `yaml:"backoff-coefficient,omitempty" json:"backoff_coefficient,omitempty"`     // 退避系数 (默认 2.0)
+	MaxInterval        string  `yaml:"max-interval,omitempty" json:"max_interval,omitempty"`                   // 最大间隔 (默认 60s)
 }
 
 // TriggerConfig 触发器配置 (简化版)

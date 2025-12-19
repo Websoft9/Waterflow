@@ -137,12 +137,12 @@ func TestMatrixExecutor_FailFast(t *testing.T) {
 		executeFunc: func(ctx context.Context, step *dsl.Step, evalCtx *dsl.EvalContext) (*dsl.StepResult, error) {
 			executionCount++
 			version := evalCtx.Matrix["version"].(int)
-			
+
 			// 版本 2 失败
 			if version == 2 {
 				return &dsl.StepResult{Status: "completed", Conclusion: "failure"}, nil
 			}
-			
+
 			time.Sleep(100 * time.Millisecond)
 			return &dsl.StepResult{Status: "completed", Conclusion: "success"}, nil
 		},
@@ -157,7 +157,7 @@ func TestMatrixExecutor_FailFast(t *testing.T) {
 	failureCount := 0
 	cancelledCount := 0
 	successCount := 0
-	
+
 	for _, result := range results {
 		switch result.Conclusion {
 		case "failure":
@@ -196,12 +196,12 @@ func TestMatrixExecutor_NoFailFast(t *testing.T) {
 	stepExecutor := &MockStepExecutor{
 		executeFunc: func(ctx context.Context, step *dsl.Step, evalCtx *dsl.EvalContext) (*dsl.StepResult, error) {
 			version := evalCtx.Matrix["version"].(int)
-			
+
 			// 版本 2 和 4 失败
 			if version == 2 || version == 4 {
 				return &dsl.StepResult{Status: "completed", Conclusion: "failure"}, nil
 			}
-			
+
 			return &dsl.StepResult{Status: "completed", Conclusion: "success"}, nil
 		},
 	}
@@ -213,10 +213,10 @@ func TestMatrixExecutor_NoFailFast(t *testing.T) {
 
 	// 所有实例都应该执行完成
 	assert.Equal(t, 5, len(results))
-	
+
 	failureCount := 0
 	successCount := 0
-	
+
 	for _, result := range results {
 		assert.NotEqual(t, "cancelled", result.Conclusion, "No instances should be cancelled")
 		if result.Conclusion == "failure" {
@@ -257,7 +257,7 @@ func TestMatrixExecutor_ContextCancellation(t *testing.T) {
 				return &dsl.StepResult{Status: "cancelled", Conclusion: "cancelled"}, ctx.Err()
 			default:
 			}
-			
+
 			// 模拟长时间执行
 			select {
 			case <-ctx.Done():

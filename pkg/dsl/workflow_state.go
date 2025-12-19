@@ -17,11 +17,11 @@ type JobState struct {
 	Status     string // pending, running, completed, skipped, failed
 	Conclusion string // success, failure, skipped, cancelled
 	Outputs    map[string]string
-	
+
 	// Matrix related (Story 1.6)
 	IsMatrix        bool
 	MatrixInstances []*MatrixInstanceState
-	
+
 	// Non-Matrix job
 	StepStates []*StepState
 }
@@ -41,10 +41,18 @@ type StepState struct {
 	StepID      string
 	Name        string
 	Status      string // pending, running, completed, skipped
-	Conclusion  string // success, failure, skipped
+	Conclusion  string // success, failure, skipped, timeout (Story 1.7)
 	Outputs     map[string]string
 	Error       string
 	ContinuedOn bool
+
+	// Retry and timeout information (Story 1.7)
+	Attempts        int    // 尝试次数 (包括首次执行)
+	TimeoutMinutes  int    // 超时配置 (分钟)
+	DurationSeconds int    // 实际执行时长 (秒)
+	IsTimeout       bool   // 是否超时
+	ErrorType       string // 错误类型 (用于重试决策)
+	Retryable       bool   // 是否可重试
 }
 
 // NewWorkflowState creates a new workflow state tracker
