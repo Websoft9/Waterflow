@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Planning-blue)]()
 
-中文文档 | [English](README.md)
+[English](README.md) | 中文文档
 
 **声明式工作流编排引擎 - 让 YAML 驱动企业级分布式任务执行**
 
