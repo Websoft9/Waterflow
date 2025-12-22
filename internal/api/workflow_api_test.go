@@ -11,6 +11,7 @@ import (
 	"github.com/Websoft9/waterflow/pkg/logger"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -23,7 +24,7 @@ func setupTestRouter(t *testing.T, withTemporal bool) (http.Handler, *temporal.C
 	if withTemporal {
 		cfg := &config.TemporalConfig{
 			Host:          "localhost:7233",
-			Namespace:     "test",
+			Namespace:     "default", // Use default namespace
 			TaskQueue:     "test-queue",
 			MaxRetries:    1,
 			RetryInterval: 0,
@@ -76,7 +77,10 @@ jobs:
 	router.ServeHTTP(w, req)
 
 	// Verify response
-	assert.Equal(t, http.StatusCreated, w.Code)
+	if w.Code != http.StatusCreated {
+		t.Logf("Response body: %s", w.Body.String())
+	}
+	require.Equal(t, http.StatusCreated, w.Code, "Response body: %s", w.Body.String())
 
 	var resp SubmitWorkflowResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)

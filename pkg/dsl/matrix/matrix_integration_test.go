@@ -13,7 +13,7 @@ import (
 // TestMatrixIntegration_SimpleWorkflow 测试简单Matrix工作流解析和展开
 func TestMatrixIntegration_SimpleWorkflow(t *testing.T) {
 	// 读取测试文件
-	data, err := os.ReadFile("../../testdata/matrix/simple.yaml")
+	data, err := os.ReadFile("../../../testdata/matrix/simple.yaml")
 	assert.NoError(t, err)
 
 	var workflow dsl.Workflow
@@ -47,7 +47,7 @@ func TestMatrixIntegration_SimpleWorkflow(t *testing.T) {
 
 // TestMatrixIntegration_MultiDimensionWorkflow 测试多维Matrix工作流
 func TestMatrixIntegration_MultiDimensionWorkflow(t *testing.T) {
-	data, err := os.ReadFile("../../testdata/matrix/multi-dimension.yaml")
+	data, err := os.ReadFile("../../../testdata/matrix/multi-dimension.yaml")
 	assert.NoError(t, err)
 
 	var workflow dsl.Workflow
@@ -80,7 +80,7 @@ func TestMatrixIntegration_MultiDimensionWorkflow(t *testing.T) {
 
 // TestMatrixIntegration_MaxParallelWorkflow 测试max-parallel配置
 func TestMatrixIntegration_MaxParallelWorkflow(t *testing.T) {
-	data, err := os.ReadFile("../../testdata/matrix/max-parallel.yaml")
+	data, err := os.ReadFile("../../../testdata/matrix/max-parallel.yaml")
 	assert.NoError(t, err)
 
 	var workflow dsl.Workflow
