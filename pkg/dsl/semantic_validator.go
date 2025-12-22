@@ -3,7 +3,7 @@ package dsl
 import (
 	"fmt"
 
-	"github.com/Websoft9/waterflow/pkg/node"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 )
 
 // SemanticValidator 语义验证器

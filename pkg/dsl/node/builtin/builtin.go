@@ -1,6 +1,6 @@
 package builtin
 
-import "github.com/Websoft9/waterflow/pkg/node"
+import "github.com/Websoft9/waterflow/pkg/dsl/node"
 
 type CheckoutNode struct{}
 

@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
-	"github.com/Websoft9/waterflow/pkg/node"
-	"github.com/Websoft9/waterflow/pkg/node/builtin"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
+	"github.com/Websoft9/waterflow/pkg/dsl/node/builtin"
 	"go.uber.org/zap"
 )
 

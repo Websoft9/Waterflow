@@ -3,7 +3,7 @@ package builtin
 import (
 	"testing"
 
-	"github.com/Websoft9/waterflow/pkg/node"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
-	"github.com/Websoft9/waterflow/pkg/matrix"
+	"github.com/Websoft9/waterflow/pkg/dsl/matrix"
 	"go.temporal.io/sdk/workflow"
 )
 
