@@ -132,10 +132,13 @@ func TestMatrixExecutor_FailFast(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
+	var executionCountMu sync.Mutex
 	executionCount := 0
 	stepExecutor := &MockStepExecutor{
 		executeFunc: func(ctx context.Context, step *dsl.Step, evalCtx *dsl.EvalContext) (*dsl.StepResult, error) {
+			executionCountMu.Lock()
 			executionCount++
+			executionCountMu.Unlock()
 			version := evalCtx.Matrix["version"].(int)
 
 			// 版本 2 失败

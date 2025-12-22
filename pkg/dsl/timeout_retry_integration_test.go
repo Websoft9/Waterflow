@@ -348,11 +348,11 @@ jobs:
 
 	tmpFile, err := os.CreateTemp("", "workflow-*.yaml")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	_, err = tmpFile.WriteString(testYAML)
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	content, err := os.ReadFile(tmpFile.Name())
 	require.NoError(t, err)

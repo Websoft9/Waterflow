@@ -125,10 +125,14 @@ func (p *ResolvedRetryPolicy) CalculateNextRetryInterval(attemptNumber int) time
 
 // ToTemporalRetryPolicy converts to Temporal SDK RetryPolicy
 func (p *ResolvedRetryPolicy) ToTemporalRetryPolicy() *temporal.RetryPolicy {
+	maxAttempts := p.MaxAttempts
+	if maxAttempts > 2147483647 {
+		maxAttempts = 2147483647 // int32 max value
+	}
 	return &temporal.RetryPolicy{
 		InitialInterval:    p.InitialInterval,
 		BackoffCoefficient: p.BackoffCoefficient,
 		MaximumInterval:    p.MaxInterval,
-		MaximumAttempts:    int32(p.MaxAttempts),
+		MaximumAttempts:    int32(maxAttempts), //nolint:gosec // checked above
 	}
 }

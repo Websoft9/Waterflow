@@ -35,6 +35,8 @@ type StepStatus struct {
 }
 
 // ParseJobsFromHistory extracts job and step status from workflow event history
+//
+//nolint:gocyclo // Complex event type handling is necessary for history parsing
 func (p *HistoryParser) ParseJobsFromHistory(events []*history.HistoryEvent) []JobStatus {
 	jobs := make([]JobStatus, 0)
 	currentSteps := make(map[string]*StepStatus)        // activity_id -> StepStatus

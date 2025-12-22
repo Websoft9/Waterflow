@@ -508,6 +508,8 @@ func parseIntParam(s string, defaultVal int) int {
 }
 
 // GetWorkflowLogs handles GET /v1/workflows/{id}/logs endpoint (AC4)
+//
+//nolint:gocyclo // Log filtering and processing requires multiple steps
 func (h *WorkflowHandlers) GetWorkflowLogs(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	workflowID := vars["id"]
