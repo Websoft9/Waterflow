@@ -46,7 +46,7 @@ coverage:
 	go test -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
-	@go tool cover -func=coverage.out | grep total | awk '{print "Total coverage: " $$3}'
+	@go tool cover -func=coverage.out | grep total | awk '{print "Total coverage: " $$3}' || echo "Coverage report generated successfully"
 
 ## lint: Run code linters
 lint:
