@@ -23,7 +23,7 @@ jobs:
         go-version: '1.24'
 
     - name: Cache Go modules
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cache/go-build
@@ -36,7 +36,7 @@ jobs:
       run: go mod download
 
     - name: Run linters
-      uses: golangci/golangci-lint-action@v3
+      uses: golangci/golangci-lint-action@v6
       with:
         version: latest
         args: --timeout=5m
@@ -48,7 +48,7 @@ jobs:
       run: make coverage
 
     - name: Upload coverage to artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: coverage.html
@@ -57,7 +57,7 @@ jobs:
       run: make build
 
     - name: Upload binary to artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: server-binary
         path: bin/server
