@@ -150,4 +150,3 @@ func TestTimeoutResolver_ValidateTimeout(t *testing.T) {
 		})
 	}
 }
-

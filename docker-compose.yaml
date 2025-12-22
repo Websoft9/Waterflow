@@ -1,0 +1,101 @@
+services:
+  # PostgreSQL Database (Temporal dependency)
+  postgresql:
+    image: postgres:15-alpine
+    container_name: waterflow-postgresql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-temporal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-temporal}
+      POSTGRES_DB: ${POSTGRES_DB:-temporal}
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - waterflow-network
+    restart: unless-stopped
+
+  # Temporal Server
+  temporal:
+    image: temporalio/auto-setup:1.22.0
+    container_name: waterflow-temporal
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-temporal}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-temporal}
+      POSTGRES_SEEDS: postgresql
+      SKIP_DB_CREATE: "false"
+      SKIP_DEFAULT_NAMESPACE_CREATION: "false"
+      ENABLE_ES: "false"
+      LOG_LEVEL: ${TEMPORAL_LOG_LEVEL:-info}
+    ports:
+      - "7233:7233" # gRPC
+      - "8233:8233" # HTTP
+    healthcheck:
+      test: [ "CMD", "sh", "-c", "nc -z $(hostname -i) 7233" ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - waterflow-network
+    restart: unless-stopped
+
+  # Temporal Web UI
+  temporal-ui:
+    image: temporalio/ui:2.21.0
+    container_name: waterflow-temporal-ui
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "${TEMPORAL_UI_PORT:-8088}:8080"
+    networks:
+      - waterflow-network
+    restart: unless-stopped
+
+  # Waterflow Server
+  waterflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: waterflow-server
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      WATERFLOW_SERVER_HOST: ${WATERFLOW_SERVER_HOST:-0.0.0.0}
+      WATERFLOW_SERVER_PORT: ${WATERFLOW_SERVER_PORT:-8080}
+      WATERFLOW_TEMPORAL_HOST: ${WATERFLOW_TEMPORAL_HOST:-temporal:7233}
+      WATERFLOW_TEMPORAL_NAMESPACE: ${WATERFLOW_TEMPORAL_NAMESPACE:-default}
+      WATERFLOW_TEMPORAL_TASKQUEUE: ${WATERFLOW_TEMPORAL_TASKQUEUE:-waterflow-server}
+      WATERFLOW_LOG_LEVEL: ${WATERFLOW_LOG_LEVEL:-info}
+      WATERFLOW_LOG_FORMAT: ${WATERFLOW_LOG_FORMAT:-json}
+    ports:
+      - "${WATERFLOW_SERVER_PORT:-8080}:8080"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - waterflow-network
+    restart: unless-stopped
+
+volumes:
+  postgresql-data:
+    driver: local
+
+networks:
+  waterflow-network:
+    driver: bridge

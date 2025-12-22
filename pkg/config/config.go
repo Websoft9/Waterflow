@@ -53,6 +53,12 @@ type TemporalConfig struct {
 	Namespace string `mapstructure:"namespace"`
 	// TaskQueue is the default task queue name.
 	TaskQueue string `mapstructure:"task_queue"`
+	// ConnectionTimeout is the timeout for connecting to Temporal server.
+	ConnectionTimeout time.Duration `mapstructure:"connection_timeout"`
+	// MaxRetries is the maximum number of connection retry attempts.
+	MaxRetries int `mapstructure:"max_retries"`
+	// RetryInterval is the interval between connection retry attempts.
+	RetryInterval time.Duration `mapstructure:"retry_interval"`
 }
 
 // Load loads configuration from file and environment variables.
@@ -113,6 +119,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("temporal.host", "localhost:7233")
 	v.SetDefault("temporal.namespace", "waterflow")
 	v.SetDefault("temporal.task_queue", "waterflow-server")
+	v.SetDefault("temporal.connection_timeout", "10s")
+	v.SetDefault("temporal.max_retries", 10)
+	v.SetDefault("temporal.retry_interval", "5s")
 }
 
 // Validate validates the configuration.
@@ -151,6 +160,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Temporal.TaskQueue == "" {
 		return fmt.Errorf("temporal.task_queue is required")
+	}
+	if c.Temporal.ConnectionTimeout < time.Second {
+		return fmt.Errorf("temporal.connection_timeout must be at least 1s, got %v", c.Temporal.ConnectionTimeout)
+	}
+	if c.Temporal.MaxRetries < 1 {
+		return fmt.Errorf("temporal.max_retries must be at least 1, got %d", c.Temporal.MaxRetries)
+	}
+	if c.Temporal.RetryInterval < time.Second {
+		return fmt.Errorf("temporal.retry_interval must be at least 1s, got %v", c.Temporal.RetryInterval)
 	}
 
 	return nil

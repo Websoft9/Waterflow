@@ -28,9 +28,20 @@ func (v *SemanticValidator) Validate(workflow *Workflow, content []byte) error {
 		matrixErrors := v.validateMatrix(jobName, job)
 		errors = append(errors, matrixErrors...)
 
+		// Story 1.7: 验证Job超时配置
+		jobTimeoutErrors := v.validateJobTimeout(jobName, job)
+		errors = append(errors, jobTimeoutErrors...)
+
 		for stepIdx, step := range job.Steps {
 			stepErrors := v.validateStep(jobName, stepIdx, step)
 			errors = append(errors, stepErrors...)
+
+			// Story 1.7: 验证Step超时和重试配置
+			timeoutErrors := v.validateStepTimeout(jobName, stepIdx, step)
+			errors = append(errors, timeoutErrors...)
+
+			retryErrors := v.validateRetryStrategy(jobName, stepIdx, step)
+			errors = append(errors, retryErrors...)
 		}
 	}
 
@@ -267,4 +278,151 @@ func getJobNames(jobs map[string]*Job) []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// validateJobTimeout 验证Job超时配置 (Story 1.7)
+func (v *SemanticValidator) validateJobTimeout(jobName string, job *Job) []FieldError {
+	var errors []FieldError
+
+	if job.TimeoutMinutes < 0 {
+		errors = append(errors, FieldError{
+			Line:       job.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.timeout-minutes", jobName),
+			Error:      "timeout cannot be negative",
+			Value:      fmt.Sprintf("%d", job.TimeoutMinutes),
+			Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
+			Suggestion: "Use a positive timeout value or remove to use default (360 minutes)",
+		})
+	}
+
+	if job.TimeoutMinutes > 1440 {
+		errors = append(errors, FieldError{
+			Line:       job.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.timeout-minutes", jobName),
+			Error:      "timeout exceeds maximum 1440 minutes (24 hours)",
+			Value:      fmt.Sprintf("%d", job.TimeoutMinutes),
+			Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
+			Suggestion: "Use timeout <= 1440 minutes (24 hours)",
+		})
+	}
+
+	return errors
+}
+
+// validateStepTimeout 验证Step超时配置 (Story 1.7)
+func (v *SemanticValidator) validateStepTimeout(jobName string, stepIdx int, step *Step) []FieldError {
+	var errors []FieldError
+
+	if step.TimeoutMinutes < 0 {
+		errors = append(errors, FieldError{
+			Line:       step.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.steps[%d].timeout-minutes", jobName, stepIdx),
+			Error:      "timeout cannot be negative",
+			Value:      fmt.Sprintf("%d", step.TimeoutMinutes),
+			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+			Suggestion: "Use a positive timeout value or remove to inherit from job",
+		})
+	}
+
+	if step.TimeoutMinutes > 1440 {
+		errors = append(errors, FieldError{
+			Line:       step.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.steps[%d].timeout-minutes", jobName, stepIdx),
+			Error:      "timeout exceeds maximum 1440 minutes (24 hours)",
+			Value:      fmt.Sprintf("%d", step.TimeoutMinutes),
+			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+			Suggestion: "Use timeout <= 1440 minutes (24 hours)",
+		})
+	}
+
+	return errors
+}
+
+// validateRetryStrategy 验证重试策略配置 (Story 1.7)
+func (v *SemanticValidator) validateRetryStrategy(jobName string, stepIdx int, step *Step) []FieldError {
+	var errors []FieldError
+
+	if step.RetryStrategy == nil {
+		return errors
+	}
+
+	strategy := step.RetryStrategy
+
+	// 验证max-attempts
+	if strategy.MaxAttempts < 1 {
+		errors = append(errors, FieldError{
+			Line:       step.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.max-attempts", jobName, stepIdx),
+			Error:      "max-attempts must be at least 1",
+			Value:      fmt.Sprintf("%d", strategy.MaxAttempts),
+			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+			Suggestion: "Use max-attempts >= 1 or remove to use default (3)",
+		})
+	}
+
+	if strategy.MaxAttempts > 10 {
+		errors = append(errors, FieldError{
+			Line:       step.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.max-attempts", jobName, stepIdx),
+			Error:      "max-attempts exceeds maximum 10",
+			Value:      fmt.Sprintf("%d", strategy.MaxAttempts),
+			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+			Suggestion: "Use max-attempts <= 10",
+		})
+	}
+
+	// 验证backoff-coefficient
+	if strategy.BackoffCoefficient < 1.0 {
+		errors = append(errors, FieldError{
+			Line:       step.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.backoff-coefficient", jobName, stepIdx),
+			Error:      "backoff-coefficient must be at least 1.0",
+			Value:      fmt.Sprintf("%.1f", strategy.BackoffCoefficient),
+			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+			Suggestion: "Use backoff-coefficient >= 1.0 or remove to use default (2.0)",
+		})
+	}
+
+	if strategy.BackoffCoefficient > 10.0 {
+		errors = append(errors, FieldError{
+			Line:       step.LineNum,
+			Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.backoff-coefficient", jobName, stepIdx),
+			Error:      "backoff-coefficient exceeds maximum 10.0",
+			Value:      fmt.Sprintf("%.1f", strategy.BackoffCoefficient),
+			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+			Suggestion: "Use backoff-coefficient <= 10.0",
+		})
+	}
+
+	// 验证initial-interval格式
+	if strategy.InitialInterval != "" {
+		resolver := NewRetryPolicyResolver()
+		if _, err := resolver.Resolve(strategy); err != nil {
+			errors = append(errors, FieldError{
+				Line:       step.LineNum,
+				Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.initial-interval", jobName, stepIdx),
+				Error:      fmt.Sprintf("invalid duration format: %v", err),
+				Value:      strategy.InitialInterval,
+				Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+				Suggestion: "Use valid duration format like '1s', '5m', '1h'",
+			})
+		}
+	}
+
+	// 验证max-interval格式
+	if strategy.MaxInterval != "" {
+		resolver := NewRetryPolicyResolver()
+		if _, err := resolver.Resolve(strategy); err != nil {
+			errors = append(errors, FieldError{
+				Line:       step.LineNum,
+				Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.max-interval", jobName, stepIdx),
+				Error:      fmt.Sprintf("invalid duration format: %v", err),
+				Value:      strategy.MaxInterval,
+				Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+				Suggestion: "Use valid duration format like '1s', '5m', '1h'",
+			})
+		}
+	}
+
+	return errors
 }

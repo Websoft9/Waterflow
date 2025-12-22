@@ -1,6 +1,6 @@
 # Story 1.6: Matrix 并行执行策略
 
-Status: ready-for-dev
+Status: ✅ **done**
 
 ## Story
 

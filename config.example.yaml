@@ -44,7 +44,7 @@ temporal:
   
   # Temporal Namespace
   # 环境变量: WATERFLOW_TEMPORAL_NAMESPACE
-  namespace: "waterflow"
+  namespace: "default"
   
   # Task Queue 名称
   # 环境变量: WATERFLOW_TEMPORAL_TASK_QUEUE

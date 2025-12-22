@@ -15,7 +15,7 @@ import (
 
 func setupRouter() http.Handler {
 	logger, _ := zap.NewDevelopment()
-	return api.NewRouter(logger, "v1.0.0", "abc123", "2025-12-19")
+	return api.NewRouter(logger, nil, "v1.0.0", "abc123", "2025-12-19")
 }
 
 func TestValidateWorkflow_Success(t *testing.T) {

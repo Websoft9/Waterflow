@@ -25,8 +25,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Runtime stage
 FROM alpine:3.19
 
-# Install ca-certificates for HTTPS support
-RUN apk add --no-cache ca-certificates tzdata
+# Install ca-certificates and curl for HTTPS support and health checks
+RUN apk add --no-cache ca-certificates tzdata curl
 
 # Create non-root user
 RUN addgroup -g 1000 waterflow && \
@@ -51,8 +51,8 @@ USER waterflow
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -q --spider http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Run server
 ENTRYPOINT ["/app/server"]

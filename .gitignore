@@ -10,8 +10,8 @@
 
 # Output of the go coverage tool
 *.out
-coverage.out
-coverage.html
+coverage*.out
+coverage*.html
 
 # Build artifacts
 bin/

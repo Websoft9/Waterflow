@@ -3,6 +3,8 @@ package dsl
 import (
 	"fmt"
 	"time"
+
+	temporal "go.temporal.io/sdk/temporal"
 )
 
 // RetryPolicyResolver 重试策略解析器
@@ -119,4 +121,14 @@ func (p *ResolvedRetryPolicy) CalculateNextRetryInterval(attemptNumber int) time
 	}
 
 	return result
+}
+
+// ToTemporalRetryPolicy converts to Temporal SDK RetryPolicy
+func (p *ResolvedRetryPolicy) ToTemporalRetryPolicy() *temporal.RetryPolicy {
+	return &temporal.RetryPolicy{
+		InitialInterval:    p.InitialInterval,
+		BackoffCoefficient: p.BackoffCoefficient,
+		MaximumInterval:    p.MaxInterval,
+		MaximumAttempts:    int32(p.MaxAttempts),
+	}
 }

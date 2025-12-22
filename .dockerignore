@@ -6,8 +6,8 @@ test
 .gitignore
 .golangci.yml
 bin
-coverage.out
-coverage.html
+coverage*.out
+coverage*.html
 .vscode
 .idea
 *.swp

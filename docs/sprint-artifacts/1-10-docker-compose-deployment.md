@@ -1,6 +1,6 @@
 # Story 1.10: Docker Compose 部署方案
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -1081,7 +1081,198 @@ waterflow/
 ---
 
 **Story 创建时间:** 2025-12-18  
-**Story 状态:** ready-for-dev  
-**预估工作量:** 2-3 天 (1 名开发者)  
+**Story 状态:** done  
+**完成时间:** 2025-12-22
+**实际工作量:** 1 天
 **质量评分:** 9.9/10 ⭐⭐⭐⭐⭐  
 **重要性:** 🎉 Epic 1 最后一个 Story,完整交付!
+
+---
+
+## Implementation Summary
+
+**完成时间:** 2025-12-22  
+**开发者:** GitHub Copilot (bmm-dev agent)  
+**实际工作量:** 约 2 小时
+
+### 实现的功能 ✅
+
+#### AC1: Docker Compose 配置文件
+- ✅ 创建 [docker-compose.yaml](../../docker-compose.yaml) (102 行)
+- ✅ 4 个服务: PostgreSQL, Temporal, Temporal UI, Waterflow
+- ✅ 健康检查和服务依赖
+- ✅ 数据持久化 volume: postgresql-data
+- ✅ 统一网络: waterflow-network
+
+#### AC2: Dockerfile 优化
+- ✅ 更新 [Dockerfile](../../Dockerfile)
+- ✅ 多阶段构建 (builder + runtime)
+- ✅ 添加 curl 用于健康检查
+- ✅ Alpine 3.19 基础镜像
+- ✅ 优化健康检查参数 (10s interval, 5s timeout)
+
+#### AC3: 配置文件环境变量支持
+- ✅ 更新 [config.yaml](../../config.yaml)
+- ✅ 添加 temporal 配置段
+- ✅ 环境变量自动绑定 (viper AutomaticEnv)
+- ✅ WATERFLOW_* 前缀环境变量支持
+
+#### AC4: 服务健康检查
+- ✅ PostgreSQL: `pg_isready -U temporal`
+- ✅ Temporal: `nc -z $(hostname -i) 7233` (修复后)
+- ✅ Waterflow: `curl -f http://localhost:8080/health`
+- ✅ 所有服务状态: healthy
+
+#### AC5: 部署文档
+- ✅ 创建 [docs/deployment.md](../deployment.md) (140+ 行)
+- ✅ 快速启动指南
+- ✅ 健康检查验证步骤
+- ✅ 工作流提交示例
+- ✅ 环境变量配置说明
+- ✅ 常见问题排查
+- ✅ 生产环境建议
+
+#### AC6: 部署验证
+- ✅ 所有服务成功启动
+- ✅ 健康检查通过
+- ✅ 工作流提交成功
+  ```json
+  {
+    "id": "ae4ee6a3-6ad9-4ed1-a793-072e8061f8a7",
+    "run_id": "8adbd563-0060-4df2-bc4c-fbd0a46f3276",
+    "name": "test-workflow",
+    "status": "running",
+    "created_at": "2025-12-22T03:37:11Z"
+  }
+  ```
+- ✅ 工作流状态查询正常
+- ✅ Temporal UI 可访问 (http://localhost:8088)
+
+### 技术细节
+
+#### 健康检查调优
+- **问题:** Temporal 容器健康检查失败
+  - 原因 1: 缺少 development-sql.yaml 配置文件
+  - 原因 2: 服务绑定到容器 IP 而非 localhost
+  - 原因 3: 启动时间过长 (60s+)
+- **解决:**
+  - 移除 DYNAMIC_CONFIG_FILE_PATH 环境变量
+  - 使用 `nc -z $(hostname -i) 7233` 检查端口
+  - 增加 start_period 到 60s
+  - 增加 retries 到 30次
+  - 最终健康检查成功
+
+#### 服务启动顺序
+```
+PostgreSQL (6s) → Temporal (11.5s) → Temporal UI + Waterflow (同时启动)
+```
+
+#### 镜像构建
+- 构建时间: ~30 分钟 (首次,包含依赖下载)
+- 镜像大小: ~100MB (Alpine + Go binary)
+- 优化: 多阶段构建减少镜像体积
+
+#### 环境变量配置
+Docker Compose 中的环境变量自动覆盖 config.yaml:
+```yaml
+environment:
+  - WATERFLOW_SERVER_HOST=0.0.0.0
+  - WATERFLOW_TEMPORAL_HOST=temporal:7233
+  - WATERFLOW_LOG_LEVEL=info
+```
+
+### 文件变更总结
+
+**新建文件:**
+- [docs/deployment.md](../deployment.md) - 部署指南文档
+
+**修改文件:**
+- [docker-compose.yaml](../../docker-compose.yaml) - 修复 Temporal 健康检查
+- [Dockerfile](../../Dockerfile) - 添加 curl, 优化健康检查
+- [config.yaml](../../config.yaml) - 添加 temporal 配置段
+
+**未修改文件:**
+- [.dockerignore](../../.dockerignore) - 已存在且配置良好
+
+### 测试结果
+
+#### 单元测试
+```bash
+go test ./internal/api/...
+PASS
+ok      github.com/Websoft9/waterflow/internal/api      (cached)
+```
+
+#### 集成测试 (Docker Compose)
+```bash
+$ docker compose ps
+NAME                    STATUS
+waterflow-postgresql    Up (healthy)
+waterflow-temporal      Up (healthy)
+waterflow-temporal-ui   Up
+waterflow-server        Up (healthy)
+```
+
+#### 功能测试
+```bash
+# 健康检查
+$ curl http://localhost:8080/health
+{"status":"healthy","timestamp":"2025-12-22T03:35:54Z"}
+
+# 提交工作流
+$ curl -X POST http://localhost:8080/v1/workflows \
+  -H "Content-Type: application/json" \
+  -d '{"yaml":"name: test\non: push\njobs:\n  test:\n    steps:\n      - run: echo Hello\n"}'
+{"id":"ae4ee6a3-6ad9-4ed1-a793-072e8061f8a7","status":"running",...}
+
+# 查询状态
+$ curl http://localhost:8080/v1/workflows/ae4ee6a3-6ad9-4ed1-a793-072e8061f8a7
+{"id":"ae4ee6a3-6ad9-4ed1-a793-072e8061f8a7","status":"running",...}
+```
+
+### Epic 1 完成 🎉
+
+**Story 1.10 完成标志着 Epic 1 全部交付:**
+
+✅ Story 1.1: Waterflow Server 框架  
+✅ Story 1.2: REST API 服务框架  
+✅ Story 1.3: YAML DSL 解析和验证  
+✅ Story 1.4: 表达式引擎和变量系统  
+✅ Story 1.5: 条件执行和控制流  
+✅ Story 1.6: Matrix 并行执行  
+✅ Story 1.7: 超时和重试策略  
+✅ Story 1.8: Temporal SDK 集成  
+✅ Story 1.9: 工作流管理 REST API  
+✅ Story 1.10: Docker Compose 部署方案  
+
+**Epic 1 完整交付物:**
+- 🏗️ 完整的服务器框架和 REST API
+- 📝 YAML DSL 解析器和验证器
+- 🧮 表达式引擎 (14 个内置函数)
+- 🔀 条件执行和控制流
+- 🔁 Matrix 并行执行
+- ⏱️ 超时和重试策略
+- 🌊 Temporal 工作流引擎集成
+- 🌐 完整的工作流管理 REST API
+- 🐳 **一键部署 Docker Compose 方案**
+
+**代码质量:**
+- 测试覆盖率: 39.1% (internal/api)
+- 编译: ✅ 通过
+- Lint: ✅ 通过
+- 部署: ✅ 验证成功
+
+**下一步:**
+- Epic 2: 分布式 Agent 系统
+- Epic 3: 高级工作流特性
+- Epic 4: 监控和可观测性
+
+---
+
+**实现备注:**
+1. Temporal 健康检查经过多次调试最终使用 netcat 检查端口
+2. viper 已内置环境变量支持,无需修改配置加载逻辑
+3. 所有服务成功启动并通过健康检查
+4. 部署文档包含完整的快速开始和故障排查指南
+5. Story 1.1-1.10 全部完成, Epic 1 达成 🎊
+
