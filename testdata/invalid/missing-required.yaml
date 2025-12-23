@@ -2,8 +2,5 @@ name: Missing Required Fields
 on: push
 jobs:
   build:
-    # Missing runs-on
-    steps:
-      - uses: checkout@v1
-        with:
-          repository: https://github.com/websoft9/waterflow
+    # Missing required field: steps
+    runs-on: linux-amd64

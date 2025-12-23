@@ -68,16 +68,16 @@ func TestSchemaValidator_Validate_MissingRequired(t *testing.T) {
 	assert.Equal(t, "schema_validation_error", validationErr.Type)
 	assert.NotEmpty(t, validationErr.Errors)
 
-	// Check that error mentions missing field
-	hasRunsOnError := false
+	// Note: runs-on is now optional, so we check for steps being required instead
+	hasStepsError := false
 	for _, fieldErr := range validationErr.Errors {
-		if fieldErr.Field == "jobs.build.runs-on" || fieldErr.Field == "jobs.build" {
-			hasRunsOnError = true
+		if fieldErr.Field == "jobs.build.steps" || fieldErr.Field == "jobs.build" {
+			hasStepsError = true
 			assert.Contains(t, fieldErr.Error, "required")
 			break
 		}
 	}
-	assert.True(t, hasRunsOnError, "should have error about missing runs-on field")
+	assert.True(t, hasStepsError, "should have error about missing required field (steps)")
 }
 
 func TestSchemaValidator_Validate_InvalidType(t *testing.T) {

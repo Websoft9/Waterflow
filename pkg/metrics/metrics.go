@@ -25,4 +25,13 @@ var (
 		},
 		[]string{"method", "path"},
 	)
+
+	// WorkflowsTotal is the total number of workflows submitted
+	WorkflowsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "waterflow_workflows_total",
+			Help: "Total number of workflows submitted",
+		},
+		[]string{"status"}, // completed, failed, running
+	)
 )

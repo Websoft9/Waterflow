@@ -194,3 +194,26 @@ func TestParser_InternalFields(t *testing.T) {
 		assert.Equal(t, i, step.Index, "step index should be sequential")
 	}
 }
+
+func TestParser_RunsOnDefault(t *testing.T) {
+	parser := setupParser()
+
+	// YAML without runs-on
+	yamlContent := `
+name: Test Workflow
+on: push
+jobs:
+  test:
+    steps:
+      - uses: run@v1
+        with:
+          command: echo test
+`
+
+	workflow, err := parser.Parse([]byte(yamlContent))
+	require.NoError(t, err)
+
+	// Check default value is set
+	testJob := workflow.Jobs["test"]
+	assert.Equal(t, "default", testJob.RunsOn, "runs-on should default to 'default'")
+}

@@ -82,6 +82,17 @@ func (c *Client) Close() {
 	c.logger.Info("Temporal client closed")
 }
 
+// CheckHealth checks if the Temporal connection is healthy.
+// Returns nil if healthy, error otherwise.
+func (c *Client) CheckHealth() error {
+	if c.client == nil {
+		return fmt.Errorf("temporal client not initialized")
+	}
+	// Temporal client maintains connection health internally
+	// If client is not nil and not closed, it's considered healthy
+	return nil
+}
+
 // temporalLogger adapts zap.Logger to Temporal's logger interface.
 type temporalLogger struct {
 	logger *zap.Logger

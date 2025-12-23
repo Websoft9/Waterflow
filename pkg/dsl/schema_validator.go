@@ -30,6 +30,11 @@ func NewSchemaValidator() (*SchemaValidator, error) {
 	return &SchemaValidator{schema: schema}, nil
 }
 
+// GetSchemaJSON returns the embedded schema JSON
+func (v *SchemaValidator) GetSchemaJSON() ([]byte, error) {
+	return schemaJSON, nil
+}
+
 // Validate 验证 Workflow 结构
 // 注意：这里接受原始 YAML 内容而不是解析后的结构体，以避免 Go tag 转换问题
 func (v *SchemaValidator) ValidateYAML(content []byte, workflow *Workflow) error {

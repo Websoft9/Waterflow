@@ -61,14 +61,14 @@
     "job": {
       "type": "object",
       "required": [
-        "runs-on",
         "steps"
       ],
       "properties": {
         "runs-on": {
           "type": "string",
-          "description": "Task queue name (server group)",
-          "pattern": "^[a-z0-9-]+$"
+          "description": "Task queue name (optional, defaults to 'default')",
+          "pattern": "^[a-z0-9-]+$",
+          "default": "default"
         },
         "timeout-minutes": {
           "type": "integer",

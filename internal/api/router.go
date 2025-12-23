@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/gorilla/mux"
@@ -16,13 +18,53 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 	h := NewHandlers(logger, version, commit, buildTime)
 
 	router.HandleFunc("/health", h.Health).Methods(http.MethodGet)
-	router.HandleFunc("/ready", h.Ready).Methods(http.MethodGet)
+
+	// Ready endpoint with Temporal health check
+	if temporalClient != nil {
+		router.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+			checks := make(map[string]string)
+			allReady := true
+
+			// Check Temporal connection
+			if err := temporalClient.CheckHealth(); err != nil {
+				checks["temporal"] = err.Error()
+				allReady = false
+			} else {
+				checks["temporal"] = "ok"
+			}
+
+			response := map[string]interface{}{
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+				"checks":    checks,
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if allReady {
+				response["status"] = "ready"
+				w.WriteHeader(http.StatusOK)
+			} else {
+				response["status"] = "not_ready"
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}
+
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				logger.Error("Failed to encode ready response", zap.Error(err))
+			}
+		}).Methods(http.MethodGet)
+	} else {
+		// Fallback when Temporal is not configured
+		router.HandleFunc("/ready", h.Ready).Methods(http.MethodGet)
+	}
 	router.HandleFunc("/version", h.Version).Methods(http.MethodGet)
 	router.HandleFunc("/metrics", h.Metrics).Methods(http.MethodGet)
 
 	// V1 API endpoints (utility endpoints)
 	router.HandleFunc("/v1/workflows/validate", h.ValidateWorkflow).Methods(http.MethodPost)
 	router.HandleFunc("/v1/workflows/render", h.RenderWorkflow).Methods(http.MethodPost)
+
+	// Schema endpoint (Story 1.3 - AC6)
+	router.HandleFunc("/schema/workflow.json", h.GetWorkflowSchema).Methods(http.MethodGet)
 
 	// Workflow management endpoints (Story 1.9 - AC1-AC6)
 	if temporalClient != nil {

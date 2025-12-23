@@ -44,6 +44,19 @@ func NewValidator(logger *zap.Logger) (*Validator, error) {
 
 // ValidateYAML 完整验证流程
 func (v *Validator) ValidateYAML(content []byte) (*Workflow, error) {
+	// 0. 检查 YAML 文件大小 (防护 YAML Bomb)
+	const maxYAMLSize = 10 * 1024 * 1024 // 10MB
+	if len(content) > maxYAMLSize {
+		return nil, &ValidationError{
+			Type:   "validation_error",
+			Detail: "YAML file size exceeds limit",
+			Errors: []FieldError{{
+				Error:      fmt.Sprintf("file size %d bytes exceeds limit %d bytes (10MB)", len(content), maxYAMLSize),
+				Suggestion: "Reduce YAML file size or split into multiple workflows",
+			}},
+		}
+	}
+
 	// 1. YAML 语法解析
 	workflow, err := v.parser.Parse(content)
 	if err != nil {
@@ -86,4 +99,9 @@ func (v *Validator) ValidateYAML(content []byte) (*Workflow, error) {
 	)
 
 	return workflow, nil
+}
+
+// GetSchemaJSON returns the embedded JSON schema
+func (v *Validator) GetSchemaJSON() ([]byte, error) {
+	return v.schemaValidator.GetSchemaJSON()
 }

@@ -43,6 +43,12 @@ func (p *Parser) Parse(content []byte) (*Workflow, error) {
 	// 填充内部字段
 	for jobName, job := range workflow.Jobs {
 		job.Name = jobName
+
+		// 设置 runs-on 默认值
+		if job.RunsOn == "" {
+			job.RunsOn = "default"
+		}
+
 		for i, step := range job.Steps {
 			step.Index = i
 		}

@@ -104,10 +104,19 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 	// 3. Generate workflow ID (UUID v4)
 	workflowID := uuid.New().String()
 
-	// 4. Start Temporal workflow
+	// 4. Determine Task Queue from runs-on (使用第一个 Job 的 runs-on)
+	taskQueue := "default" // 默认队列
+	for _, job := range workflow.Jobs {
+		if job.RunsOn != "" {
+			taskQueue = job.RunsOn
+		}
+		break // 当前只支持单 Job，使用第一个 Job 的配置
+	}
+
+	// 5. Start Temporal workflow
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: h.temporalClient.GetConfig().TaskQueue,
+		TaskQueue: taskQueue,
 		// Workflow execution timeout (24 hours)
 		WorkflowExecutionTimeout: 24 * 60 * 60 * 1000000000, // 24h in nanoseconds
 	}
@@ -131,6 +140,7 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 		zap.String("workflow_id", workflowID),
 		zap.String("run_id", run.GetRunID()),
 		zap.String("workflow_name", workflow.Name),
+		zap.String("task_queue", taskQueue),
 	)
 
 	// Return workflow info with AC1 format

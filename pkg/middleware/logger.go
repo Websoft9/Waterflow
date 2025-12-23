@@ -8,6 +8,29 @@ import (
 	"go.uber.org/zap"
 )
 
+// extractClientIP extracts the real client IP address from request.
+// Checks X-Forwarded-For and X-Real-IP headers for reverse proxy scenarios.
+func extractClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// X-Forwarded-For can contain multiple IPs, take the first one
+		ips := strings.Split(xff, ",")
+		return strings.TrimSpace(ips[0])
+	}
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	// Fallback to RemoteAddr
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		return ip[:idx]
+	}
+	return ip
+}
+
 // responseWriter wraps http.ResponseWriter to capture status and size
 type responseWriter struct {
 	http.ResponseWriter
@@ -46,11 +69,8 @@ func Logger(logger *zap.Logger) func(http.Handler) http.Handler {
 			// Log request
 			duration := time.Since(start)
 
-			// Extract IP from RemoteAddr
-			ip := r.RemoteAddr
-			if idx := strings.LastIndex(ip, ":"); idx != -1 {
-				ip = ip[:idx]
-			}
+			// Extract client IP (supports reverse proxy)
+			ip := extractClientIP(r)
 
 			logger.Info("HTTP request",
 				zap.String("method", r.Method),

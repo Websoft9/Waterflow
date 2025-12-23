@@ -70,17 +70,13 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 
 // Ready handles GET /ready endpoint
 func (h *Handlers) Ready(w http.ResponseWriter, r *http.Request) {
-	// Check dependencies
-	checks := make(map[string]string)
-
-	// Note: Temporal connection check will be implemented in Story 1-8 (Temporal SDK Integration)
-	// Until then, report as not configured to indicate dependency not yet available
-	checks["temporal"] = "not_configured"
-
+	// Note: Actual Temporal health check is implemented via router dependency injection
+	// This handler is kept for backward compatibility but should not be called directly
+	// Use NewRouter with temporalClient to get proper readiness checks
 	response := map[string]interface{}{
 		"status":    "ready",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"checks":    checks,
+		"checks":    map[string]string{"temporal": "not_configured"},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -143,10 +139,14 @@ func (h *Handlers) writeError(w http.ResponseWriter, r *http.Request, status int
 
 // ValidateWorkflow handles POST /v1/workflows/validate endpoint
 func (h *Handlers) ValidateWorkflow(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to 10MB (防止 DoS 攻击)
+	const maxBodySize = 10 * 1024 * 1024 // 10MB
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+
 	// Read YAML content
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Failed to read request body")
+		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Request body too large or failed to read")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
@@ -183,10 +183,14 @@ func (h *Handlers) ValidateWorkflow(w http.ResponseWriter, r *http.Request) {
 
 // RenderWorkflow handles POST /v1/workflows/render endpoint
 func (h *Handlers) RenderWorkflow(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to 10MB
+	const maxBodySize = 10 * 1024 * 1024 // 10MB
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+
 	// Read YAML content
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Failed to read request body")
+		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Request body too large or failed to read")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
@@ -218,4 +222,20 @@ func (h *Handlers) RenderWorkflow(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"workflow": renderedWorkflow,
 	})
+}
+
+// GetWorkflowSchema handles GET /schema/workflow.json endpoint
+func (h *Handlers) GetWorkflowSchema(w http.ResponseWriter, r *http.Request) {
+	// Get embedded schema from validator
+	schemaJSON, err := h.validator.GetSchemaJSON()
+	if err != nil {
+		h.writeError(w, r, http.StatusInternalServerError, "Internal Server Error", "Failed to load schema")
+		return
+	}
+
+	// Return schema JSON
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Allow CORS for schema access
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(schemaJSON)
 }
