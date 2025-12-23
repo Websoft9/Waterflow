@@ -49,6 +49,18 @@ temporal:
   # Task Queue 名称
   # 环境变量: WATERFLOW_TEMPORAL_TASK_QUEUE
   task_queue: "waterflow-server"
+  
+  # 连接超时时间
+  # 环境变量: WATERFLOW_TEMPORAL_CONNECTION_TIMEOUT
+  connection_timeout: "10s"
+  
+  # 最大重试次数
+  # 环境变量: WATERFLOW_TEMPORAL_MAX_RETRIES
+  max_retries: 3
+  
+  # 重试间隔时间
+  # 环境变量: WATERFLOW_TEMPORAL_RETRY_INTERVAL
+  retry_interval: "5s"
 
 # 环境变量配置说明:
 # ==================

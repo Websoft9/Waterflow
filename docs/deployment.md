@@ -14,6 +14,9 @@
 1. **（可选）配置环境变量**
 
 ```bash
+# 进入 deployments 目录
+cd deployments
+
 # 复制环境变量模板
 cp .env.example .env
 
@@ -24,6 +27,7 @@ vi .env
 2. **启动服务栈**
 
 ```bash
+# 启动所有服务
 docker-compose up -d
 ```
 
@@ -37,7 +41,7 @@ docker-compose ps
 
 所有服务应显示 `healthy` 状态。
 
-3. **查看日志**
+4. **查看日志**
 
 ```bash
 # 查看所有服务日志
@@ -98,10 +102,17 @@ Waterflow 使用**两层配置架构**：
 通过 `.env` 文件或环境变量配置容器：
 
 ```bash
+cd deployments
+
 # 创建 .env 文件（推荐用于生产环境）
 cp .env.example .env
 
-# 修改敏感信息
+# 编辑 .env 修改敏感信息
+vi .env
+```
+
+示例 .env 内容：
+```bash
 POSTGRES_PASSWORD=your_secure_password
 WATERFLOW_LOG_LEVEL=debug
 ```
@@ -147,12 +158,14 @@ WATERFLOW_TEMPORAL_TASKQUEUE=waterflow-server
 
 **方法 1：使用 .env 文件（推荐）**
 ```bash
+cd deployments
 echo "WATERFLOW_LOG_LEVEL=debug" >> .env
 docker-compose up -d
 ```
 
 **方法 2：直接设置环境变量**
 ```bash
+cd deployments
 WATERFLOW_LOG_LEVEL=debug docker-compose up -d
 ```
 
@@ -167,12 +180,14 @@ WATERFLOW_LOG_LEVEL=debug docker-compose up -d
 netstat -tuln | grep -E '5432|7233|8080|8088'
 
 # 查看详细错误日志
+cd deployments
 docker-compose logs waterflow
 ```
 
 #### Temporal 连接失败
 
 ```bash
+cd deployments
 # 检查 Temporal 服务状态
 docker-compose ps temporal
 
@@ -183,6 +198,7 @@ docker-compose exec temporal temporal operator cluster health
 #### 数据库连接问题
 
 ```bash
+cd deployments
 # 检查 PostgreSQL 容器
 docker-compose ps postgresql
 
@@ -196,6 +212,7 @@ docker-compose exec postgresql psql -U temporal -d temporal -c "SELECT 1"
 ### 停止和清理
 
 ```bash
+cd deployments
 # 停止所有服务
 docker-compose down
 

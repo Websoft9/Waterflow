@@ -115,6 +115,7 @@ git clone https://github.com/Websoft9/Waterflow.git
 cd Waterflow
 
 # 启动 Waterflow Server + Temporal + PostgreSQL
+cd deployments
 docker-compose up -d
 
 # 验证服务

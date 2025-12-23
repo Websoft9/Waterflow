@@ -115,6 +115,7 @@ git clone https://github.com/Websoft9/Waterflow.git
 cd Waterflow
 
 # Start Waterflow Server + Temporal + PostgreSQL
+cd deployments
 docker-compose up -d
 
 # Verify service
