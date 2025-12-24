@@ -83,27 +83,103 @@ func executeJob(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job) error {
 
 	logger.Info("Matrix expansion completed", "job", job.Name, "instances", len(instances))
 
-	// 3. Execute all matrix instances in parallel using child workflows
+	// 3. Determine max parallel execution
+	maxParallel := getMaxParallel(job, len(instances))
+	failFast := getFailFast(job)
+	logger.Info("Matrix execution config", "job", job.Name, "maxParallel", maxParallel, "failFast", failFast)
+
+	// 4. Execute matrix instances with concurrency control
+	if maxParallel >= len(instances) {
+		// Full parallel execution
+		return executeMatrixInstancesParallel(ctx, wf, job, instances, failFast)
+	}
+
+	// Limited parallel execution using semaphore pattern
+	return executeMatrixInstancesWithLimit(ctx, wf, job, instances, maxParallel, failFast)
+}
+
+// executeMatrixInstancesParallel executes all instances in parallel
+func executeMatrixInstancesParallel(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instances []*dsl.MatrixInstance, failFast bool) error {
+	logger := workflow.GetLogger(ctx)
 	futures := make([]workflow.Future, len(instances))
 	for i, instance := range instances {
-		// Create child workflow for each matrix instance
 		childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
-			TaskQueue: job.RunsOn, // Route to specified task queue (ADR-0006)
+			TaskQueue: job.RunsOn,
 		})
-
 		logger.Info("Starting matrix instance", "job", job.Name, "instance", i, "matrix", instance.Matrix)
-
 		futures[i] = workflow.ExecuteChildWorkflow(childCtx, executeJobInstance, wf, job, instance)
 	}
 
-	// 4. Wait for all instances to complete
+	// Wait for all instances
 	for i, future := range futures {
 		if err := future.Get(ctx, nil); err != nil {
-			return fmt.Errorf("matrix instance %d failed: %w", i, err)
+			if failFast {
+				return fmt.Errorf("matrix instance %d failed (fail-fast enabled): %w", i, err)
+			}
+			logger.Error("Matrix instance failed (continuing)", "instance", i, "error", err)
+		}
+	}
+	return nil
+}
+
+// executeMatrixInstancesWithLimit executes instances with max-parallel limit
+func executeMatrixInstancesWithLimit(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instances []*dsl.MatrixInstance, maxParallel int, failFast bool) error {
+	logger := workflow.GetLogger(ctx)
+	semaphore := make(chan struct{}, maxParallel)
+	errChan := make(chan error, len(instances))
+
+	for i, instance := range instances {
+		// Acquire semaphore
+		semaphore <- struct{}{}
+
+		go func(idx int, inst *dsl.MatrixInstance) {
+			defer func() { <-semaphore }()
+
+			childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+				TaskQueue: job.RunsOn,
+			})
+			logger.Info("Starting matrix instance", "job", job.Name, "instance", idx, "matrix", inst.Matrix)
+
+			future := workflow.ExecuteChildWorkflow(childCtx, executeJobInstance, wf, job, inst)
+			if err := future.Get(ctx, nil); err != nil {
+				errChan <- fmt.Errorf("matrix instance %d failed: %w", idx, err)
+			} else {
+				errChan <- nil
+			}
+		}(i, instance)
+	}
+
+	// Wait for all instances and collect errors
+	var firstErr error
+	for i := 0; i < len(instances); i++ {
+		if err := <-errChan; err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			if failFast {
+				logger.Error("Matrix instance failed (fail-fast enabled)", "error", err)
+				return firstErr
+			}
 		}
 	}
 
-	return nil
+	return firstErr
+}
+
+// getMaxParallel determines max parallel execution count
+func getMaxParallel(job *dsl.Job, totalInstances int) int {
+	if job.Strategy == nil || job.Strategy.MaxParallel <= 0 {
+		return totalInstances // Default: all parallel
+	}
+	return job.Strategy.MaxParallel
+}
+
+// getFailFast determines fail-fast behavior
+func getFailFast(job *dsl.Job) bool {
+	if job.Strategy == nil || job.Strategy.FailFast == nil {
+		return true // Default: fail-fast enabled
+	}
+	return *job.Strategy.FailFast
 }
 
 // executeJobInstance executes a single job instance (matrix or regular job).

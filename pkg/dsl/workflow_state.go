@@ -194,3 +194,35 @@ func (ws *WorkflowState) GetMatrixInstanceState(jobID, matrixID string) *MatrixI
 
 	return nil
 }
+
+// UpdateMatrixInstancesFromResults updates Matrix instance states from executor results (Story 1.6)
+func (ws *WorkflowState) UpdateMatrixInstancesFromResults(jobID string, instances []*MatrixInstance, results []*MatrixResult) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	if ws.JobStates[jobID] == nil {
+		ws.JobStates[jobID] = &JobState{
+			JobID:           jobID,
+			IsMatrix:        true,
+			MatrixInstances: make([]*MatrixInstanceState, 0),
+		}
+	}
+
+	for i, result := range results {
+		matrixID := generateMatrixID(jobID, i)
+		instanceState := &MatrixInstanceState{
+			MatrixID:   matrixID,
+			Matrix:     instances[i].Matrix,
+			Status:     result.Status,
+			Conclusion: result.Conclusion,
+			Error:      result.Error,
+			StepStates: make([]*StepState, 0),
+		}
+		ws.JobStates[jobID].MatrixInstances = append(ws.JobStates[jobID].MatrixInstances, instanceState)
+	}
+}
+
+// generateMatrixID generates a unique Matrix instance ID
+func generateMatrixID(jobID string, index int) string {
+	return jobID + "-" + string(rune('0'+index))
+}

@@ -1,0 +1,16 @@
+name: matrix-fail-fast
+on: push
+
+jobs:
+  test:
+    runs-on: linux-amd64
+    strategy:
+      matrix:
+        version: [1.20, 1.21, 1.22]
+      fail-fast: true  # Default: cancel other instances on failure
+    steps:
+      - name: Run Tests
+        uses: run@v1
+        with:
+          command: go test -v ./...
+          version: ${{ matrix.version }}

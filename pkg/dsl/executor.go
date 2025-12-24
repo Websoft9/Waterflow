@@ -36,8 +36,14 @@ func (e *MatrixExecutor) Execute(
 	results := make([]*MatrixResult, len(instances))
 	resultChan := make(chan *MatrixResult, len(instances))
 
+	// 确定实际并发数：如果 maxParallel <= 0，默认全部并行
+	maxParallel := e.maxParallel
+	if maxParallel <= 0 {
+		maxParallel = len(instances)
+	}
+
 	// 使用 semaphore 控制并发
-	sem := make(chan struct{}, e.maxParallel)
+	sem := make(chan struct{}, maxParallel)
 
 	var wg sync.WaitGroup
 	cancelCtx, cancel := context.WithCancel(ctx)

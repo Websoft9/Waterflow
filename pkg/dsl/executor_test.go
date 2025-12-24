@@ -131,15 +131,20 @@ func TestMatrixExecutor_FailFast(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
+	startTime := time.Now()
+
 	stepExecutor := &MockMatrixStepExecutor{
 		executeFunc: func(ctx context.Context, step *Step, evalCtx *EvalContext) (*StepResult, error) {
 			version := evalCtx.Matrix["version"].(int)
 
-			// 版本 2 失败
+			// 版本 2 在 100ms 后失败
 			if version == 2 {
+				time.Sleep(100 * time.Millisecond)
 				return &StepResult{Status: "completed", Conclusion: "failure"}, nil
 			}
 
+			// 其他版本需要更长时间
+			time.Sleep(500 * time.Millisecond)
 			return &StepResult{Status: "completed", Conclusion: "success"}, nil
 		},
 	}
@@ -148,6 +153,10 @@ func TestMatrixExecutor_FailFast(t *testing.T) {
 
 	ctx := context.Background()
 	results := executor.Execute(ctx, workflow, job, instances)
+
+	// 验证 fail-fast 在 1 秒内取消
+	elapsed := time.Since(startTime)
+	assert.Less(t, elapsed, 1*time.Second, "fail-fast should cancel other instances within 1 second")
 
 	// 验证结果
 	failureCount := 0
