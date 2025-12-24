@@ -39,20 +39,35 @@ type StepStatus struct {
 //nolint:gocyclo // Complex event type handling is necessary for history parsing
 func (p *HistoryParser) ParseJobsFromHistory(events []*history.HistoryEvent) []JobStatus {
 	jobs := make([]JobStatus, 0)
+
+	// Handle empty events (nil slice has len 0 by definition)
+	if len(events) == 0 {
+		return jobs
+	}
+
 	currentSteps := make(map[string]*StepStatus)        // activity_id -> StepStatus
 	eventCache := make(map[int64]*history.HistoryEvent) // event_id -> HistoryEvent
 
 	// First pass: cache all events by ID
 	for _, event := range events {
+		if event == nil {
+			continue
+		}
 		eventCache[event.EventId] = event
 	}
 
 	// Second pass: process events
 	for _, event := range events {
+		if event == nil {
+			continue
+		}
 		switch event.EventType {
 		case enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
 			// Activity (Step) scheduled
 			attrs := event.GetActivityTaskScheduledEventAttributes()
+			if attrs == nil || attrs.ActivityType == nil {
+				continue
+			}
 			stepStatus := &StepStatus{
 				Name:   attrs.ActivityType.Name,
 				Status: "pending",
@@ -62,6 +77,9 @@ func (p *HistoryParser) ParseJobsFromHistory(events []*history.HistoryEvent) []J
 		case enums.EVENT_TYPE_ACTIVITY_TASK_STARTED:
 			// Activity (Step) started
 			attrs := event.GetActivityTaskStartedEventAttributes()
+			if attrs == nil {
+				continue
+			}
 			// Find scheduled event to get activity ID
 			if scheduledEvent, ok := eventCache[attrs.ScheduledEventId]; ok {
 				scheduledAttrs := scheduledEvent.GetActivityTaskScheduledEventAttributes()
@@ -76,6 +94,9 @@ func (p *HistoryParser) ParseJobsFromHistory(events []*history.HistoryEvent) []J
 		case enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED:
 			// Activity (Step) completed
 			attrs := event.GetActivityTaskCompletedEventAttributes()
+			if attrs == nil {
+				continue
+			}
 			if scheduledEvent, ok := eventCache[attrs.ScheduledEventId]; ok {
 				scheduledAttrs := scheduledEvent.GetActivityTaskScheduledEventAttributes()
 				if step, ok := currentSteps[scheduledAttrs.ActivityId]; ok {
@@ -89,6 +110,9 @@ func (p *HistoryParser) ParseJobsFromHistory(events []*history.HistoryEvent) []J
 		case enums.EVENT_TYPE_ACTIVITY_TASK_FAILED:
 			// Activity (Step) failed
 			attrs := event.GetActivityTaskFailedEventAttributes()
+			if attrs == nil {
+				continue
+			}
 			if scheduledEvent, ok := eventCache[attrs.ScheduledEventId]; ok {
 				scheduledAttrs := scheduledEvent.GetActivityTaskScheduledEventAttributes()
 				if step, ok := currentSteps[scheduledAttrs.ActivityId]; ok {

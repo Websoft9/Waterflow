@@ -118,7 +118,7 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 		ID:        workflowID,
 		TaskQueue: taskQueue,
 		// Workflow execution timeout (24 hours)
-		WorkflowExecutionTimeout: 24 * 60 * 60 * 1000000000, // 24h in nanoseconds
+		WorkflowExecutionTimeout: 24 * time.Hour,
 	}
 
 	run, err := h.temporalClient.GetClient().ExecuteWorkflow(

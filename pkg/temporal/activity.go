@@ -72,17 +72,24 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 	}
 
 	// 3. Execute node
-	// NOTE: This is a placeholder. Actual node execution will be implemented
-	// when we integrate with the Node Executor from Story 1.1.
-	// For now, we simulate execution for testing purposes.
-	logger.Info("Node execution placeholder", "uses", renderedStep.Uses)
-
-	// Record heartbeat for long-running activities
-	activity.RecordHeartbeat(ctx, "executing")
+	// TODO(Story 1.1): Integrate with NodeExecutor when Story 1.1 is completed
+	// Current implementation is a placeholder for testing Temporal integration.
+	// Expected integration:
+	//   nodeExecutor := executor.NewNodeExecutor(a.nodeRegistry)
+	//   nodeResult, err := nodeExecutor.Execute(ctx, renderedStep)
+	//   if err != nil { return error }
+	//   outputs = nodeResult.Outputs
+	logger.Info("Node execution placeholder (awaiting Story 1.1 NodeExecutor)", "uses", renderedStep.Uses)
 
 	// Simulate execution
 	outputs := make(map[string]string)
 	outputs["result"] = "success"
+
+	// Record heartbeat (in production, this should be called periodically during long operations)
+	activity.RecordHeartbeat(ctx, map[string]interface{}{
+		"step":     input.Step.Name,
+		"progress": "completed",
+	})
 
 	duration := time.Since(startTime)
 

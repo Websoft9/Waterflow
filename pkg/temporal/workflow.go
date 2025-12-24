@@ -123,43 +123,55 @@ func executeMatrixInstancesParallel(ctx workflow.Context, wf *dsl.Workflow, job 
 }
 
 // executeMatrixInstancesWithLimit executes instances with max-parallel limit
+// Uses workflow.Go to maintain determinism (no native goroutines in workflows)
 func executeMatrixInstancesWithLimit(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instances []*dsl.MatrixInstance, maxParallel int, failFast bool) error {
 	logger := workflow.GetLogger(ctx)
-	semaphore := make(chan struct{}, maxParallel)
-	errChan := make(chan error, len(instances))
 
-	for i, instance := range instances {
-		// Acquire semaphore
-		semaphore <- struct{}{}
+	// Use workflow.NewSelector for deterministic concurrency control
+	selector := workflow.NewSelector(ctx)
+	var completed int
+	var running int
+	var firstErr error
+	nextIndex := 0
 
-		go func(idx int, inst *dsl.MatrixInstance) {
-			defer func() { <-semaphore }()
+	// Process instances with maxParallel concurrency
+	for completed < len(instances) {
+		// Start new instances up to maxParallel limit
+		for running < maxParallel && nextIndex < len(instances) {
+			instance := instances[nextIndex]
+			idx := nextIndex
+			nextIndex++
+			running++
 
 			childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
 				TaskQueue: job.RunsOn,
 			})
-			logger.Info("Starting matrix instance", "job", job.Name, "instance", idx, "matrix", inst.Matrix)
+			logger.Info("Starting matrix instance", "job", job.Name, "instance", idx, "matrix", instance.Matrix)
 
-			future := workflow.ExecuteChildWorkflow(childCtx, executeJobInstance, wf, job, inst)
-			if err := future.Get(ctx, nil); err != nil {
-				errChan <- fmt.Errorf("matrix instance %d failed: %w", idx, err)
-			} else {
-				errChan <- nil
-			}
-		}(i, instance)
-	}
+			future := workflow.ExecuteChildWorkflow(childCtx, executeJobInstance, wf, job, instance)
 
-	// Wait for all instances and collect errors
-	var firstErr error
-	for i := 0; i < len(instances); i++ {
-		if err := <-errChan; err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			if failFast {
-				logger.Error("Matrix instance failed (fail-fast enabled)", "error", err)
-				return firstErr
-			}
+			// Add future to selector for deterministic waiting
+			selector.AddFuture(future, func(f workflow.Future) {
+				var err error
+				if getErr := f.Get(ctx, nil); getErr != nil {
+					err = fmt.Errorf("matrix instance %d failed: %w", idx, getErr)
+					if firstErr == nil {
+						firstErr = err
+					}
+					logger.Error("Matrix instance failed", "instance", idx, "error", err)
+				}
+				completed++
+				running--
+			})
+		}
+
+		// Wait for at least one instance to complete
+		selector.Select(ctx)
+
+		// Fail fast if enabled and error occurred
+		if failFast && firstErr != nil {
+			logger.Error("Matrix execution failed (fail-fast enabled)", "error", firstErr)
+			return firstErr
 		}
 	}
 

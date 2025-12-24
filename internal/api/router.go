@@ -26,7 +26,7 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 			allReady := true
 
 			// Check Temporal connection
-			if err := temporalClient.CheckHealth(); err != nil {
+			if err := temporalClient.CheckHealth(r.Context()); err != nil {
 				checks["temporal"] = err.Error()
 				allReady = false
 			} else {

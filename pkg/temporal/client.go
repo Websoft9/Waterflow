@@ -3,6 +3,7 @@
 package temporal
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -84,12 +85,17 @@ func (c *Client) Close() {
 
 // CheckHealth checks if the Temporal connection is healthy.
 // Returns nil if healthy, error otherwise.
-func (c *Client) CheckHealth() error {
+func (c *Client) CheckHealth(ctx context.Context) error {
 	if c.client == nil {
 		return fmt.Errorf("temporal client not initialized")
 	}
-	// Temporal client maintains connection health internally
-	// If client is not nil and not closed, it's considered healthy
+
+	// Verify actual connection by checking namespace
+	_, err := c.client.CheckHealth(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("temporal connection unhealthy: %w", err)
+	}
+
 	return nil
 }
 
