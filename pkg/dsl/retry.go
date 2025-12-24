@@ -93,6 +93,15 @@ func parseDuration(s string) (time.Duration, error) {
 	return duration, nil
 }
 
+// ValidateDuration 验证duration字符串格式 (独立函数,避免Resolve重复调用)
+func ValidateDuration(s string) error {
+	if s == "" {
+		return nil // 空字符串表示使用默认值
+	}
+	_, err := parseDuration(s)
+	return err
+}
+
 // ResolvedRetryPolicy 解析后的重试策略
 type ResolvedRetryPolicy struct {
 	MaxAttempts        int

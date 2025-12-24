@@ -1,6 +1,6 @@
 # Story 1.4: 表达式引擎和变量系统
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
