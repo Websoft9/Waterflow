@@ -1,26 +1,24 @@
-package matrix
+package dsl
 
 import (
 	"context"
 	"sync"
-
-	"github.com/Websoft9/waterflow/pkg/dsl"
 )
 
-// StepExecutor Step 执行器接口
-type StepExecutor interface {
-	Execute(ctx context.Context, step *dsl.Step, evalCtx *dsl.EvalContext) (*dsl.StepResult, error)
+// MatrixStepExecutor Step 执行器接口（用于 Matrix）
+type MatrixStepExecutor interface {
+	Execute(ctx context.Context, step *Step, evalCtx *EvalContext) (*StepResult, error)
 }
 
 // MatrixExecutor Matrix 实例执行器
 type MatrixExecutor struct {
 	maxParallel  int
 	failFast     bool
-	stepExecutor StepExecutor
+	stepExecutor MatrixStepExecutor
 }
 
 // NewMatrixExecutor 创建 Matrix 执行器
-func NewMatrixExecutor(maxParallel int, failFast bool, stepExecutor StepExecutor) *MatrixExecutor {
+func NewMatrixExecutor(maxParallel int, failFast bool, stepExecutor MatrixStepExecutor) *MatrixExecutor {
 	return &MatrixExecutor{
 		maxParallel:  maxParallel,
 		failFast:     failFast,
@@ -31,8 +29,8 @@ func NewMatrixExecutor(maxParallel int, failFast bool, stepExecutor StepExecutor
 // Execute 执行所有 Matrix 实例
 func (e *MatrixExecutor) Execute(
 	ctx context.Context,
-	workflow *dsl.Workflow,
-	job *dsl.Job,
+	workflow *Workflow,
+	job *Job,
 	instances []*MatrixInstance,
 ) []*MatrixResult {
 	results := make([]*MatrixResult, len(instances))
@@ -106,12 +104,12 @@ func (e *MatrixExecutor) Execute(
 // executeInstance 执行单个 Matrix 实例
 func (e *MatrixExecutor) executeInstance(
 	ctx context.Context,
-	workflow *dsl.Workflow,
-	job *dsl.Job,
+	workflow *Workflow,
+	job *Job,
 	instance *MatrixInstance,
 ) *MatrixResult {
 	// 构建上下文 (包含 matrix 变量)
-	evalCtx := dsl.NewContextBuilder(workflow).
+	evalCtx := NewContextBuilder(workflow).
 		WithJob(job).
 		WithMatrix(instance.Matrix).
 		Build()

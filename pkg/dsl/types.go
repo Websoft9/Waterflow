@@ -1,5 +1,7 @@
 package dsl
 
+import "fmt"
+
 // Workflow 工作流定义
 type Workflow struct {
 	Name string                 `yaml:"name" json:"name"`
@@ -86,4 +88,22 @@ type ScheduleTrigger struct {
 // WebhookTrigger Webhook 触发器
 type WebhookTrigger struct {
 	Events []string `yaml:"events" json:"events"`
+}
+
+// MatrixInstance Matrix 实例
+type MatrixInstance struct {
+	Index  int                    // 实例索引 (0-based)
+	Matrix map[string]interface{} // Matrix 变量
+}
+
+// MatrixError Matrix 错误
+type MatrixError struct {
+	Type         string
+	Combinations int
+	Limit        int
+	Suggestion   string
+}
+
+func (e *MatrixError) Error() string {
+	return fmt.Sprintf("matrix combinations %d exceed limit %d", e.Combinations, e.Limit)
 }

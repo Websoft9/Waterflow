@@ -1,11 +1,10 @@
-package matrix_test
+package dsl_test
 
 import (
 	"os"
 	"testing"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
-	"github.com/Websoft9/waterflow/pkg/dsl/matrix"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 )
@@ -13,7 +12,7 @@ import (
 // TestMatrixIntegration_SimpleWorkflow 测试简单Matrix工作流解析和展开
 func TestMatrixIntegration_SimpleWorkflow(t *testing.T) {
 	// 读取测试文件
-	data, err := os.ReadFile("../../../testdata/matrix/simple.yaml")
+	data, err := os.ReadFile("../../testdata/matrix/simple.yaml")
 	assert.NoError(t, err)
 
 	var workflow dsl.Workflow
@@ -30,7 +29,7 @@ func TestMatrixIntegration_SimpleWorkflow(t *testing.T) {
 	assert.Contains(t, job.Strategy.Matrix, "server")
 
 	// 展开Matrix
-	expander := matrix.NewExpander(256)
+	expander := dsl.NewExpander(256)
 	instances, err := expander.Expand(job)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(instances))
@@ -47,7 +46,7 @@ func TestMatrixIntegration_SimpleWorkflow(t *testing.T) {
 
 // TestMatrixIntegration_MultiDimensionWorkflow 测试多维Matrix工作流
 func TestMatrixIntegration_MultiDimensionWorkflow(t *testing.T) {
-	data, err := os.ReadFile("../../../testdata/matrix/multi-dimension.yaml")
+	data, err := os.ReadFile("../../testdata/matrix/multi-dimension.yaml")
 	assert.NoError(t, err)
 
 	var workflow dsl.Workflow
@@ -60,7 +59,7 @@ func TestMatrixIntegration_MultiDimensionWorkflow(t *testing.T) {
 	assert.Equal(t, false, *job.Strategy.FailFast)
 
 	// 展开Matrix
-	expander := matrix.NewExpander(256)
+	expander := dsl.NewExpander(256)
 	instances, err := expander.Expand(job)
 	assert.NoError(t, err)
 	assert.Equal(t, 4, len(instances)) // 2 servers * 2 envs
@@ -80,7 +79,7 @@ func TestMatrixIntegration_MultiDimensionWorkflow(t *testing.T) {
 
 // TestMatrixIntegration_MaxParallelWorkflow 测试max-parallel配置
 func TestMatrixIntegration_MaxParallelWorkflow(t *testing.T) {
-	data, err := os.ReadFile("../../../testdata/matrix/max-parallel.yaml")
+	data, err := os.ReadFile("../../testdata/matrix/max-parallel.yaml")
 	assert.NoError(t, err)
 
 	var workflow dsl.Workflow
@@ -92,7 +91,7 @@ func TestMatrixIntegration_MaxParallelWorkflow(t *testing.T) {
 	assert.Equal(t, 2, job.Strategy.MaxParallel)
 
 	// 展开Matrix
-	expander := matrix.NewExpander(256)
+	expander := dsl.NewExpander(256)
 	instances, err := expander.Expand(job)
 	assert.NoError(t, err)
 	assert.Equal(t, 5, len(instances))
@@ -126,7 +125,7 @@ func TestMatrixIntegration_ContextBuilding(t *testing.T) {
 	}
 
 	// 展开Matrix
-	expander := matrix.NewExpander(256)
+	expander := dsl.NewExpander(256)
 	instances, err := expander.Expand(job)
 	assert.NoError(t, err)
 

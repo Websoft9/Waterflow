@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
-	"github.com/Websoft9/waterflow/pkg/dsl/matrix"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -76,7 +75,7 @@ func executeJob(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job) error {
 	}
 
 	// 2. Expand matrix (if strategy defined)
-	expander := matrix.NewExpander(256) // Max 256 combinations
+	expander := dsl.NewExpander(256) // Max 256 combinations
 	instances, err := expander.Expand(job)
 	if err != nil {
 		return fmt.Errorf("failed to expand matrix: %w", err)
@@ -108,7 +107,7 @@ func executeJob(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job) error {
 }
 
 // executeJobInstance executes a single job instance (matrix or regular job).
-func executeJobInstance(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instance *matrix.MatrixInstance) error {
+func executeJobInstance(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instance *dsl.MatrixInstance) error {
 	logger := workflow.GetLogger(ctx)
 
 	// Build evaluation context (includes matrix variables)
@@ -169,7 +168,7 @@ func executeJobInstance(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, in
 }
 
 // buildEvalContext constructs evaluation context from workflow, job, and matrix instance.
-func buildEvalContext(wf *dsl.Workflow, job *dsl.Job, instance *matrix.MatrixInstance) *dsl.EvalContext {
+func buildEvalContext(wf *dsl.Workflow, job *dsl.Job, instance *dsl.MatrixInstance) *dsl.EvalContext {
 	// Use ContextBuilder from Story 1.4
 	builder := dsl.NewContextBuilder(wf).WithJob(job)
 

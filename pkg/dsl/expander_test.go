@@ -1,16 +1,15 @@
-package matrix
+package dsl
 
 import (
 	"testing"
 
-	"github.com/Websoft9/waterflow/pkg/dsl"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestExpander_SimpleMatrix 测试简单矩阵展开
 func TestExpander_SimpleMatrix(t *testing.T) {
-	job := &dsl.Job{
-		Strategy: &dsl.Strategy{
+	job := &Job{
+		Strategy: &Strategy{
 			Matrix: map[string][]interface{}{
 				"server": {"web1", "web2", "web3"},
 			},
@@ -36,8 +35,8 @@ func TestExpander_SimpleMatrix(t *testing.T) {
 
 // TestExpander_MultiDimension 测试多维矩阵展开 (笛卡尔积)
 func TestExpander_MultiDimension(t *testing.T) {
-	job := &dsl.Job{
-		Strategy: &dsl.Strategy{
+	job := &Job{
+		Strategy: &Strategy{
 			Matrix: map[string][]interface{}{
 				"server": {"web1", "web2"},
 				"env":    {"prod", "staging"},
@@ -72,8 +71,8 @@ func TestExpander_MultiDimension(t *testing.T) {
 
 // TestExpander_ThreeDimension 测试三维矩阵
 func TestExpander_ThreeDimension(t *testing.T) {
-	job := &dsl.Job{
-		Strategy: &dsl.Strategy{
+	job := &Job{
+		Strategy: &Strategy{
 			Matrix: map[string][]interface{}{
 				"os":      {"ubuntu", "debian"},
 				"arch":    {"amd64", "arm64"},
@@ -103,8 +102,8 @@ func TestExpander_ThreeDimension(t *testing.T) {
 
 // TestExpander_DifferentTypes 测试不同数据类型
 func TestExpander_DifferentTypes(t *testing.T) {
-	job := &dsl.Job{
-		Strategy: &dsl.Strategy{
+	job := &Job{
+		Strategy: &Strategy{
 			Matrix: map[string][]interface{}{
 				"version": {1.20, 1.21, 1.22},   // float64
 				"os":      {"ubuntu", "debian"}, // string
@@ -129,8 +128,8 @@ func TestExpander_DifferentTypes(t *testing.T) {
 
 // TestExpander_EmptyMatrix 测试空矩阵错误
 func TestExpander_EmptyMatrix(t *testing.T) {
-	job := &dsl.Job{
-		Strategy: &dsl.Strategy{
+	job := &Job{
+		Strategy: &Strategy{
 			Matrix: map[string][]interface{}{
 				"server": {}, // 空数组
 			},
@@ -162,8 +161,8 @@ func TestExpander_CombinationsLimit(t *testing.T) {
 
 	matrix["c"] = []interface{}{1, 2, 3}
 
-	job := &dsl.Job{
-		Strategy: &dsl.Strategy{
+	job := &Job{
+		Strategy: &Strategy{
 			Matrix: matrix,
 		},
 	}
@@ -183,7 +182,7 @@ func TestExpander_CombinationsLimit(t *testing.T) {
 
 // TestExpander_NoStrategy 测试无策略的Job返回单实例
 func TestExpander_NoStrategy(t *testing.T) {
-	job := &dsl.Job{
+	job := &Job{
 		Strategy: nil,
 	}
 
@@ -198,8 +197,8 @@ func TestExpander_NoStrategy(t *testing.T) {
 
 // TestExpander_EmptyStrategyMatrix 测试空矩阵map返回单实例
 func TestExpander_EmptyStrategyMatrix(t *testing.T) {
-	job := &dsl.Job{
-		Strategy: &dsl.Strategy{
+	job := &Job{
+		Strategy: &Strategy{
 			Matrix: map[string][]interface{}{},
 		},
 	}

@@ -1,9 +1,7 @@
-package matrix
+package dsl
 
 import (
 	"fmt"
-
-	"github.com/Websoft9/waterflow/pkg/dsl"
 )
 
 // Expander Matrix 展开器
@@ -19,7 +17,7 @@ func NewExpander(maxCombinations int) *Expander {
 }
 
 // Expand 展开 Matrix 为多个实例
-func (e *Expander) Expand(job *dsl.Job) ([]*MatrixInstance, error) {
+func (e *Expander) Expand(job *Job) ([]*MatrixInstance, error) {
 	if job.Strategy == nil || len(job.Strategy.Matrix) == 0 {
 		// 无 Matrix,返回单个实例
 		return []*MatrixInstance{{

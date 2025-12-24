@@ -1,11 +1,10 @@
-package matrix_test
+package dsl_test
 
 import (
 	"fmt"
 	"testing"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
-	"github.com/Websoft9/waterflow/pkg/dsl/matrix"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,7 +30,7 @@ func TestMatrixIntegration_StateTracking(t *testing.T) {
 	}
 
 	// 扩展 Matrix
-	expander := matrix.NewExpander(256)
+	expander := dsl.NewExpander(256)
 	instances, err := expander.Expand(job)
 	assert.NoError(t, err)
 	assert.Len(t, instances, 4) // 2 x 2 = 4
@@ -103,7 +102,7 @@ func TestMatrixIntegration_FailFastStateTracking(t *testing.T) {
 		Steps: []*dsl.Step{{ID: "step1", Uses: "run"}},
 	}
 
-	expander := matrix.NewExpander(256)
+	expander := dsl.NewExpander(256)
 	instances, err := expander.Expand(job)
 	assert.NoError(t, err)
 
