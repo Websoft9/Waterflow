@@ -409,3 +409,79 @@ func TestExpressionReplacer_EvaluateTyped_ErrorCases(t *testing.T) {
 		})
 	}
 }
+
+func TestExpressionReplacer_NestingDepthLimit(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+	replacer := NewExpressionReplacer(engine)
+
+	ctx := mockContextBuilder()
+
+	// 创建一个超过10层嵌套的结构
+	deepMap := make(map[string]interface{})
+	current := deepMap
+	for i := 0; i < 12; i++ {
+		nested := make(map[string]interface{})
+		current["level"] = nested
+		current = nested
+	}
+	current["value"] = "too deep"
+
+	// 应该因为嵌套深度超过限制而失败
+	_, err := replacer.ReplaceInMap(deepMap, ctx)
+	require.Error(t, err)
+
+	// 检查错误信息包含深度相关内容
+	assert.Contains(t, err.Error(), "nesting too deep")
+}
+
+func TestExpressionReplacer_NestingWithinLimit(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+	replacer := NewExpressionReplacer(engine)
+
+	ctx := mockContextBuilder()
+	ctx.Vars = map[string]interface{}{
+		"value": "test",
+	}
+
+	// 创建一个接近但不超过10层嵌套的结构
+	deepMap := make(map[string]interface{})
+	current := deepMap
+	for i := 0; i < 8; i++ {
+		nested := make(map[string]interface{})
+		current["level"] = nested
+		current = nested
+	}
+	current["value"] = "${{ vars.value }}"
+
+	// 应该成功
+	result, err := replacer.ReplaceInMap(deepMap, ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// 验证表达式被正确替换（深度遍历检查）
+	checkDeep := result
+	for i := 0; i < 8; i++ {
+		next, ok := checkDeep["level"].(map[string]interface{})
+		require.True(t, ok, "expected nested map at level %d", i)
+		checkDeep = next
+	}
+	assert.Equal(t, "test", checkDeep["value"])
+}
+
+func TestExpressionReplacer_ArrayNestingDepthLimit(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+	replacer := NewExpressionReplacer(engine)
+
+	ctx := mockContextBuilder()
+
+	// 创建一个超过10层嵌套的数组
+	var deepArray interface{} = "value"
+	for i := 0; i < 12; i++ {
+		deepArray = []interface{}{deepArray}
+	}
+
+	// 应该因为嵌套深度超过限制而失败
+	_, err := replacer.ReplaceInArray(deepArray.([]interface{}), ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nesting too deep")
+}

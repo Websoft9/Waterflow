@@ -11,12 +11,16 @@ var exprPattern = regexp.MustCompile(`\$\{\{(.+?)\}\}`)
 
 // ExpressionReplacer replaces expressions in strings
 type ExpressionReplacer struct {
-	engine *Engine
+	engine   *Engine
+	maxDepth int
 }
 
 // NewExpressionReplacer creates a new expression replacer
 func NewExpressionReplacer(engine *Engine) *ExpressionReplacer {
-	return &ExpressionReplacer{engine: engine}
+	return &ExpressionReplacer{
+		engine:   engine,
+		maxDepth: 10, // Maximum nesting depth
+	}
 }
 
 // Replace replaces all expressions in a string
@@ -47,6 +51,20 @@ func (r *ExpressionReplacer) Replace(input string, ctx *EvalContext) (string, er
 
 // ReplaceInMap recursively replaces expressions in a map
 func (r *ExpressionReplacer) ReplaceInMap(m map[string]interface{}, ctx *EvalContext) (map[string]interface{}, error) {
+	return r.replaceInMapWithDepth(m, ctx, 0)
+}
+
+// replaceInMapWithDepth recursively replaces expressions with depth tracking
+func (r *ExpressionReplacer) replaceInMapWithDepth(m map[string]interface{}, ctx *EvalContext, depth int) (map[string]interface{}, error) {
+	// Check nesting depth limit
+	if depth >= r.maxDepth {
+		return nil, NewExpressionError(
+			"",
+			fmt.Sprintf("expression nesting too deep: %d levels (max %d)", depth, r.maxDepth),
+			"depth_error",
+		)
+	}
+
 	result := make(map[string]interface{})
 
 	for k, v := range m {
@@ -59,14 +77,14 @@ func (r *ExpressionReplacer) ReplaceInMap(m map[string]interface{}, ctx *EvalCon
 			result[k] = replaced
 
 		case map[string]interface{}:
-			replaced, err := r.ReplaceInMap(val, ctx)
+			replaced, err := r.replaceInMapWithDepth(val, ctx, depth+1)
 			if err != nil {
 				return nil, fmt.Errorf("replace in key '%s': %w", k, err)
 			}
 			result[k] = replaced
 
 		case []interface{}:
-			replaced, err := r.ReplaceInArray(val, ctx)
+			replaced, err := r.replaceInArrayWithDepth(val, ctx, depth+1)
 			if err != nil {
 				return nil, fmt.Errorf("replace in key '%s': %w", k, err)
 			}
@@ -82,6 +100,20 @@ func (r *ExpressionReplacer) ReplaceInMap(m map[string]interface{}, ctx *EvalCon
 
 // ReplaceInArray recursively replaces expressions in an array
 func (r *ExpressionReplacer) ReplaceInArray(arr []interface{}, ctx *EvalContext) ([]interface{}, error) {
+	return r.replaceInArrayWithDepth(arr, ctx, 0)
+}
+
+// replaceInArrayWithDepth recursively replaces expressions with depth tracking
+func (r *ExpressionReplacer) replaceInArrayWithDepth(arr []interface{}, ctx *EvalContext, depth int) ([]interface{}, error) {
+	// Check nesting depth limit
+	if depth >= r.maxDepth {
+		return nil, NewExpressionError(
+			"",
+			fmt.Sprintf("expression nesting too deep: %d levels (max %d)", depth, r.maxDepth),
+			"depth_error",
+		)
+	}
+
 	result := make([]interface{}, len(arr))
 
 	for i, v := range arr {
@@ -94,14 +126,14 @@ func (r *ExpressionReplacer) ReplaceInArray(arr []interface{}, ctx *EvalContext)
 			result[i] = replaced
 
 		case map[string]interface{}:
-			replaced, err := r.ReplaceInMap(val, ctx)
+			replaced, err := r.replaceInMapWithDepth(val, ctx, depth+1)
 			if err != nil {
 				return nil, fmt.Errorf("replace in index %d: %w", i, err)
 			}
 			result[i] = replaced
 
 		case []interface{}:
-			replaced, err := r.ReplaceInArray(val, ctx)
+			replaced, err := r.replaceInArrayWithDepth(val, ctx, depth+1)
 			if err != nil {
 				return nil, fmt.Errorf("replace in index %d: %w", i, err)
 			}

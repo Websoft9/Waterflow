@@ -340,3 +340,41 @@ func TestEngine_WrapError_WithRuntimeError(t *testing.T) {
 	// 验证错误被包装
 	assert.Error(t, err)
 }
+
+func TestEngine_ExpressionLengthLimit(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+
+	// 创建一个超过1024字符的表达式
+	longExpr := "1"
+	for i := 0; i < 520; i++ {
+		longExpr += " + 1"
+	}
+	// 确保超过1024字符
+	require.Greater(t, len(longExpr), 1024)
+
+	_, err := engine.Compile(longExpr)
+	require.Error(t, err)
+
+	exprErr, ok := err.(*ExpressionError)
+	require.True(t, ok, "expected ExpressionError")
+	assert.Equal(t, "length_error", exprErr.Type)
+	assert.Contains(t, exprErr.Message, "too long")
+	assert.Contains(t, exprErr.Message, "max 1024")
+}
+
+func TestEngine_ExpressionWithinLengthLimit(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+	ctx := &EvalContext{}
+
+	// 创建一个接近但不超过1024字符的表达式
+	expr := "1"
+	for i := 0; i < 200; i++ {
+		expr += " + 1"
+	}
+	require.LessOrEqual(t, len(expr), 1024)
+
+	// 应该成功编译和执行
+	result, err := engine.Evaluate(expr, ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 201, result)
+}

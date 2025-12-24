@@ -23,6 +23,15 @@ func NewEngine(timeout time.Duration) *Engine {
 
 // Compile compiles an expression for later execution (can be cached)
 func (e *Engine) Compile(expression string) (*vm.Program, error) {
+	// Check expression length limit (max 1024 characters)
+	if len(expression) > 1024 {
+		return nil, NewExpressionError(
+			expression,
+			fmt.Sprintf("expression too long: %d characters (max 1024)", len(expression)),
+			"length_error",
+		)
+	}
+
 	// Build options
 	options := []expr.Option{
 		expr.Env(EvalContext{}),

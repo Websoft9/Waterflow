@@ -143,6 +143,18 @@ func TestBuiltinToJSON(t *testing.T) {
 			want:    `true`,
 			wantErr: false,
 		},
+		{
+			name:    "invalid type - function",
+			input:   func() {},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid type - channel",
+			input:   make(chan int),
+			want:    "",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
