@@ -3,6 +3,7 @@ package dsl
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,11 +12,14 @@ import (
 
 // MockJobExecutor for testing
 type MockJobExecutor struct {
+	mu           sync.Mutex
 	executedJobs []string
 }
 
 func (m *MockJobExecutor) Execute(ctx context.Context, job *Job, evalCtx *EvalContext) (*JobResult, error) {
+	m.mu.Lock()
 	m.executedJobs = append(m.executedJobs, job.Name)
+	m.mu.Unlock()
 
 	// Compute outputs based on job.Outputs expressions
 	outputs := make(map[string]string)
