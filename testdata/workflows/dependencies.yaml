@@ -1,0 +1,33 @@
+name: Job Dependencies Test
+on: push
+
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      - name: Build App
+        id: build_step
+        uses: build@v1
+        with:
+          command: make build
+    outputs:
+      version: ${{ steps.build_step.outputs.version }}
+      artifact: ${{ steps.build_step.outputs.artifact }}
+
+  test:
+    runs-on: linux-amd64
+    steps:
+      - name: Run Tests
+        uses: test@v1
+        with:
+          command: make test
+
+  deploy:
+    needs: [build, test]
+    runs-on: linux-amd64
+    steps:
+      - name: Deploy Application
+        uses: deploy@v1
+        with:
+          version: ${{ needs.build.outputs.version }}
+          artifact: ${{ needs.build.outputs.artifact }}

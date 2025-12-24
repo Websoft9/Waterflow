@@ -1,0 +1,34 @@
+name: Conditional Execution Test
+on: push
+
+vars:
+  env: production
+  should_deploy: true
+
+jobs:
+  check:
+    runs-on: linux-amd64
+    steps:
+      - name: Always Run
+        uses: echo@v1
+        with:
+          message: "This always runs"
+      
+      - name: Deploy to Production
+        id: deploy_prod
+        if: ${{ vars.env == 'production' }}
+        uses: deploy@v1
+        with:
+          target: prod-server
+      
+      - name: Deploy to Staging
+        if: ${{ vars.env == 'staging' }}
+        uses: deploy@v1
+        with:
+          target: staging-server
+      
+      - name: Conditional Deploy
+        if: ${{ vars.should_deploy == true }}
+        uses: deploy@v1
+        with:
+          target: conditional-server

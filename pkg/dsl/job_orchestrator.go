@@ -109,6 +109,22 @@ func (o *JobOrchestrator) Execute(ctx context.Context, workflow *Workflow) error
 				// Execute job
 				result, err := o.executor.Execute(ctx, job, jobEvalCtx)
 				if err != nil {
+					// Handle continue-on-error
+					if job.ContinueOnError {
+						// Mark as completed with errors, don't cancel dependents
+						o.storeResult(&JobResult{
+							JobID:      jID,
+							Status:     "completed",
+							Conclusion: "failure",
+							Outputs:    make(map[string]string),
+						})
+						o.graph.MarkCompleted(jID, make(map[string]string))
+						return
+					}
+
+					// Job failed, cancel dependent jobs
+					o.graph.MarkFailed(jID)
+					o.cancelDependentJobs(jID)
 					errChan <- fmt.Errorf("execute job %s: %w", jID, err)
 					cancel() // Cancel other jobs
 					return
@@ -165,6 +181,24 @@ func (o *JobOrchestrator) buildJobContext(baseCtx *EvalContext, job *Job) *EvalC
 	jobCtx.Needs = needs
 
 	return &jobCtx
+}
+
+// cancelDependentJobs recursively cancels all jobs that depend on the failed job
+func (o *JobOrchestrator) cancelDependentJobs(failedJobID string) {
+	dependents := o.graph.GetDependentJobs(failedJobID)
+	for _, depID := range dependents {
+		// Mark as cancelled
+		o.graph.MarkFailed(depID)
+		o.storeResult(&JobResult{
+			JobID:      depID,
+			Status:     "completed",
+			Conclusion: "cancelled",
+			Outputs:    make(map[string]string),
+		})
+
+		// Recursively cancel dependents of this job
+		o.cancelDependentJobs(depID)
+	}
 }
 
 // storeResult stores job execution result

@@ -106,18 +106,20 @@ func BenchmarkJobOrchestrator_BuildContext(b *testing.B) {
 func BenchmarkJobOrchestrator_ParallelExecution(b *testing.B) {
 	workflow := &Workflow{
 		Name: "Parallel",
+		Vars: make(map[string]interface{}),
 		Jobs: map[string]*Job{
-			"job1": {Name: "job1", Steps: []*Step{{Name: "step1"}}},
-			"job2": {Name: "job2", Steps: []*Step{{Name: "step1"}}},
-			"job3": {Name: "job3", Steps: []*Step{{Name: "step1"}}},
-			"job4": {Name: "job4", Steps: []*Step{{Name: "step1"}}},
-			"job5": {Name: "job5", Steps: []*Step{{Name: "step1"}}},
+			"job1": {Name: "job1", Steps: []*Step{{Name: "step1", Uses: "test@v1"}}},
+			"job2": {Name: "job2", Steps: []*Step{{Name: "step1", Uses: "test@v1"}}},
+			"job3": {Name: "job3", Steps: []*Step{{Name: "step1", Uses: "test@v1"}}},
+			"job4": {Name: "job4", Steps: []*Step{{Name: "step1", Uses: "test@v1"}}},
+			"job5": {Name: "job5", Steps: []*Step{{Name: "step1", Uses: "test@v1"}}},
 		},
 	}
 
+	executor := &MockJobExecutor{}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		executor := &MockJobExecutor{}
 		orch := NewJobOrchestrator(workflow, executor)
 		_ = orch.Execute(context.Background(), workflow)
 	}

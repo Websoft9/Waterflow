@@ -1,0 +1,49 @@
+name: Continue on Error Test
+on: push
+
+jobs:
+  optional_checks:
+    runs-on: linux-amd64
+    continue-on-error: true
+    steps:
+      - name: Optional Lint
+        continue-on-error: true
+        uses: run@v1
+        with:
+          command: make lint
+      
+      - name: Optional Security Scan
+        continue-on-error: true
+        uses: run@v1
+        with:
+          command: make security-scan
+      
+      - name: Must Run Cleanup
+        if: ${{ always() }}
+        uses: cleanup@v1
+
+  build:
+    needs: [optional_checks]
+    runs-on: linux-amd64
+    steps:
+      - name: Build Application
+        uses: build@v1
+        with:
+          command: make build
+
+  notify:
+    needs: [build]
+    if: ${{ always() }}
+    runs-on: linux-amd64
+    steps:
+      - name: Notify Success
+        if: ${{ success() }}
+        uses: notify@v1
+        with:
+          message: "Build succeeded"
+      
+      - name: Notify Failure
+        if: ${{ failure() }}
+        uses: notify@v1
+        with:
+          message: "Build failed"

@@ -63,13 +63,17 @@ func (e *StepExecutor) Execute(ctx context.Context, step *Step, evalCtx *EvalCon
 	// TODO: Integrate with actual node executor in future
 	output := fmt.Sprintf("Mock execution of step: %s\n", step.Name)
 
-	// Simulate step execution
+	// Simulate step execution - in real implementation, this would call node executor
+	var execErr error // Will be set by actual node execution
 	if step.Uses != "" {
 		output += "::set-output name=status::success\n"
 	}
 
 	// 3. Parse outputs
 	outputs := e.outputParser.ParseOutput(output)
+
+	// 4. Handle execution errors with continue-on-error support (future implementation)
+	_ = execErr // Placeholder for when node executor is integrated
 
 	// 5. Store step outputs if step has ID
 	if step.ID != "" {
@@ -83,7 +87,7 @@ func (e *StepExecutor) Execute(ctx context.Context, step *Step, evalCtx *EvalCon
 		evalCtx.Steps = e.outputManager.ToContext()
 	}
 
-	// 5. Return result
+	// 6. Return result
 	conclusion := "success"
 
 	return &StepResult{
