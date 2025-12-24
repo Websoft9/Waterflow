@@ -372,7 +372,8 @@ func (v *SemanticValidator) validateRetryStrategy(jobName string, stepIdx int, s
 	}
 
 	// 验证backoff-coefficient
-	if strategy.BackoffCoefficient < 1.0 {
+	// 0.0 表示未设置，使用默认值2.0
+	if strategy.BackoffCoefficient != 0.0 && strategy.BackoffCoefficient < 1.0 {
 		errors = append(errors, FieldError{
 			Line:       step.LineNum,
 			Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.backoff-coefficient", jobName, stepIdx),
@@ -394,10 +395,9 @@ func (v *SemanticValidator) validateRetryStrategy(jobName string, stepIdx int, s
 		})
 	}
 
-	// 验证initial-interval格式
+	// 验证initial-interval格式 (使用独立验证函数,避免重复Resolve)
 	if strategy.InitialInterval != "" {
-		resolver := NewRetryPolicyResolver()
-		if _, err := resolver.Resolve(strategy); err != nil {
+		if err := ValidateDuration(strategy.InitialInterval); err != nil {
 			errors = append(errors, FieldError{
 				Line:       step.LineNum,
 				Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.initial-interval", jobName, stepIdx),
@@ -409,10 +409,9 @@ func (v *SemanticValidator) validateRetryStrategy(jobName string, stepIdx int, s
 		}
 	}
 
-	// 验证max-interval格式
+	// 验证max-interval格式 (使用独立验证函数,避免重复Resolve)
 	if strategy.MaxInterval != "" {
-		resolver := NewRetryPolicyResolver()
-		if _, err := resolver.Resolve(strategy); err != nil {
+		if err := ValidateDuration(strategy.MaxInterval); err != nil {
 			errors = append(errors, FieldError{
 				Line:       step.LineNum,
 				Field:      fmt.Sprintf("jobs.%s.steps[%d].retry-strategy.max-interval", jobName, stepIdx),

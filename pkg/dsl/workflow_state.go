@@ -52,7 +52,7 @@ type StepState struct {
 	DurationSeconds int    // 实际执行时长 (秒)
 	IsTimeout       bool   // 是否超时
 	ErrorType       string // 错误类型 (用于重试决策)
-	Retryable       bool   // 是否可重试
+	Retryable       *bool  // 是否可重试 (指针类型以区分未设置和false)
 }
 
 // NewWorkflowState creates a new workflow state tracker

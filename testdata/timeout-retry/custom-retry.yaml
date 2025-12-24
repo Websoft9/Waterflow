@@ -1,0 +1,43 @@
+name: Custom Retry Strategy Example
+on: push
+
+jobs:
+  deploy:
+    runs-on: linux-amd64
+    steps:
+      # 自定义重试策略
+      - name: Deploy to Production
+        uses: run@v1
+        timeout-minutes: 10
+        retry-strategy:
+          max-attempts: 5           # 最多尝试5次
+          initial-interval: 2s      # 首次重试间隔2秒
+          backoff-coefficient: 1.5  # 退避系数1.5
+          max-interval: 30s         # 最大间隔30秒
+        with:
+          command: ./deploy-prod.sh
+      
+      # 禁用重试
+      - name: One Shot Task
+        uses: run@v1
+        retry-strategy:
+          max-attempts: 1  # 只执行1次,不重试
+        with:
+          command: ./critical-task.sh
+      
+      # 使用默认重试策略(3次,指数退避)
+      - name: Upload Artifacts
+        uses: run@v1
+        with:
+          command: aws s3 sync ./dist s3://bucket/
+      
+      # 激进重试策略
+      - name: Network Heavy Task
+        uses: run@v1
+        retry-strategy:
+          max-attempts: 10
+          initial-interval: 500ms
+          backoff-coefficient: 1.2
+          max-interval: 10s
+        with:
+          command: ./download-large-file.sh

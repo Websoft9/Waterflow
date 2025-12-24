@@ -1,0 +1,58 @@
+name: Non-Retryable Errors Example
+on: push
+
+jobs:
+  validation:
+    runs-on: linux-amd64
+    steps:
+      # 永久性错误示例 - YAML验证错误
+      - name: Validate Config
+        uses: run@v1
+        retry-strategy:
+          max-attempts: 3  # 即使配置重试,永久性错误也不会重试
+        with:
+          command: yamllint config.yaml
+        # 如果返回validation_error,不会重试
+      
+      # 永久性错误示例 - 资源不存在
+      - name: Check File Exists
+        uses: run@v1
+        retry-strategy:
+          max-attempts: 5
+        with:
+          command: test -f /path/to/missing/file
+        # 如果返回not_found,不会重试
+      
+      # 永久性错误示例 - 权限拒绝
+      - name: Access Protected Resource
+        uses: run@v1
+        retry-strategy:
+          max-attempts: 3
+        with:
+          command: cat /etc/shadow
+        # 如果返回permission_denied,不会重试
+  
+  retryable:
+    runs-on: linux-amd64
+    steps:
+      # 临时性错误示例 - 网络超时(会重试)
+      - name: Download from Internet
+        uses: run@v1
+        retry-strategy:
+          max-attempts: 5
+          initial-interval: 2s
+          max-interval: 1m
+        with:
+          command: curl -O https://example.com/large-file.zip
+        # 如果返回network_timeout,会重试
+      
+      # 临时性错误示例 - 服务不可用(会重试)
+      - name: Call API
+        uses: run@v1
+        retry-strategy:
+          max-attempts: 10
+          initial-interval: 1s
+          backoff-coefficient: 2.0
+        with:
+          command: curl https://api.service.com/status
+        # 如果返回503 service_unavailable,会重试

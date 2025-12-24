@@ -1,0 +1,27 @@
+name: Step Timeout Example
+on: push
+
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      # Step显式配置超时
+      - name: Checkout Code
+        uses: checkout@v1
+        timeout-minutes: 5
+        with:
+          repository: https://github.com/example/repo
+          branch: main
+      
+      # Step超时覆盖Job超时
+      - name: Quick Build
+        uses: run@v1
+        timeout-minutes: 10
+        with:
+          command: make quick-build
+      
+      # Step继承Job超时(默认360分钟)
+      - name: Long Running Test
+        uses: run@v1
+        with:
+          command: npm test

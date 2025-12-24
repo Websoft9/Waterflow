@@ -1,0 +1,34 @@
+name: Job Timeout Example
+on: push
+
+jobs:
+  # Job显式配置60分钟超时
+  fast-build:
+    runs-on: linux-amd64
+    timeout-minutes: 60
+    steps:
+      - name: Build
+        uses: run@v1
+        with:
+          command: make build
+      
+      - name: Test
+        uses: run@v1
+        # 继承Job的60分钟超时
+        with:
+          command: make test
+      
+      - name: Deploy
+        uses: run@v1
+        timeout-minutes: 15  # 显式配置,覆盖Job超时
+        with:
+          command: make deploy
+  
+  # Job使用默认超时(360分钟)
+  slow-build:
+    runs-on: linux-amd64
+    steps:
+      - name: Heavy Compilation
+        uses: run@v1
+        with:
+          command: make all  # 继承默认360分钟

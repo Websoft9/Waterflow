@@ -50,46 +50,55 @@ func (c *ErrorClassifier) IsRetryable(errType string) bool {
 // ClassifyError 分类错误并返回错误类型
 // 临时性错误: network_timeout, connection_refused, service_unavailable, internal_error, deadline_exceeded
 // 永久性错误: validation_error, schema_error, not_found, permission_denied, invalid_argument
+// 使用更精确的匹配策略,避免误判
 func (c *ErrorClassifier) ClassifyError(err error) string {
 	if err == nil {
 		return ""
 	}
 
-	errMsg := err.Error()
+	errMsg := toLower(err.Error())
 
-	// 简单的字符串匹配分类 (实际项目中可能使用更复杂的错误类型检测)
-	// 优先检查更具体的错误类型
-	switch {
-	case contains(errMsg, "schema", "invalid schema"):
+	// 优先匹配永久性错误(更具体的模式)
+	if matchExact(errMsg, []string{"schema error", "invalid schema", "schema validation", "schema"}) {
 		return "schema_error"
-	case contains(errMsg, "validation", "parse", "unmarshal"):
-		return "validation_error"
-	case contains(errMsg, "not found", "404"):
-		return "not_found"
-	case contains(errMsg, "permission denied", "403", "forbidden"):
-		return "permission_denied"
-	case contains(errMsg, "invalid argument", "400", "bad request"):
-		return "invalid_argument"
-	case contains(errMsg, "node not registered", "unknown node"):
-		return "node_not_registered"
-	case contains(errMsg, "timeout", "timed out", "deadline exceeded", "context deadline"):
-		return "deadline_exceeded"
-	case contains(errMsg, "connection refused", "dial"):
-		return "connection_refused"
-	case contains(errMsg, "503", "service unavailable"):
-		return "service_unavailable"
-	case contains(errMsg, "500", "internal"):
-		return "internal_error"
-	default:
-		return "unknown_error"
 	}
+	if matchExact(errMsg, []string{"validation error", "validation failed", "yaml parse", "unmarshal error", "parse error"}) {
+		return "validation_error"
+	}
+	if matchExact(errMsg, []string{"not found", "404", "no such", "does not exist"}) {
+		return "not_found"
+	}
+	if matchExact(errMsg, []string{"permission denied", "403", "forbidden", "access denied"}) {
+		return "permission_denied"
+	}
+	if matchExact(errMsg, []string{"invalid argument", "400", "bad request"}) {
+		return "invalid_argument"
+	}
+	if matchExact(errMsg, []string{"node not registered", "unknown node"}) {
+		return "node_not_registered"
+	}
+
+	// 临时性错误
+	if matchExact(errMsg, []string{"context deadline exceeded", "deadline exceeded", "timed out", "timeout"}) {
+		return "deadline_exceeded"
+	}
+	if matchExact(errMsg, []string{"connection refused", "dial tcp", "dial"}) {
+		return "connection_refused"
+	}
+	if matchExact(errMsg, []string{"503", "service unavailable", "unavailable"}) {
+		return "service_unavailable"
+	}
+	if matchExact(errMsg, []string{"500", "internal server error", "internal"}) {
+		return "internal_error"
+	}
+
+	return "unknown_error"
 }
 
-// contains 检查错误消息是否包含任一关键词
-func contains(msg string, keywords ...string) bool {
-	msgLower := toLower(msg)
-	for _, keyword := range keywords {
-		if indexOf(msgLower, toLower(keyword)) >= 0 {
+// matchExact 精确匹配错误消息中的关键词
+func matchExact(msg string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if indexOf(msg, pattern) >= 0 {
 			return true
 		}
 	}
