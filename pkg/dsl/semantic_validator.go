@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/Websoft9/waterflow/pkg/dsl/node"
 )
@@ -20,40 +21,47 @@ func NewSemanticValidator(registry *node.Registry) *SemanticValidator {
 // Validate 验证工作流语义
 func (v *SemanticValidator) Validate(workflow *Workflow, content []byte) error {
 	v.content = content
-	var errors []FieldError
+	var allErrors []FieldError
 
 	// 1. 验证节点存在性和参数
 	for jobName, job := range workflow.Jobs {
 		// Story 1.6: 验证Matrix配置
 		matrixErrors := v.validateMatrix(jobName, job)
-		errors = append(errors, matrixErrors...)
+		allErrors = append(allErrors, matrixErrors...)
 
 		// Story 1.7: 验证Job超时配置
 		jobTimeoutErrors := v.validateJobTimeout(jobName, job)
-		errors = append(errors, jobTimeoutErrors...)
+		allErrors = append(allErrors, jobTimeoutErrors...)
 
 		for stepIdx, step := range job.Steps {
 			stepErrors := v.validateStep(jobName, stepIdx, step)
-			errors = append(errors, stepErrors...)
+			allErrors = append(allErrors, stepErrors...)
 
 			// Story 1.7: 验证Step超时和重试配置
 			timeoutErrors := v.validateStepTimeout(jobName, stepIdx, step)
-			errors = append(errors, timeoutErrors...)
+			allErrors = append(allErrors, timeoutErrors...)
 
 			retryErrors := v.validateRetryStrategy(jobName, stepIdx, step)
-			errors = append(errors, retryErrors...)
+			allErrors = append(allErrors, retryErrors...)
 		}
 	}
 
 	// 2. 验证 Job 依赖
 	depErrors := v.validateJobDependencies(workflow)
-	errors = append(errors, depErrors...)
+	allErrors = append(allErrors, depErrors...)
 
-	if len(errors) > 0 {
+	// 3. Story 2.2: 验证 runs-on 字段
+	if err := v.validateRunsOn(workflow); err != nil {
+		if validationErr, ok := err.(*ValidationError); ok {
+			allErrors = append(allErrors, validationErr.Errors...)
+		}
+	}
+
+	if len(allErrors) > 0 {
 		return &ValidationError{
 			Type:   "semantic_validation_error",
-			Detail: fmt.Sprintf("Found %d semantic errors", len(errors)),
-			Errors: errors,
+			Detail: fmt.Sprintf("Found %d semantic errors", len(allErrors)),
+			Errors: allErrors,
 		}
 	}
 
@@ -424,4 +432,71 @@ func (v *SemanticValidator) validateRetryStrategy(jobName string, stepIdx int, s
 	}
 
 	return errors
+}
+
+// ValidateTaskQueueName validates Task Queue naming per ADR-0006.
+// Rules:
+// - Only alphanumeric characters and hyphens
+// - Must start and end with alphanumeric character
+// - Length < 256 characters
+func ValidateTaskQueueName(name string) error {
+	if name == "" {
+		return fmt.Errorf("task queue name cannot be empty")
+	}
+
+	// Regex: alphanumeric start, alphanumeric/hyphen middle, alphanumeric end
+	// Pattern: ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$
+	// Matches: "a", "linux-amd64", "gpu-a100", "web-servers-prod"
+	// Rejects: "-linux", "linux-", "linux_amd64", "web servers"
+	re := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
+	if !re.MatchString(name) {
+		return fmt.Errorf("invalid task queue name: must contain only alphanumeric characters and hyphens, and must start and end with alphanumeric")
+	}
+
+	if len(name) > 255 {
+		return fmt.Errorf("task queue name too long: maximum 255 characters, got %d", len(name))
+	}
+
+	return nil
+}
+
+// validateRunsOn validates runs-on field for all jobs
+func (v *SemanticValidator) validateRunsOn(workflow *Workflow) error {
+	var errors []FieldError
+
+	for jobName, job := range workflow.Jobs {
+		// Check runs-on is not empty
+		if job.RunsOn == "" {
+			errors = append(errors, FieldError{
+				Line:       job.LineNum,
+				Field:      fmt.Sprintf("jobs.%s.runs-on", jobName),
+				Error:      "runs-on is required",
+				Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
+				Suggestion: "Add runs-on field to specify task queue (e.g., 'linux-amd64', 'web-servers')",
+			})
+			continue
+		}
+
+		// Validate task queue name format
+		if err := ValidateTaskQueueName(job.RunsOn); err != nil {
+			errors = append(errors, FieldError{
+				Line:       job.LineNum,
+				Field:      fmt.Sprintf("jobs.%s.runs-on", jobName),
+				Error:      err.Error(),
+				Value:      job.RunsOn,
+				Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
+				Suggestion: "Use only alphanumeric characters and hyphens (e.g., 'linux-amd64', 'web-servers')",
+			})
+		}
+	}
+
+	if len(errors) > 0 {
+		return &ValidationError{
+			Type:   "runs_on_validation_error",
+			Detail: fmt.Sprintf("Found %d runs-on validation errors", len(errors)),
+			Errors: errors,
+		}
+	}
+
+	return nil
 }

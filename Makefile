@@ -15,8 +15,9 @@ LDFLAGS := -ldflags "\
 BIN_DIR := bin
 BUILD_DIR := build
 
-# Binary name
-BINARY_NAME := server
+# Binary names
+SERVER_BINARY_NAME := server
+AGENT_BINARY_NAME := agent
 
 ## help: Display this help message
 help:
@@ -29,11 +30,22 @@ help:
 
 ## build: Compile server binary with version information
 build:
-	@echo "Building $(BINARY_NAME)..."
+	@echo "Building $(SERVER_BINARY_NAME)..."
 	@mkdir -p $(BIN_DIR)
-	go build $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME) cmd/server/main.go
-	@echo "Build complete: $(BIN_DIR)/$(BINARY_NAME)"
+	go build $(LDFLAGS) -o $(BIN_DIR)/$(SERVER_BINARY_NAME) cmd/server/main.go
+	@echo "Build complete: $(BIN_DIR)/$(SERVER_BINARY_NAME)"
 	@echo "Version: $(VERSION), Commit: $(COMMIT), Build Time: $(BUILD_TIME)"
+
+## build-agent: Compile agent binary with version information
+build-agent:
+	@echo "Building $(AGENT_BINARY_NAME)..."
+	@mkdir -p $(BIN_DIR)
+	go build $(LDFLAGS) -o $(BIN_DIR)/$(AGENT_BINARY_NAME) cmd/agent/main.go
+	@echo "Build complete: $(BIN_DIR)/$(AGENT_BINARY_NAME)"
+	@echo "Version: $(VERSION), Commit: $(COMMIT), Build Time: $(BUILD_TIME)"
+
+## build-all: Compile both server and agent binaries
+build-all: build build-agent
 
 ## test: Run all tests
 test:
@@ -66,7 +78,12 @@ fmt:
 ## run: Run server locally
 run: build
 	@echo "Starting server..."
-	./$(BIN_DIR)/$(BINARY_NAME)
+	./$(BIN_DIR)/$(SERVER_BINARY_NAME)
+
+## run-agent: Run agent with default config
+run-agent: build-agent
+	@echo "Running $(AGENT_BINARY_NAME)..."
+	./$(BIN_DIR)/$(AGENT_BINARY_NAME) --config config.agent.example.yaml
 
 ## docker-build: Build Docker image
 docker-build:

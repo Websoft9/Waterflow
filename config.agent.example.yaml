@@ -1,0 +1,34 @@
+# Waterflow Agent Configuration
+# This agent polls specified task queues and executes workflow steps.
+
+# Temporal connection settings
+temporal:
+  host: "localhost:7233"            # Temporal Server gRPC address
+  namespace: "waterflow"            # Temporal namespace
+  connection_timeout: 10s           # Connection timeout
+  max_retries: 10                   # Connection retry attempts
+  retry_interval: 5s                # Retry interval
+
+# Agent-specific settings
+agent:
+  # Task queues this agent will poll (corresponds to `runs-on` in YAML)
+  # Example: A Linux AMD64 agent with GPU support
+  task_queues:
+    - "linux-amd64"                 # Main queue: Linux AMD64 tasks
+    - "linux-common"                # Fallback: generic Linux tasks
+    - "gpu-a100"                    # Special: GPU tasks (if hardware available)
+  
+  # Plugin directory (contains .so node plugins)
+  plugin_dir: "/opt/waterflow/plugins"
+  
+  # Auto-reload plugins when .so files change (requires fsnotify)
+  auto_reload_plugins: false
+  
+  # Graceful shutdown timeout
+  shutdown_timeout: 30s
+
+# Logging settings
+log:
+  level: "info"                     # debug, info, warn, error
+  format: "json"                    # json or text
+  output: "stdout"                  # stdout, stderr, or file path

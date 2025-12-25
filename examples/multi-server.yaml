@@ -1,0 +1,116 @@
+name: Multi-Server Deployment
+
+# 多服务器部署示例
+# 演示如何使用 runs-on 将任务路由到不同的服务器组
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # 在 Linux AMD64 服务器上构建
+  build:
+    runs-on: linux-amd64
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Code
+        uses: checkout@v1
+        with:
+          repository: https://github.com/example/app.git
+      
+      - name: Build Application
+        uses: shell@v1
+        with:
+          command: |
+            make build
+            make test
+      
+      - name: Package Artifacts
+        uses: shell@v1
+        with:
+          command: tar -czf app.tar.gz dist/
+
+  # 并行部署到多个 Web 服务器组
+  deploy-web-staging:
+    runs-on: staging-web-servers
+    needs: [build]
+    timeout-minutes: 15
+    steps:
+      - name: Deploy to Staging Web Servers
+        uses: shell@v1
+        with:
+          command: |
+            scp app.tar.gz staging-web:/opt/app/
+            ssh staging-web "cd /opt/app && tar -xzf app.tar.gz && systemctl restart app"
+      
+      - name: Health Check
+        uses: shell@v1
+        with:
+          command: curl -f http://staging-web/health
+
+  deploy-web-prod:
+    runs-on: prod-web-servers
+    needs: [deploy-web-staging]
+    timeout-minutes: 15
+    steps:
+      - name: Deploy to Production Web Servers
+        uses: shell@v1
+        with:
+          command: |
+            scp app.tar.gz prod-web:/opt/app/
+            ssh prod-web "cd /opt/app && tar -xzf app.tar.gz && systemctl restart app"
+      
+      - name: Health Check
+        uses: shell@v1
+        with:
+          command: curl -f http://prod-web/health
+
+  # 在数据库服务器上执行迁移
+  db-migration:
+    runs-on: db-servers
+    needs: [build]
+    timeout-minutes: 10
+    steps:
+      - name: Run Database Migration
+        uses: shell@v1
+        with:
+          command: |
+            psql -h db-server -U app -d production -f migrations/latest.sql
+      
+      - name: Verify Migration
+        uses: shell@v1
+        with:
+          command: |
+            psql -h db-server -U app -d production -c "SELECT version FROM schema_migrations;"
+
+  # GPU 服务器上的模型训练 (可选,需要 GPU)
+  train-model:
+    runs-on: gpu-a100
+    needs: [build]
+    timeout-minutes: 120
+    if: ${{ env.ENABLE_TRAINING == 'true' }}
+    steps:
+      - name: Train ML Model
+        uses: shell@v1
+        with:
+          command: |
+            python train.py --model large --epochs 100 --gpu
+      
+      - name: Upload Model
+        uses: shell@v1
+        with:
+          command: aws s3 cp model.h5 s3://models/latest/
+
+  # 通知部署结果
+  notify:
+    runs-on: linux-amd64
+    needs: [deploy-web-prod, db-migration]
+    if: always()
+    steps:
+      - name: Send Notification
+        uses: shell@v1
+        with:
+          command: |
+            curl -X POST https://hooks.slack.com/services/YOUR/WEBHOOK/URL \
+              -H 'Content-Type: application/json' \
+              -d '{"text":"Deployment completed successfully!"}'

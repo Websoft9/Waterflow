@@ -14,26 +14,31 @@ Waterflow is a declarative workflow orchestration engine that provides enterpris
 # Example: Distributed Application Deployment Workflow
 name: deploy-app
 jobs:
-  deploy-web:
-    runs-on: web-servers
+  build:
+    runs-on: linux-amd64          # Build on Linux AMD64 servers
     steps:
-      - name: Pull Image
-        uses: docker/exec
+      - name: Build Application
+        uses: shell@v1
         with:
-          command: docker pull myapp:latest
-      
+          command: make build
+  
+  deploy-web:
+    runs-on: web-servers           # Deploy to web server group
+    needs: [build]
+    steps:
       - name: Deploy Container
-        uses: docker/compose-up
+        uses: shell@v1
         with:
-          file: docker-compose.yml
+          command: docker-compose up -d web
 
   deploy-db:
-    runs-on: db-servers
+    runs-on: db-servers            # Deploy to database server group
+    needs: [build]
     steps:
       - name: Init Database
-        uses: shell
+        uses: shell@v1
         with:
-          run: mysql -e "CREATE DATABASE IF NOT EXISTS myapp"
+          command: mysql -e "CREATE DATABASE IF NOT EXISTS myapp"
 ```
 
 ---

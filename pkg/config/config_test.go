@@ -266,3 +266,161 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "waterflow", cfg.Temporal.Namespace)
 	assert.Equal(t, "waterflow-server", cfg.Temporal.TaskQueue)
 }
+
+func TestLoadAgent(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		errMsg  string
+		verify  func(*testing.T, *Config)
+	}{
+		{
+			name: "valid agent config",
+			yaml: `
+agent:
+  task_queues:
+    - linux-amd64
+    - linux-common
+  plugin_dir: /opt/waterflow/plugins
+  shutdown_timeout: 30s
+temporal:
+  host: localhost:7233
+  namespace: waterflow
+log:
+  level: info
+  format: json
+`,
+			wantErr: false,
+			verify: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, []string{"linux-amd64", "linux-common"}, cfg.Agent.TaskQueues)
+				assert.Equal(t, "/opt/waterflow/plugins", cfg.Agent.PluginDir)
+				assert.Equal(t, 30*time.Second, cfg.Agent.ShutdownTimeout)
+			},
+		},
+		{
+			name: "empty task queues",
+			yaml: `
+agent:
+  task_queues: []
+`,
+			wantErr: true,
+			errMsg:  "task_queues cannot be empty",
+		},
+		{
+			name: "invalid queue name with underscore",
+			yaml: `
+agent:
+  task_queues:
+    - invalid_queue_name
+`,
+			wantErr: true,
+			errMsg:  "invalid task queue name",
+		},
+		{
+			name: "invalid queue name with special chars",
+			yaml: `
+agent:
+  task_queues:
+    - "queue@123"
+`,
+			wantErr: true,
+			errMsg:  "invalid task queue name",
+		},
+		{
+			name: "queue name starting with hyphen",
+			yaml: `
+agent:
+  task_queues:
+    - "-invalid"
+`,
+			wantErr: true,
+			errMsg:  "invalid task queue name",
+		},
+		{
+			name: "queue name ending with hyphen",
+			yaml: `
+agent:
+  task_queues:
+    - "invalid-"
+`,
+			wantErr: true,
+			errMsg:  "invalid task queue name",
+		},
+		{
+			name: "valid queue names with hyphens",
+			yaml: `
+agent:
+  task_queues:
+    - linux-amd64
+    - gpu-a100
+    - server-group-1
+temporal:
+  host: localhost:7233
+  namespace: waterflow
+`,
+			wantErr: false,
+			verify: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, []string{"linux-amd64", "gpu-a100", "server-group-1"}, cfg.Agent.TaskQueues)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpfile, err := os.CreateTemp("", "agent-config-*.yaml")
+			require.NoError(t, err)
+			defer func() {
+				_ = os.Remove(tmpfile.Name())
+			}()
+
+			_, err = tmpfile.Write([]byte(tt.yaml))
+			require.NoError(t, err)
+			_ = tmpfile.Close()
+
+			cfg, err := LoadAgent(tmpfile.Name())
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, cfg)
+				if tt.verify != nil {
+					tt.verify(t, cfg)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateQueueName(t *testing.T) {
+	tests := []struct {
+		name    string
+		queue   string
+		wantErr bool
+	}{
+		{"valid alphanumeric", "queue123", false},
+		{"valid with hyphens", "linux-amd64", false},
+		{"valid complex", "server-group-1-amd64", false},
+		{"empty string", "", true},
+		{"too long", string(make([]byte, 256)), true},
+		{"underscore", "invalid_name", true},
+		{"special chars", "queue@123", true},
+		{"start with hyphen", "-invalid", true},
+		{"end with hyphen", "invalid-", true},
+		{"space", "invalid name", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateQueueName(tt.queue)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

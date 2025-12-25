@@ -885,3 +885,33 @@ func (h *WorkflowHandlers) extractLogFromEvent(event *history.HistoryEvent, even
 
 	return logEntry
 }
+
+// ListTaskQueues returns a list of active task queues.
+// This is a placeholder implementation for Story 2.2.
+// Full implementation will be provided in Story 2.7 (Agent Health Monitoring).
+func (h *WorkflowHandlers) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
+	// Story 2.7 will implement:
+	// - Query Temporal Admin API for worker heartbeats
+	// - Calculate worker count per task queue
+	// - Return detailed health status
+
+	response := map[string]interface{}{
+		"message": "Task queue listing not yet fully implemented (Story 2.7)",
+		"hint":    "Use Temporal UI to view active task queues: http://localhost:8088",
+		"task_queues": []map[string]interface{}{
+			{
+				"name":           "example",
+				"worker_count":   0,
+				"status":         "unknown",
+				"implementation": "placeholder",
+			},
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode task queues response", zap.Error(err))
+	}
+}

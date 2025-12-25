@@ -92,6 +92,9 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 
 		// AC6: Rerun workflow
 		router.HandleFunc("/v1/workflows/{id}/rerun", wh.RerunWorkflow).Methods(http.MethodPost)
+
+		// Story 2.2 - Task queue management (placeholder for Story 2.7)
+		router.HandleFunc("/v1/task-queues", wh.ListTaskQueues).Methods(http.MethodGet)
 	}
 
 	// Custom error handlers
