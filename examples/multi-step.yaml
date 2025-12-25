@@ -1,0 +1,33 @@
+name: Multi-Step Example
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: waterflow-server
+    steps:
+      - name: Step 1 - Start Build
+        run: echo "Starting build..."
+      
+      - name: Step 2 - Simulate Build Process
+        run: |
+          echo "Compiling source code..."
+          sleep 2
+          echo "Running tests..."
+          sleep 2
+          echo "Packaging artifacts..."
+      
+      - name: Step 3 - Build Complete
+        run: echo "Build completed successfully!"
+
+  deploy:
+    runs-on: waterflow-server
+    needs: build
+    steps:
+      - name: Deploy to Staging
+        run: |
+          echo "Deploying to staging environment..."
+          echo "Deployment complete!"
+      
+      - name: Verify Deployment
+        run: echo "Verifying deployment health..."

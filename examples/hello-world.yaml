@@ -1,0 +1,19 @@
+name: Hello Waterflow
+on:
+  workflow_dispatch:
+
+vars:
+  greeting: "Hello from Waterflow!"
+
+jobs:
+  hello:
+    runs-on: waterflow-server
+    steps:
+      - name: Print Greeting
+        run: echo "${{ vars.greeting }}"
+      
+      - name: Show Environment
+        run: |
+          echo "Workflow: ${{ workflow.name }}"
+          echo "Job: ${{ job.name }}"
+          echo "Step: ${{ step.name }}"

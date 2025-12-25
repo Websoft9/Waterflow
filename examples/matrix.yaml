@@ -1,0 +1,16 @@
+name: Matrix Parallel Example
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: waterflow-server
+    strategy:
+      matrix:
+        os: [ubuntu, centos, debian]
+        version: ['20.04', '22.04']
+    steps:
+      - name: Run Tests
+        run: |
+          echo "Testing on ${{ matrix.os }} ${{ matrix.version }}"
+          echo "Test completed!"

@@ -51,7 +51,7 @@ USER waterflow
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Run server

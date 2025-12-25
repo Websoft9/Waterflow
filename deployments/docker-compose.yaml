@@ -67,7 +67,7 @@ services:
   # Waterflow Server
   waterflow:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     container_name: waterflow-server
     depends_on:

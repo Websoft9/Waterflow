@@ -48,6 +48,45 @@ jobs:
 ### 🔄 Persistent Execution
 - **Process Fault Tolerance** - Auto-recovery after Server/Agent crashes, workflows continue execution
 - **Automatic Retry** - Node-level retry strategies with exponential backoff
+
+---
+
+## 🚀 Quick Start
+
+### One-Click Deployment with Docker Compose
+
+```bash
+# Clone repository
+git clone https://github.com/websoft9/waterflow.git
+cd waterflow
+
+# Start all services
+cd deployments
+docker compose up -d
+
+# Verify deployment
+curl http://localhost:8080/health
+```
+
+### Submit Your First Workflow
+
+```bash
+# Submit hello-world example
+curl -X POST http://localhost:8080/v1/workflows \
+  -H "Content-Type: application/json" \
+  -d "{\"yaml\": \"$(cat ../examples/hello-world.yaml | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
+
+# Check workflow status
+curl http://localhost:8080/v1/workflows
+```
+
+### Access Temporal UI
+
+Visit http://localhost:8088 to view workflow execution in the Temporal Web UI.
+
+For detailed deployment instructions, see [Quick Start Guide](docs/quick-start.md) or [Deployment Documentation](docs/deployment.md).
+
+---
 - **Long-Running** - Support workflows running for hours/days with complete state persistence
 - **Process Resilience** - Zero data loss recovery of workflow state after process restarts
 

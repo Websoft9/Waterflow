@@ -51,6 +51,45 @@ jobs:
 - **长时运行** - 支持数小时/数天的工作流,状态完整持久化
 - **进程弹性** - 工作流状态在进程重启后零数据丢失恢复
 
+---
+
+## 🚀 快速开始
+
+### 使用 Docker Compose 一键部署
+
+```bash
+# 克隆仓库
+git clone https://github.com/websoft9/waterflow.git
+cd waterflow
+
+# 启动所有服务
+cd deployments
+docker compose up -d
+
+# 验证部署
+curl http://localhost:8080/health
+```
+
+### 提交你的第一个工作流
+
+```bash
+# 提交 hello-world 示例
+curl -X POST http://localhost:8080/v1/workflows \
+  -H "Content-Type: application/json" \
+  -d "{\"yaml\": \"$(cat ../examples/hello-world.yaml | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
+
+# 查看工作流状态
+curl http://localhost:8080/v1/workflows
+```
+
+### 访问 Temporal UI
+
+访问 http://localhost:8088 在 Temporal Web UI 中查看工作流可视化执行过程。
+
+详细部署说明请参考 [快速开始指南](docs/quick-start.md) 或 [部署文档](docs/deployment.md)。
+
+---
+
 ### 🌐 分布式 Agent 架构
 - **跨服务器编排** - 通过 `runs-on` 将任务路由到特定服务器组
 - **天然隔离** - Task Queue 机制确保服务器组完全隔离
