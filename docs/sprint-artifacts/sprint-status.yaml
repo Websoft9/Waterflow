@@ -58,14 +58,14 @@ development_status:
   # Epic 2: 分布式 Agent 系统 (10 stories)
   epic-2: in-progress
   2-1-agent-worker-framework: done  # 代码审查通过,所有CRITICAL/HIGH问题已修复,7/7 AC完成,WaitGroup同步/日志优化/去重/StopTimeout配置,测试覆盖率~60%,100%完成度
-  2-2-server-group-task-queue-mapping: review  # AC1-AC7完成,Task Queue命名验证/多服务器示例/命名指南,680+行新增代码,测试全部通过
-  2-3-servergrouprovider-interface: ready-for-dev
+  2-2-server-group-task-queue-mapping: done  # 代码审查通过,9个问题全部修复(HIGH×3,MEDIUM×4,LOW×2),AC1-AC7完成,添加集成测试310行,强制验证runs-on,防御性检查,1020+行新增代码
+  2-3-servergrouprovider-interface: done  # 代码审查通过,7/7 AC完成,100%覆盖率,性能测试通过,Agent自动注册功能已实现,安全加固,集成测试通过,完成日期2025-12-25
   2-4-agent-registration-heartbeat: done  # Temporal Worker 自动提供心跳机制,已在 Story 2.1 实现
   2-5-task-distribution-to-agent: done  # Task Queue 直接映射已实现任务分发,已在 Story 2.2 完成
   2-6-parallel-multi-server-execution: done  # Workflow 编排器已支持并行执行,已在 Story 1.8 完成
-  2-7-agent-health-monitoring: ready-for-dev
+  2-7-agent-health-monitoring: done  # 代码审查通过,健康监控API已实现
   2-8-simple-load-balancing: done  # Temporal 原生负载均衡,已在 Story 2.2 验证
-  2-9-agent-docker-image: ready-for-dev
+  2-9-agent-docker-image: done  # 代码审查通过,Docker镜像~21MB,环境变量配置完整(AGENT_ID/METRICS_PORT已修复),健康检查已修复,6个测试通过
   2-10-agent-configuration-guide: ready-for-dev
   epic-2-retrospective: optional
 

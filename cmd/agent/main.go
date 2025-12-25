@@ -22,7 +22,7 @@ var (
 )
 
 func main() {
-	configFile := flag.String("config", "/etc/waterflow/agent.yaml", "config file path")
+	configFile := flag.String("config", "/app/config/config.yaml", "config file path")
 	taskQueues := flag.String("task-queues", "", "comma-separated task queue names")
 	logLevel := flag.String("log-level", "", "log level (overrides config)")
 	showVersion := flag.Bool("version", false, "show version information")
@@ -36,6 +36,11 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Check for CONFIG_PATH environment variable
+	if envConfigPath := os.Getenv("CONFIG_PATH"); envConfigPath != "" {
+		*configFile = envConfigPath
+	}
+
 	// Load configuration
 	cfg, err := config.LoadAgent(*configFile)
 	if err != nil {
@@ -43,7 +48,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Override with command-line flags
+	// Override with environment variables (for Docker)
+	overrideWithEnv(cfg)
+
+	// Override with command-line flags (highest priority)
 	if *taskQueues != "" {
 		cfg.Agent.TaskQueues = parseTaskQueues(*taskQueues)
 	}
@@ -122,4 +130,37 @@ func parseTaskQueues(s string) []string {
 		}
 	}
 	return result
+}
+
+// overrideWithEnv overrides configuration with Docker environment variables
+func overrideWithEnv(cfg *config.Config) {
+	// TEMPORAL_SERVER_URL (map to temporal.host)
+	if url := os.Getenv("TEMPORAL_SERVER_URL"); url != "" {
+		cfg.Temporal.Host = url
+	}
+
+	// TASK_QUEUES (comma-separated)
+	if queues := os.Getenv("TASK_QUEUES"); queues != "" {
+		cfg.Agent.TaskQueues = parseTaskQueues(queues)
+	}
+
+	// AGENT_ID
+	if agentID := os.Getenv("AGENT_ID"); agentID != "" {
+		cfg.Agent.ID = agentID
+	}
+
+	// SERVER_URL (for heartbeat and registration)
+	if serverURL := os.Getenv("SERVER_URL"); serverURL != "" {
+		cfg.Agent.ServerURL = serverURL
+	}
+
+	// LOG_LEVEL
+	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+		cfg.Log.Level = logLevel
+	}
+
+	// METRICS_PORT
+	if metricsPort := os.Getenv("METRICS_PORT"); metricsPort != "" {
+		cfg.Agent.MetricsPort = metricsPort
+	}
 }

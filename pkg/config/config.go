@@ -35,6 +35,13 @@ type ServerConfig struct {
 	WriteTimeout time.Duration `mapstructure:"write_timeout"`
 	// ShutdownTimeout is the maximum duration for graceful shutdown.
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+
+	// ServerGroupProvider specifies the provider type for server group management.
+	// Options: "memory" (default), "file", "custom"
+	ServerGroupProvider string `mapstructure:"server_group_provider"`
+
+	// ServerGroupFile is the path to server groups YAML file (if provider=file).
+	ServerGroupFile string `mapstructure:"server_group_file"`
 }
 
 // AgentConfig holds Agent worker configuration.
@@ -44,6 +51,16 @@ type AgentConfig struct {
 	// Example: ["linux-amd64", "linux-common", "gpu-a100"]
 	TaskQueues []string `mapstructure:"task_queues"`
 
+	// ID is the unique identifier for this agent instance.
+	// Example: "agent-linux-1"
+	// Optional: If empty, auto-generated from hostname and timestamp.
+	ID string `mapstructure:"id"`
+
+	// ServerURL is the Waterflow server URL for agent registration.
+	// Example: "http://localhost:8080"
+	// Optional: If empty, agent won't register to server.
+	ServerURL string `mapstructure:"server_url"`
+
 	// PluginDir is the directory containing node plugins (.so files).
 	// Default: /opt/waterflow/plugins
 	PluginDir string `mapstructure:"plugin_dir"`
@@ -51,6 +68,10 @@ type AgentConfig struct {
 	// AutoReloadPlugins enables hot-reloading of plugins when files change.
 	// Default: false (requires fsnotify, Epic 4)
 	AutoReloadPlugins bool `mapstructure:"auto_reload_plugins"`
+
+	// MetricsPort is the port for Prometheus metrics endpoint.
+	// Default: 9090
+	MetricsPort string `mapstructure:"metrics_port"`
 
 	// ShutdownTimeout is the maximum time to wait for graceful shutdown.
 	// Default: 30s
@@ -131,6 +152,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.read_timeout", "30s")
 	v.SetDefault("server.write_timeout", "30s")
 	v.SetDefault("server.shutdown_timeout", "30s")
+	v.SetDefault("server.server_group_provider", "memory")
+	v.SetDefault("server.server_group_file", "")
 
 	// Log defaults
 	v.SetDefault("log.level", "info")
