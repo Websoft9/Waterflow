@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
@@ -13,6 +14,10 @@ import (
 // NewRouter creates and configures HTTP router with all endpoints
 func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, commit, buildTime string) http.Handler {
 	router := mux.NewRouter()
+
+	// Apply global middleware (AC7 - Request ID and Server Version headers)
+	router.Use(middleware.RequestID)
+	router.Use(middleware.Version(version))
 
 	// Register basic handlers
 	h := NewHandlers(logger, version, commit, buildTime)

@@ -18,6 +18,10 @@ bin/
 dist/
 server
 
+# Configuration files (local overrides - should not be committed)
+config.yaml
+*.local.yaml
+
 # Dependency directories
 vendor/
 
