@@ -41,7 +41,8 @@ func main() {
 		*configFile = envConfigPath
 	}
 
-	// Load configuration
+	// Load configuration (config file is optional)
+	// If file doesn't exist, Load() will use defaults + environment variables
 	cfg, err := config.LoadAgent(*configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
@@ -74,12 +75,21 @@ func main() {
 		zap.String("build_time", BuildTime),
 	)
 
-	logger.Log.Info("Configuration loaded",
-		zap.String("config_file", *configFile),
-		zap.Strings("task_queues", cfg.Agent.TaskQueues),
-		zap.String("temporal_address", cfg.Temporal.Host),
-		zap.String("log_level", cfg.Log.Level),
-	)
+	// Log configuration source
+	if _, err := os.Stat(*configFile); err == nil {
+		logger.Log.Info("Configuration loaded",
+			zap.String("config_file", *configFile),
+			zap.Strings("task_queues", cfg.Agent.TaskQueues),
+			zap.String("temporal_address", cfg.Temporal.Host),
+			zap.String("log_level", cfg.Log.Level),
+		)
+	} else {
+		logger.Log.Info("Configuration loaded from defaults and environment variables",
+			zap.Strings("task_queues", cfg.Agent.TaskQueues),
+			zap.String("temporal_address", cfg.Temporal.Host),
+			zap.String("log_level", cfg.Log.Level),
+		)
+	}
 
 	// Create and start Agent Worker
 	worker, err := agent.NewWorker(cfg, logger.Log)

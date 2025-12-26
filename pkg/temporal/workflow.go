@@ -101,6 +101,12 @@ func executeJob(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job) error {
 // executeMatrixInstancesParallel executes all instances in parallel
 func executeMatrixInstancesParallel(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instances []*dsl.MatrixInstance, failFast bool) error {
 	logger := workflow.GetLogger(ctx)
+
+	// Defensive check: validate runs-on is not empty
+	if job.RunsOn == "" {
+		return fmt.Errorf("job %s missing runs-on field", job.Name)
+	}
+
 	futures := make([]workflow.Future, len(instances))
 	for i, instance := range instances {
 		childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
@@ -126,6 +132,11 @@ func executeMatrixInstancesParallel(ctx workflow.Context, wf *dsl.Workflow, job 
 // Uses workflow.Go to maintain determinism (no native goroutines in workflows)
 func executeMatrixInstancesWithLimit(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instances []*dsl.MatrixInstance, maxParallel int, failFast bool) error {
 	logger := workflow.GetLogger(ctx)
+
+	// Defensive check: validate runs-on is not empty
+	if job.RunsOn == "" {
+		return fmt.Errorf("job %s missing runs-on field", job.Name)
+	}
 
 	// Use workflow.NewSelector for deterministic concurrency control
 	selector := workflow.NewSelector(ctx)
@@ -197,6 +208,11 @@ func getFailFast(job *dsl.Job) bool {
 // executeJobInstance executes a single job instance (matrix or regular job).
 func executeJobInstance(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instance *dsl.MatrixInstance) error {
 	logger := workflow.GetLogger(ctx)
+
+	// Defensive check: validate runs-on is not empty
+	if job.RunsOn == "" {
+		return fmt.Errorf("job %s missing runs-on field", job.Name)
+	}
 
 	// Build evaluation context (includes matrix variables)
 	evalCtx := buildEvalContext(wf, job, instance)

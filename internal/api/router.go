@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/middleware"
+	"github.com/Websoft9/waterflow/pkg/provider"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
 )
 
 // NewRouter creates and configures HTTP router with all endpoints
-func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, commit, buildTime string) http.Handler {
+func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, sgProvider provider.ServerGroupProvider, version, commit, buildTime string) http.Handler {
 	router := mux.NewRouter()
 
 	// Apply global middleware (AC7 - Request ID and Server Version headers)
@@ -71,6 +72,18 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 	// Schema endpoint (Story 1.3 - AC6)
 	router.HandleFunc("/schema/workflow.json", h.GetWorkflowSchema).Methods(http.MethodGet)
 
+	// Agent management endpoints (Story 2.3 - AC5)
+	if sgProvider != nil {
+		ah := NewAgentHandlers(logger, sgProvider)
+		router.HandleFunc("/v1/agents/register", ah.RegisterAgent).Methods(http.MethodPost)
+
+		// Story 2.7 - Agent health monitoring
+		router.HandleFunc("/v1/agents", ah.ListAgents).Methods(http.MethodGet)
+		router.HandleFunc("/v1/agents/summary", ah.GetAgentsSummary).Methods(http.MethodGet)
+		router.HandleFunc("/v1/agents/heartbeat", ah.UpdateAgentHeartbeat).Methods(http.MethodPost)
+		router.HandleFunc("/v1/agents/{agent_id}", ah.GetAgent).Methods(http.MethodGet)
+	}
+
 	// Workflow management endpoints (Story 1.9 - AC1-AC6)
 	if temporalClient != nil {
 		wh := NewWorkflowHandlers(logger, temporalClient)
@@ -92,9 +105,12 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 
 		// AC6: Rerun workflow
 		router.HandleFunc("/v1/workflows/{id}/rerun", wh.RerunWorkflow).Methods(http.MethodPost)
+	}
 
-		// Story 2.2 - Task queue management (placeholder for Story 2.7)
-		router.HandleFunc("/v1/task-queues", wh.ListTaskQueues).Methods(http.MethodGet)
+	// Story 2.7 - Task queue monitoring (moved from WorkflowHandlers)
+	if sgProvider != nil {
+		ah := NewAgentHandlers(logger, sgProvider)
+		router.HandleFunc("/v1/task-queues", ah.ListTaskQueues).Methods(http.MethodGet)
 	}
 
 	// Custom error handlers

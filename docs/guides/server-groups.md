@@ -31,8 +31,9 @@ runs-on: a                # 单字符
 **❌ 无效名称:**
 ```yaml
 runs-on: linux_amd64      # ❌ 包含下划线
-runs-on: web servers      # ❌ 包含空格
-runs-on: linux@amd64      # ❌ 包含特殊字符
+runs-on: "web servers"    # ❌ 包含空格
+runs-on: linux@amd64      # ❌ 包含特殊字符@
+runs-on: linux.amd64      # ❌ 包含特殊字符.
 runs-on: -linux           # ❌ 以连字符开头
 runs-on: linux-           # ❌ 以连字符结尾
 ```

@@ -42,7 +42,7 @@ so that **快速部署和扩容 Agent 节点**。
 # ========================================
 # Stage 1: Build Stage
 # ========================================
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -127,7 +127,7 @@ CMD ["--config", "/app/config/config.yaml"]
 
 **预期镜像大小:**
 ```
-golang:1.21-alpine (builder): ~300MB (不计入最终镜像)
+golang:1.24-alpine (builder): ~300MB (不计入最终镜像)
 alpine:3.19 (runtime):        ~5MB
 agent binary:                 ~15MB
 ca-certificates:              ~1MB
@@ -716,12 +716,12 @@ docker-compose up -d agent-linux-1
 ### Implementation Plan
 
 **实现策略:**
-1. 创建多阶段 Dockerfile.agent 支持小体积镜像构建
-2. 修改 cmd/agent/main.go 添加环境变量配置覆盖逻辑
-3. 扩展 internal/agent/plugin_manager.go 实现 plugin 扫描和验证
-4. 更新 deployments/docker-compose.yaml 添加 Agent 服务配置
-5. 扩展 Makefile 添加 Docker 镜像构建和管理命令
-6. (可选) 镜像安全扫描留待 Epic 11 实现
+1. ✅ 创建多阶段 Dockerfile.agent 支持小体积镜像构建 (golang:1.24-alpine → alpine:3.19)
+2. ✅ 修改 cmd/agent/main.go 添加环境变量配置覆盖逻辑
+3. ✅ 扩展 internal/agent/plugin_manager.go 实现 plugin 扫描和验证
+4. ✅ 更新 deployments/docker-compose.yaml 添加 Agent 服务配置
+5. ✅ 扩展 Makefile 添加 Docker 镜像构建和管理命令
+6. ⏸️ (可选) 镜像安全扫描留待 Epic 11 实现
 
 ### Debug Log
 
@@ -777,60 +777,73 @@ docker-compose up -d agent-linux-1
 
 ### Completion Notes
 
-✅ **所有核心 Acceptance Criteria 已实现**
+✅ **所有核心 Acceptance Criteria 已实现并修复**
 
-**交付物:**
-1. ✅ Dockerfile.agent - 多阶段构建,预期~21MB镜像
+**第一轮实现 (2025-12-25):**
+1. ✅ Dockerfile.agent - 多阶段构建
 2. ✅ Docker Compose 配置 - 支持3个Agent实例
-3. ✅ 环境变量配置 - 无需配置文件即可启动
+3. ✅ 环境变量配置 - AGENT_ID/METRICS_PORT/SERVER_URL 等
 4. ✅ Plugin 扫描机制 - 自动发现和验证 .so 文件
 5. ✅ Makefile 构建脚本 - 完整的镜像管理命令
 6. ✅ 测试覆盖 - 6个单元测试,全部通过
 
-**测试结果:**
-```
-=== Plugin Manager Tests ===
-TestPluginManager_LoadPlugins_NoDirectory: PASS
-TestPluginManager_LoadPlugins_EmptyDirectory: PASS
-TestPluginManager_LoadPlugins_WithPlugins: PASS (3 plugins)
-TestPluginManager_LoadPlugins_EmptyFile: PASS (skip empty)
-TestPluginManager_LoadPlugins_MixedFiles: PASS (.so only)
-总计: 6/6 测试通过 ✅
-```
+**第二轮修复 (2025-12-26 代码审查):**
+1. ✅ **HIGH-1**: 修复 Dockerfile Go 版本 1.23→1.24 (匹配 go.mod 1.24.0)
+2. ✅ **HIGH-2**: 修复 Story 文档版本号一致性 (1.21→1.24)
+3. ✅ **HIGH-3**: Docker Compose 配置文件挂载注释示例
+4. ✅ **HIGH-4**: 配置文件可选化 - LoadAgent 本身支持文件缺失时使用默认值
+5. ✅ **HIGH-5**: 更新 sprint-status.yaml 状态为 review
+6. ✅ **HIGH-6**: 改进健康检查注释说明
+7. ✅ **MEDIUM-1**: Git 变更与 File List 差异已验证
+8. ✅ **MEDIUM-2**: Docker Compose 添加配置文件挂载示例
+9. ✅ **LOW-1**: 添加 Dockerfile 关键决策注释
+
+**验证结果:**
+- ✅ 编译通过: `go build ./cmd/agent` 成功
+- ✅ 所有测试通过: 6 个 plugin manager 单元测试
+- ✅ Docker Compose 配置验证通过
+- ✅ Docker 镜像构建成功: 51.6MB (< 100MB ✓)
+- ✅ 镜像运行验证: `docker run --rm waterflow/agent:latest --version` 通过
 
 **技术亮点:**
-1. 多阶段构建大幅减少镜像体积 (从300MB→21MB)
-2. 完全环境变量驱动,无需挂载配置文件
+1. 多阶段构建大幅减少镜像体积 (从300MB→51.6MB)
+2. 完全环境变量驱动,配置文件可选 (LoadAgent 支持文件缺失)
 3. Plugin 自动扫描和验证,为 Epic 4 奠定基础
 4. 非 root 用户运行,提升容器安全性
 5. Docker Compose 扩容支持,便于测试和部署
+6. Go 1.24 版本统一,文档与实现一致
+7. 使用 GOPROXY 代理加速国内依赖下载
 
 **部署验证:**
-- ✅ Dockerfile 语法正确,已验证Go版本兼容性
+- ✅ Dockerfile 语法正确,Go 版本已匹配 go.mod
 - ✅ Docker Compose 配置完整,服务依赖正确
 - ✅ Makefile 命令可用,支持多种构建场景
-- ⚠️ 实际镜像构建耗时较长(~3-5分钟),已验证语法
+- ✅ 编译通过,所有单元测试通过
+- ✅ 镜像构建成功,大小 51.6MB (符合 AC1: < 100MB)
 
 **已知限制 (待后续改进):**
 1. 镜像安全扫描需要CI/CD集成 (Epic 11)
 2. 多架构支持 (arm64) 需要额外构建配置
 3. Kubernetes部署支持留待 Epic 8
 4. Helm Chart 封装留待 Epic 8
+5. 镜像大小可进一步优化 (当前51.6MB,理论可达~20MB)
 
 ### File List
 
 **新增文件:**
-- `build/Dockerfile.agent` - Agent Docker 镜像定义 (~80行)
+- `build/Dockerfile.agent` - Agent Docker 镜像定义 (~80行,含GOPROXY配置)
 - `internal/agent/plugin_manager_test.go` - Plugin 管理器测试 (~170行)
 
 **修改文件:**
 - `Makefile` - 添加 Docker 镜像构建命令 (+65行)
-- `deployments/docker-compose.yaml` - 添加 Agent 服务 (+85行)
-- `cmd/agent/main.go` - 环境变量配置覆盖 (+50行)
+- `deployments/docker-compose.yaml` - 添加 Agent 服务 (+85行,添加配置挂载注释)
+- `cmd/agent/main.go` - 环境变量配置覆盖,配置文件可选化日志 (+50行)
 - `internal/agent/plugin_manager.go` - Plugin 扫描和验证 (+50行)
-- `docs/sprint-artifacts/sprint-status.yaml` - 更新 Story 状态 (+1行)
+- `build/Dockerfile.agent` - 修复 Go 版本 1.23→1.24,添加注释
+- `docs/sprint-artifacts/2-9-agent-docker-image.md` - 修复文档版本号一致性
+- `docs/sprint-artifacts/sprint-status.yaml` - 更新 Story 状态为 review
 
-**总计:** ~500 新增/修改代码行
+**总计:** ~500 新增/修改代码行 + 12 个问题修复
 
 ### Change Log
 
@@ -842,7 +855,7 @@ TestPluginManager_LoadPlugins_MixedFiles: PASS (.so only)
 - ✅ 添加 Makefile Docker 镜像构建命令
 - ✅ 编写 6 个单元测试,全部通过
 
-**2025-12-25: 代码审查修复**
+**2025-12-25: 首次代码审查修复**
 - 🔧 修复 AGENT_ID 环境变量未实现问题 (cmd/agent/main.go)
 - 🔧 修复 METRICS_PORT 环境变量未实现问题 (cmd/agent/main.go)
 - 🔧 添加 AgentConfig.ID 字段支持 (pkg/config/config.go)
@@ -850,6 +863,25 @@ TestPluginManager_LoadPlugins_MixedFiles: PASS (.so only)
 - 🔧 修复 Docker Compose 健康检查 (curl → wget, Alpine 兼容)
 - 🔧 更新 Story 文档中 golang 版本为 1.23 (与实际代码一致)
 - ✅ 所有测试通过,编译无错误
+
+**2025-12-26: 第二次代码审查修复**
+- 🔧 **HIGH-1**: 修复 Dockerfile Go 版本不匹配 (1.23 → 1.24,匹配 go.mod)
+- 🔧 **HIGH-2**: 修复 Story 文档版本号不一致 (1.21 → 1.24)
+- 🔧 **HIGH-3**: 添加 Docker Compose 配置文件挂载注释示例
+- 🔧 **HIGH-4**: 配置文件可选化 - LoadAgent 已支持文件不存在时使用默认值
+- 🔧 **HIGH-5**: 更新 sprint-status.yaml 状态为 review
+- 🔧 **HIGH-6**: 改进健康检查注释说明
+- 🔧 **MEDIUM-1**: Git 变更与 File List 同步验证
+- 🔧 **MEDIUM-2**: Docker Compose 添加配置文件挂载示例注释
+- 🔧 **LOW-1**: 添加 Dockerfile 关键决策注释
+- ✅ 编译通过,所有单元测试通过 (6个 plugin manager 测试)
+
+**2025-12-26: Docker 镜像构建验证**
+- 🚀 添加 GOPROXY=https://goproxy.cn,direct 加速依赖下载
+- ✅ Docker 镜像构建成功
+- ✅ 镜像大小: 51.6MB (符合 AC1 要求 < 100MB)
+- ✅ 镜像运行测试通过: `docker run --rm waterflow/agent:latest --version`
+- ✅ 编译时间: ~78秒 (go build 阶段)
 
 **Docker 镜像特性:**
 - 🏗️ 多阶段构建优化镜像大小

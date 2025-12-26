@@ -1,0 +1,85 @@
+# ========================================
+# Stage 1: Build Stage
+# ========================================
+# Using golang:1.24-alpine to match go.mod requirement (go 1.24.0)
+FROM golang:1.24-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git make
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Set Go proxy for faster downloads (especially in China)
+ENV GOPROXY=https://goproxy.cn,direct
+
+RUN go mod download
+
+# Copy source code
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY pkg/ pkg/
+
+# Build agent binary
+# CGO_ENABLED=0 for static binary
+# -ldflags "-s -w" to reduce size
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags "-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT}" \
+    -o agent \
+    ./cmd/agent
+
+# ========================================
+# Stage 2: Runtime Stage
+# ========================================
+# Using Alpine 3.19 for stability (latest LTS)
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    && update-ca-certificates
+
+# Create non-root user
+RUN addgroup -g 1000 waterflow && \
+    adduser -D -u 1000 -G waterflow waterflow
+
+# Set working directory
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/agent /app/agent
+
+# Copy default config template
+COPY config.agent.example.yaml /app/config.example.yaml
+
+# Create directories
+RUN mkdir -p /app/plugins /app/logs /app/config && \
+    chown -R waterflow:waterflow /app
+
+# Switch to non-root user
+USER waterflow
+
+# Expose metrics port (optional)
+EXPOSE 9090
+
+# Health check: verify agent process is running
+# Note: 30s interval allows sufficient time for Temporal connection
+# 10s start-period accommodates slow network/Temporal startup
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD pgrep -x agent > /dev/null || exit 1
+
+# Environment variables
+ENV TEMPORAL_SERVER_URL="temporal:7233" \
+    TASK_QUEUES="" \
+    LOG_LEVEL="info" \
+    METRICS_PORT="9090"
+
+# Entry point
+ENTRYPOINT ["/app/agent"]
+CMD ["--config", "/app/config/config.yaml"]

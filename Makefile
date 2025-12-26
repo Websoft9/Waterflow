@@ -5,6 +5,14 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 
+# Docker image configuration
+DOCKER_REGISTRY ?= docker.io
+DOCKER_REPO ?= waterflow
+IMAGE_NAME_SERVER = $(DOCKER_REGISTRY)/$(DOCKER_REPO)/server
+IMAGE_NAME_AGENT = $(DOCKER_REGISTRY)/$(DOCKER_REPO)/agent
+TAG_VERSION = $(VERSION)
+TAG_LATEST = latest
+
 # Build flags
 LDFLAGS := -ldflags "\
 	-X main.Version=$(VERSION) \
@@ -91,6 +99,43 @@ docker-build:
 	docker build -t waterflow:$(VERSION) .
 	docker tag waterflow:$(VERSION) waterflow:latest
 	@echo "Docker image built: waterflow:$(VERSION)"
+
+## docker-agent: Build Agent Docker image
+docker-agent:
+	@echo "Building Agent Docker image..."
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		-f build/Dockerfile.agent \
+		-t $(IMAGE_NAME_AGENT):$(TAG_VERSION) \
+		-t $(IMAGE_NAME_AGENT):$(TAG_LATEST) \
+		.
+	@echo "Agent image built: $(IMAGE_NAME_AGENT):$(TAG_VERSION)"
+
+## docker-agent-push: Build and push Agent image to registry
+docker-agent-push: docker-agent
+	@echo "Pushing Agent image..."
+	docker push $(IMAGE_NAME_AGENT):$(TAG_VERSION)
+	docker push $(IMAGE_NAME_AGENT):$(TAG_LATEST)
+	@echo "Agent image pushed"
+
+## docker-agent-run: Run Agent container locally for testing
+docker-agent-run:
+	@echo "Running Agent container..."
+	docker run --rm -it \
+		-e TEMPORAL_SERVER_URL=host.docker.internal:7233 \
+		-e TASK_QUEUES=linux-amd64 \
+		-e LOG_LEVEL=debug \
+		$(IMAGE_NAME_AGENT):$(TAG_LATEST)
+
+## docker-all: Build both Server and Agent images
+docker-all: docker-build docker-agent
+
+## docker-push: Push both Server and Agent images
+docker-push: docker-build docker-agent-push
+	@echo "Pushing Server image..."
+	docker push waterflow:$(VERSION)
+	docker push waterflow:latest
 
 ## clean: Remove build artifacts
 clean:

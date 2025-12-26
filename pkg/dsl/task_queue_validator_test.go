@@ -36,7 +36,7 @@ func TestValidateTaskQueueName(t *testing.T) {
 		{"invalid: starts with hyphen", "-linux", true, "must start and end with alphanumeric"},
 		{"invalid: ends with hyphen", "linux-", true, "must start and end with alphanumeric"},
 		{"invalid: only hyphen", "-", true, "must start and end with alphanumeric"},
-		{"invalid: multiple consecutive hyphens", "linux--amd64", false, ""}, // Allowed per Temporal
+		{"valid: multiple consecutive hyphens", "linux--amd64", false, ""}, // Allowed per Temporal
 		{"invalid: too long", strings.Repeat("a", 256), true, "too long"},
 	}
 

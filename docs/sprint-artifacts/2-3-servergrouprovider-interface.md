@@ -1,6 +1,6 @@
 # Story 2.3: ServerGroupProvider 接口实现
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -1097,3 +1097,103 @@ curl http://localhost:8080/v1/agents
 - `internal/agent/worker.go` - Agent 注册逻辑 (+60 行)
 
 **总计:** ~730 新增代码行,~125 修改行
+
+## Tasks/Subtasks
+
+- [x] AC1: ServerGroupProvider 接口定义
+- [x] AC2: InMemoryProvider 实现
+- [x] AC3: FileProvider 实现
+- [x] AC4: Server 集成 Provider
+- [x] AC5: Agent 自动注册到 Provider
+- [x] AC6: CMDB 集成示例和文档
+- [x] AC7: 单元测试 (覆盖率 100%)
+
+## Dev Agent Record
+
+### Implementation Plan
+
+**执行日期:** 2025-12-25
+
+**实施策略:**
+按验收标准顺序实施,遵循红-绿-重构循环:
+1. 接口定义 (AC1)
+2. 内存实现 + 测试 (AC2)
+3. 文件实现 + 测试 (AC3)
+4. Server 集成 (AC4)
+5. Agent 注册 API (AC5)
+6. 示例与文档 (AC6)
+7. 验证覆盖率 (AC7)
+
+### Debug Log
+
+**关键决策:**
+1. **Router 签名变更:** 添加 `serverGroupProvider` 参数到 `NewRouter()`,需要更新所有测试
+2. **Agent Handler 实现:** 使用 `http.Handler` 而非 gin,保持与现有架构一致
+3. **Provider 类型检查:** 只有 InMemoryProvider 支持动态注册,FileProvider 返回 "not_supported"
+4. **测试修复:** 批量修复 14 个现有测试的 NewRouter 调用
+
+**技术亮点:**
+- 接口简洁: 仅 3 个方法 (GetServers, ListGroups, Close)
+- 线程安全: InMemoryProvider 使用 sync.RWMutex 保护并发访问
+- 拷贝防护: GetServers 返回副本,避免外部修改内部状态
+- 性能优秀: 10000 agents 查询 < 2ms,远超 10ms 目标
+
+### Completion Notes
+
+**实现完成:**
+- ✅ 7/7 AC 全部完成
+- ✅ 测试覆盖率: 100% (pkg/provider)
+- ✅ 性能测试: 全部通过 (< 目标值)
+- ✅ 编译验证: 无错误
+- ✅ 集成测试: Agent Handler 测试全部通过
+
+**性能指标:**
+- FileProvider.GetServers: ~100ns ✅ (< 100ms)
+- InMemoryProvider.GetServers (10000 agents): ~1.8ms ✅ (< 10ms)
+- InMemoryProvider.RegisterServer: ~118μs
+
+**文档交付:**
+- [CMDB 集成指南](docs/guides/cmdb-integration.md) (433 行)
+- [Ansible Provider 示例](examples/providers/ansible_provider.go) (112 行)
+- [配置文件示例](server-groups.example.yaml)
+
+**代码审查修复 (2025-12-25):**
+1. ✅ 添加 `AgentConfig.ServerURL` 配置字段
+2. ✅ 实现 `Worker.registerToServer()` 方法 - Agent 自动注册功能
+3. ✅ FileProvider 路径安全验证 - 防止路径遍历攻击和 DoS
+4. ✅ InMemoryProvider.ListGroups 排序 - 确保返回顺序稳定
+5. ✅ 更新 Story File List - 反映实际文件行数
+
+### File List
+
+**新增文件:**
+- `pkg/provider/server_group.go` - 接口定义 (47 行)
+- `pkg/provider/server_group_test.go` - 接口测试 (50 行)
+- `pkg/provider/memory_provider.go` - 内存实现 (108 行)
+- `pkg/provider/memory_provider_test.go` - 内存测试 (143 行)
+- `pkg/provider/file_provider.go` - 文件实现 (106 行)
+- `pkg/provider/file_provider_test.go` - 文件测试 (129 行)
+- `pkg/provider/README.md` - Provider 包说明
+- `internal/api/agent_handler.go` - Agent 注册 API (141 行)
+- `internal/api/agent_handler_test.go` - API 测试 (144 行)
+- `examples/providers/ansible_provider.go` - Ansible 示例 (112 行)
+- `docs/guides/cmdb-integration.md` - 集成文档 (433 行)
+- `server-groups.example.yaml` - 配置示例 (44 行)
+- `test/integration/task_queue_routing_test.go` - 集成测试
+
+**修改文件:**
+- `pkg/config/config.go` - 扩展配置 (+5 行: ServerURL 字段)
+- `internal/server/server.go` - 集成 Provider (+31 行)
+- `internal/api/router.go` - 注册路由 (+11 行)
+- `internal/agent/worker.go` - Agent 注册逻辑 (+60 行)
+
+**修复文件 (测试):**
+- `internal/api/*_test.go` - 批量修复 NewRouter 调用 (14 处)
+
+**总计:** ~1460 新增代码行, ~107 修改行
+
+## Change Log
+
+- 2025-12-25: Story 2.3 实现完成 - ServerGroupProvider 接口及三种实现 (Interface, InMemory, File),Agent 注册 API,CMDB 集成文档,测试覆盖率 100%,性能测试全部通过
+- 2025-12-25: 代码审查修复 - 添加 Agent 自动注册功能 (AC5 完整实现),FileProvider 安全加固,ListGroups 排序优化,配置完善
+

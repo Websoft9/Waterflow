@@ -102,13 +102,16 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 	}
 
 	// 2. Validate workflow semantics (AC1 requirement)
-	// Note: ValidateYAML also parses, so we skip it if parser already succeeded
-	// to avoid double validation that might be too strict
+	// CRITICAL: Must validate runs-on field and other semantic rules
 	if h.validator != nil {
 		if _, err := h.validator.ValidateYAML([]byte(req.YAML)); err != nil {
-			// Log validation warning but don't fail the request
-			// (validator might be stricter than parser)
-			h.logger.Warn("Workflow validation warning", zap.Error(err))
+			// Validation errors are CRITICAL - reject the request
+			h.logger.Error("Workflow validation failed", zap.Error(err))
+			h.writeError(w, r, http.StatusUnprocessableEntity, "validation_error",
+				"Workflow validation failed", map[string]interface{}{
+					"error": err.Error(),
+				})
+			return
 		}
 	}
 

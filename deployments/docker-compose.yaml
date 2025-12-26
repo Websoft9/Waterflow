@@ -109,6 +109,8 @@ services:
       AGENT_ID: agent-linux-1
       SERVER_URL: http://waterflow:8080
     volumes:
+      # Optional: mount custom config file (environment variables take precedence)
+      # - ./agent-config.yaml:/app/config/config.yaml:ro
       - agent-plugins:/app/plugins:ro
     networks:
       - waterflow-network

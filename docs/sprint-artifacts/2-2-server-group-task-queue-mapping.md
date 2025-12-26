@@ -1,6 +1,6 @@
 # Story 2.2: 服务器组概念和 Task Queue 直接映射
 
-Status: review
+Status: done
 
 ## Story
 
@@ -1154,19 +1154,21 @@ Claude Sonnet 4.5
 ### File List
 
 **新增文件:**
-- `docs/guides/server-groups.md` - 服务器组命名指南 (395 行)
-- `examples/multi-server.yaml` - 多服务器部署示例 (97 行)
+- `docs/guides/server-groups.md` - 服务器组命名指南 (448 行)
+- `examples/multi-server.yaml` - 多服务器部署示例 (117 行)
 - `pkg/dsl/task_queue_validator_test.go` - Task Queue 验证测试 (164 行)
+- `test/integration/task_queue_routing_test.go` - 集成测试 (310 行,代码审查新增)
 
 **修改文件:**
 - `pkg/dsl/semantic_validator.go` - 添加 ValidateTaskQueueName + validateRunsOn (~90 行新增)
-- `internal/api/workflow_handler.go` - 添加 ListTaskQueues 方法 (~30 行新增)
+- `internal/api/workflow_handler.go` - 添加 ListTaskQueues 方法 + 强制验证 (~35 行新增/修改)
 - `internal/api/router.go` - 注册 Task Queue 路由 (~2 行新增)
+- `pkg/temporal/workflow.go` - 添加防御性 runs-on 检查 (~12 行新增)
 - `README.md` - 更新多服务器示例 (~15 行修改)
 - `docs/sprint-artifacts/sprint-status.yaml` - 状态更新
 - `docs/sprint-artifacts/2-2-server-group-task-queue-mapping.md` - 本文件
 
-**总计:** ~680 新增代码行, ~17 修改行
+**总计:** ~1020 新增代码行 (含测试), ~32 修改行
 
 **测试结果:**
 - ✅ TestValidateTaskQueueName - 19个测试全部通过
@@ -1184,3 +1186,14 @@ Claude Sonnet 4.5
 - 代码覆盖率 >80% ✅
 - 文档完整 ✅
 - 测试全部通过 ✅
+
+**代码审查修复 (2025-12-25):**
+- ✅ HIGH-1: 添加集成测试验证 AC2 多 Queue 注册
+- ✅ HIGH-2: 添加负载均衡集成测试验证 AC3
+- ✅ HIGH-3: 强制执行 YAML 验证,拒绝无效 runs-on
+- ✅ MEDIUM-1: ListTaskQueues 保持占位符(Story 2.7 实现)
+- ✅ MEDIUM-2: 修正文档示例与测试用例一致性
+- ✅ MEDIUM-3: 添加 AC6 超时和延迟上线测试
+- ✅ MEDIUM-4: workflow.go 添加 runs-on 防御性检查
+- ✅ LOW-1: 文档保持现状(448行可接受)
+- ✅ LOW-2: 重命名测试用例避免误导

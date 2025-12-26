@@ -30,7 +30,7 @@ func TestRouterWithTemporalClient_ReadyEndpoint(t *testing.T) {
 	}
 	defer temporalClient.Close()
 
-	router := NewRouter(logger, temporalClient, "v1.0.0", "abc123", "2025-12-19")
+	router := NewRouter(logger, temporalClient, nil, "v1.0.0", "abc123", "2025-12-19")
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
@@ -45,7 +45,7 @@ func TestRouterWithTemporalClient_ReadyEndpoint(t *testing.T) {
 
 func TestRouterWithoutTemporalClient_ReadyEndpoint(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger, nil, "v1.0.0", "abc123", "2025-12-19")
+	router := NewRouter(logger, nil, nil, "v1.0.0", "abc123", "2025-12-19")
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
@@ -75,7 +75,7 @@ func TestRouterWithTemporalClient_WorkflowEndpoints(t *testing.T) {
 	}
 	defer temporalClient.Close()
 
-	router := NewRouter(logger, temporalClient, "v1.0.0", "abc123", "2025-12-19")
+	router := NewRouter(logger, temporalClient, nil, "v1.0.0", "abc123", "2025-12-19")
 
 	// Test that basic workflow endpoints respond (not 404)
 	tests := []struct {
@@ -100,7 +100,7 @@ func TestRouterWithTemporalClient_WorkflowEndpoints(t *testing.T) {
 
 func TestRouterWithoutTemporalClient_WorkflowEndpoints(t *testing.T) {
 	logger := zap.NewNop()
-	router := NewRouter(logger, nil, "v1.0.0", "abc123", "2025-12-19")
+	router := NewRouter(logger, nil, nil, "v1.0.0", "abc123", "2025-12-19")
 
 	// Test that workflow endpoints are NOT registered without Temporal client
 	endpoints := []string{

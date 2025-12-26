@@ -1002,9 +1002,13 @@ So that **简化 Agent 的安装和管理**。
 **Then** 生成轻量级 Agent 镜像 (<100MB)  
 **And** 通过环境变量配置 Temporal 地址和服务器组  
 **And** 支持挂载 Docker Socket (用于 Docker 节点)  
+**And** 支持 Plugin 目录挂载  
 **And** 提供 docker run 示例命令  
+**And** 提供 Docker Compose 部署配置  
 **And** 镜像推送到 Docker Hub  
 **And** 空闲时内存占用 <50MB
+
+**注:** Kubernetes 部署支持留待 Epic 8 实现
 
 ### Story 2.10: Agent 配置指南
 
