@@ -100,10 +100,6 @@ docker-compose logs agent | grep "Worker started successfully"
 # ✓ Task Queue 注册成功
 docker-compose logs agent | grep "Polling task queues"
 # 预期: Polling task queues: [linux-amd64 linux-common]
-
-# ✓ 心跳正常上报 (如果配置了 SERVER_URL)
-curl http://localhost:8080/v1/agents | jq '.total'
-# 预期: 1 或更多
 ```
 
 **完整验证脚本** (`scripts/verify-agent.sh`):
@@ -129,11 +125,12 @@ else
     exit 1
 fi
 
-# 3. 检查心跳
-if curl -s http://localhost:8080/v1/agents | jq -e '.total > 0' > /dev/null; then
-    echo "✅ Agent 已注册"
+# 3. 检查 Worker 注册
+if docker logs waterflow-agent 2>&1 | grep -q "Polling task queues"; then
+    echo "✅ Worker 已连接到 Temporal"
 else
-    echo "⚠️  Agent 未注册 (可能未配置 SERVER_URL)"
+    echo "❌ Worker 未连接"
+    exit 1
 fi
 
 echo "🎉 验证完成!"

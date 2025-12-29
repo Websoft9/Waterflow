@@ -1,5 +1,11 @@
 # CMDB 集成指南
 
+> ⚠️ **历史文档警告** (更新于 2025-12-29)  
+> 本文档描述的 Agent 注册/心跳机制已废弃（ADR-0007 之前的架构）。  
+> **当前架构：** Agent 通过 Temporal Worker 自动连接，无需注册 API。  
+> **CMDB 集成：** 现在通过 `server-groups.yaml` 文件进行服务器组映射。  
+> **参考文档：** [ADR-0008](../adr/0008-temporal-as-internal-service.md) | [Server Groups 指南](./server-groups.md)
+
 ## 概述
 
 Waterflow 通过 `ServerGroupProvider` 接口支持集成外部 CMDB 系统,让您可以从现有的配置管理数据库、Ansible Inventory 或其他服务器清单系统获取服务器组信息。

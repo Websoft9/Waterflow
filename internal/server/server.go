@@ -9,7 +9,6 @@ import (
 	"github.com/Websoft9/waterflow/internal/api"
 	"github.com/Websoft9/waterflow/pkg/config"
 	"github.com/Websoft9/waterflow/pkg/middleware"
-	"github.com/Websoft9/waterflow/pkg/provider"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"go.uber.org/zap"
 )
@@ -30,8 +29,6 @@ type Server struct {
 	buildTime string
 	// temporalClient is the Temporal workflow engine client
 	temporalClient *temporal.Client
-	// serverGroupProvider provides server group information
-	serverGroupProvider provider.ServerGroupProvider
 }
 
 // New creates a new Server instance.
@@ -56,45 +53,20 @@ func New(cfg *config.Config, logger *zap.Logger, version, commit, buildTime stri
 		logger.Info("Temporal not configured, workflow API will be disabled")
 	}
 
-	// Initialize ServerGroupProvider
-	var sgProvider provider.ServerGroupProvider
-	var err error
-
-	switch cfg.Server.ServerGroupProvider {
-	case "file":
-		if cfg.Server.ServerGroupFile == "" {
-			logger.Fatal("server_group_file must be specified when provider=file")
-		}
-		sgProvider, err = provider.NewFileProvider(cfg.Server.ServerGroupFile)
-		if err != nil {
-			logger.Fatal("Failed to create file provider", zap.Error(err))
-		}
-		logger.Info("Using file-based server group provider",
-			zap.String("file", cfg.Server.ServerGroupFile),
-		)
-
-	case "memory":
-		fallthrough
-	default:
-		sgProvider = provider.NewInMemoryProvider()
-		logger.Info("Using in-memory server group provider")
-	}
-
 	return &Server{
-		config:              cfg,
-		logger:              logger,
-		version:             version,
-		commit:              commit,
-		buildTime:           buildTime,
-		temporalClient:      temporalClient,
-		serverGroupProvider: sgProvider,
+		config:         cfg,
+		logger:         logger,
+		version:        version,
+		commit:         commit,
+		buildTime:      buildTime,
+		temporalClient: temporalClient,
 	}
 }
 
 // Start starts the HTTP server.
 func (s *Server) Start() error {
 	// Create router with all API endpoints
-	router := api.NewRouter(s.logger, s.temporalClient, s.serverGroupProvider, s.version, s.commit, s.buildTime)
+	router := api.NewRouter(s.logger, s.temporalClient, s.version, s.commit, s.buildTime)
 
 	// Apply middleware chain: RequestID -> Logger -> Recovery -> Metrics -> CORS -> Version -> Router
 	// Order follows AC7: RequestID first for tracing, Logger for request logging,
@@ -139,13 +111,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// Close Temporal client if connected
 	if s.temporalClient != nil {
 		s.temporalClient.Close()
-	}
-
-	// Close server group provider
-	if s.serverGroupProvider != nil {
-		if err := s.serverGroupProvider.Close(); err != nil {
-			s.logger.Warn("Failed to close server group provider", zap.Error(err))
-		}
 	}
 
 	if s.httpServer != nil {

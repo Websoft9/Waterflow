@@ -45,7 +45,7 @@ curl http://localhost:8080/v1/agents
 agent:
   task_queues: ["linux-amd64"]
 temporal:
-  server_url: "localhost:7233"
+  host: "localhost:7233"
 ```
 
 ### 高级配置

@@ -1,5 +1,12 @@
 # Story 2.10: Agent 配置与部署指南
 
+> ⚠️ **历史文档警告** (更新于 2025-12-29)  
+> 本文档使用的配置字段与当前架构不同：  
+> - ❌ `temporal.server_url` → ✅ `temporal.host`  
+> - ❌ `advanced.heartbeat_interval` → ✅ 已删除 (Temporal 自动处理)  
+> **最新配置：** [examples/configs/config.agent.example.yaml](../../examples/configs/config.agent.example.yaml)  
+> **架构文档：** [ADR-0008](../adr/0008-temporal-as-internal-service.md)
+
 Status: done
 
 ## Story
@@ -54,9 +61,10 @@ so that **快速上手 Agent 部署和故障排查**。
 
 # Agent 基本配置
 agent:
-  # Agent 唯一标识符 (建议使用主机名或自动生成)
+  # Agent 唯一标识符 (可选，自动生成)
   # 环境变量: AGENT_ID
-  # 默认: agent-<hostname>-<timestamp>
+  # 默认: agent-<hostname>-<random>
+  # 注意: Agent 通过 Temporal Worker 身份自动注册，无需手动管理 ID
   id: "agent-build-server-1"
   
   # Agent 监听的 Task Queue 列表 (必填)
@@ -65,26 +73,12 @@ agent:
   task_queues:
     - "linux-amd64"
     - "linux-common"
-  
-  # Waterflow Server URL (用于心跳上报和注册)
-  # 环境变量: SERVER_URL
-  # 留空则不上报心跳
-  server_url: "http://localhost:8080"
-  
-  # Agent 元数据 (可选,用于 ServerGroupProvider 查询)
-  metadata:
-    os: "linux"
-    arch: "amd64"
-    cpu_cores: "16"
-    memory_gb: "32"
-    gpu: "NVIDIA A100"
-    region: "us-west-1"
-    datacenter: "dc1"
 
 # Temporal 连接配置
 temporal:
   # Temporal Server 地址 (必填)
   # 环境变量: TEMPORAL_SERVER_URL
+  # 注意: 连接到 Waterflow Server 的 Temporal 端口 (默认7233)
   server_url: "localhost:7233"
   
   # Temporal Namespace
@@ -451,16 +445,12 @@ docker-compose logs agent | grep -i error
 # 预期: 无输出或仅 WARN
 
 # ✓ Temporal 连接成功
-docker-compose logs agent | grep "Worker started successfully"
-# 预期: [INFO] Worker started successfully
+docker-compose logs agent | grep "Connected to Temporal"
+# 预期: Connected to Temporal host=waterflow:7233 namespace=default
 
 # ✓ Task Queue 注册成功
-docker-compose logs agent | grep "Polling task queues"
-# 预期: Polling task queues: [linux-amd64 linux-common]
-
-# ✓ 心跳正常上报 (如果配置了 SERVER_URL)
-curl http://localhost:8080/v1/agents | jq '.total'
-# 预期: 1 或更多
+docker-compose logs agent | grep "All workers started"
+# 预期: All workers started worker_count=2 task_queues=[linux-amd64 linux-common]
 ```
 
 **完整验证脚本** (`scripts/verify-agent.sh`):
@@ -479,18 +469,11 @@ else
 fi
 
 # 2. 检查日志
-if docker logs waterflow-agent 2>&1 | grep -q "Worker started successfully"; then
-    echo "✅ Worker 启动成功"
+if docker logs waterflow-agent 2>&1 | grep -q "Connected to Temporal"; then
+    echo "✅ Agent 已连接 Temporal"
 else
-    echo "❌ Worker 启动失败"
+    echo "❌ Agent 连接失败"
     exit 1
-fi
-
-# 3. 检查心跳
-if curl -s http://localhost:8080/v1/agents | jq -e '.total > 0' > /dev/null; then
-    echo "✅ Agent 已注册"
-else
-    echo "⚠️  Agent 未注册 (可能未配置 SERVER_URL)"
 fi
 
 echo "🎉 验证完成!"

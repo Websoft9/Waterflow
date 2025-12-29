@@ -1,5 +1,10 @@
 # Story 2.9: Agent Docker 镜像
 
+> ⚠️ **历史文档警告** (更新于 2025-12-29)  
+> 本文档描述的是旧架构 (ADR-0007 之前)，包含 Agent 注册/心跳机制。  
+> **当前架构：** Agent 只连接 Temporal，不再需要 `SERVER_URL` 环境变量。  
+> **请参考：** [ADR-0008 Temporal 作为内部服务](../adr/0008-temporal-as-internal-service.md)
+
 Status: Ready for Review
 
 ## Story

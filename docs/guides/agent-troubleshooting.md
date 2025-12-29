@@ -58,8 +58,8 @@ telnet temporal.example.com 7233
 nc -zv temporal.example.com 7233
 
 # 2. 检查 Agent 配置
-cat config.yaml | grep server_url
-# 输出: server_url: "temporal.example.com:7233"
+cat config.yaml | grep "host:"
+# 输出: host: "temporal.example.com:7233"
 
 # 3. 检查 DNS 解析
 nslookup temporal.example.com
@@ -72,8 +72,8 @@ docker exec agent ping temporal
 ```
 
 **常见原因:**
-- ❌ `server_url: "http://localhost:7233"` (不应包含 http://)
-- ✅ `server_url: "localhost:7233"` (正确格式)
+- ❌ `host: "http://localhost:7233"` (不应包含 http://)
+- ✅ `host: "localhost:7233"` (正确格式)
 
 ---
 
@@ -222,16 +222,11 @@ docker run -d --cpus="2.0" waterflow/agent:latest
 
 **诊断:**
 ```bash
-# 1. 检查到 Server 的网络延迟
-ping -c 5 waterflow-server.example.com
+# 1. 检查到 Temporal 的网络延迟
+ping -c 5 temporal.example.com
 
-# 2. 测试 API 可达性
-curl -w "@curl-format.txt" http://waterflow-server:8080/v1/agents/heartbeat
-
-# curl-format.txt:
-#   time_namelookup:  %{time_namelookup}\n
-#   time_connect:  %{time_connect}\n
-#   time_total:  %{time_total}\n
+# 2. 测试 Temporal 连接
+telnet temporal.example.com 7233
 
 # 3. 检查防火墙规则
 sudo iptables -L -n -v | grep 8080

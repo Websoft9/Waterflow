@@ -2,6 +2,46 @@
 
 Waterflow 支持通过配置文件、环境变量和命令行参数进行配置。
 
+## 📁 配置文件结构
+
+```
+Waterflow/
+├── examples/configs/               # 配置文件模板目录
+│   ├── config.example.yaml         # ✅ Server 配置模板 (带完整注释,提交到Git)
+│   ├── config.agent.example.yaml   # ✅ Agent 配置模板
+│   └── server-groups.example.yaml  # ✅ Server Groups 配置模板
+├── config.yaml                     # ❌ 实际配置 (不提交到Git)
+└── .gitignore                      # 已忽略 config.yaml
+```
+
+**配置文件说明：**
+- **模板文件**（`examples/configs/*.example.yaml`）：包含完整注释，提交到 Git
+- **实际配置**（`config.yaml`）：本地环境特定配置，不提交到 Git
+
+## 🚀 快速开始
+
+### 1. 创建配置文件
+
+```bash
+# 复制模板文件
+cp examples/configs/config.example.yaml config.yaml
+
+# 根据本地环境修改
+vim config.yaml
+```
+
+### 2. 使用环境变量（推荐生产环境）
+
+```bash
+# 通过环境变量覆盖配置
+export WATERFLOW_SERVER_PORT=9090
+export WATERFLOW_LOG_LEVEL=info
+export WATERFLOW_TEMPORAL_HOST=temporal:7233
+
+# 运行服务
+./bin/server
+```
+
 ## 配置优先级
 
 配置来源按以下优先级从高到低：
@@ -14,6 +54,13 @@ Waterflow 支持通过配置文件、环境变量和命令行参数进行配置�
 ## 配置文件
 
 默认配置文件为 `config.yaml`，可通过 `--config` 参数指定其他路径。
+
+**注意事项：**
+- `config.yaml` 包含本地环境特定配置，每个开发者的配置可能不同
+- 该文件已在 `.gitignore` 中，不会被提交到 Git
+- 团队共享配置更新：修改 `examples/configs/config.example.yaml` 并提交
+
+### 配置文件位置
 
 ### 完整配置示例
 
@@ -220,7 +267,7 @@ Warning: config file config.yaml not found, using defaults and environment varia
 ```
 
 **解决方案**：
-- 复制 `config.example.yaml` 为 `config.yaml`
+- 复制 `examples/configs/config.example.yaml` 为 `config.yaml`
 - 使用 `--config` 指定正确路径
 - 完全依赖环境变量和默认值
 

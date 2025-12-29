@@ -39,7 +39,10 @@
 | [0004](0004-yaml-dsl-syntax.md) | YAML DSL 语法设计 | ✅ 已采纳 | 2025-12-13 |
 | [0005](0005-expression-system-syntax.md) | 表达式系统语法 | ✅ 已采纳 | 2025-12-13 |
 | [0006](0006-task-queue-routing.md) | Task Queue 路由机制 | ✅ 已采纳 | 2025-12-15 |
+| [0007](0007-waterflow-server-as-single-entry-point.md) | Waterflow 内嵌 Temporal 并简化 Agent 架构 | ✅ 已采纳 | 2025-12-26 |
 
 ## 修订历史
 
+- 2025-12-26: 更新 ADR-0007（确定内嵌 Temporal 方案，取消 Agent 注册）
+- 2025-12-26: 添加 ADR-0007（Waterflow 作为统一入口）
 - 2025-12-16: 创建 ADR 目录,记录核心架构决策

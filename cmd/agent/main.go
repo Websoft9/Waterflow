@@ -149,6 +149,11 @@ func overrideWithEnv(cfg *config.Config) {
 		cfg.Temporal.Host = url
 	}
 
+	// TEMPORAL_NAMESPACE
+	if namespace := os.Getenv("TEMPORAL_NAMESPACE"); namespace != "" {
+		cfg.Temporal.Namespace = namespace
+	}
+
 	// TASK_QUEUES (comma-separated)
 	if queues := os.Getenv("TASK_QUEUES"); queues != "" {
 		cfg.Agent.TaskQueues = parseTaskQueues(queues)
@@ -157,11 +162,6 @@ func overrideWithEnv(cfg *config.Config) {
 	// AGENT_ID
 	if agentID := os.Getenv("AGENT_ID"); agentID != "" {
 		cfg.Agent.ID = agentID
-	}
-
-	// SERVER_URL (for heartbeat and registration)
-	if serverURL := os.Getenv("SERVER_URL"); serverURL != "" {
-		cfg.Agent.ServerURL = serverURL
 	}
 
 	// LOG_LEVEL

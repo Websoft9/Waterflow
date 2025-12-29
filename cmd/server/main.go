@@ -21,7 +21,7 @@ var (
 )
 
 func main() {
-	configFile := flag.String("config", "config.yaml", "config file path")
+	configFile := flag.String("config", "/etc/waterflow/config.yaml", "config file path")
 	port := flag.Int("port", 0, "server port (overrides config)")
 	logLevel := flag.String("log-level", "", "log level (overrides config)")
 	showVersion := flag.Bool("version", false, "show version information")
@@ -35,6 +35,7 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Load configuration (config file is optional, will use defaults + env vars)
 	cfg, err := config.Load(*configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)

@@ -37,7 +37,7 @@ func setupTestRouter(t *testing.T, withTemporal bool) (http.Handler, *temporal.C
 		}
 	}
 
-	router := NewRouter(testLogger, temporalClient, nil, "test", "test", "test")
+	router := NewRouter(testLogger, temporalClient, "test", "test", "test")
 	return router, temporalClient
 }
 

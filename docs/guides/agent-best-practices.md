@@ -57,23 +57,22 @@ htop
 # CPU 使用率 > 90% → 减少并发数
 ```
 
-### 心跳间隔优化
+### Activity 心跳超时配置
+
+> **注意：** Agent 不再需要配置 `heartbeat_interval`（已在 ADR-0008 中移除）。  
+> 以下配置指的是 Temporal Activity 的心跳超时设置。
 
 ```yaml
 advanced:
-  # 短心跳间隔 (10s) - 快速故障检测
-  heartbeat_interval: "10s"  # 适用于关键任务
-  
-  # 中等心跳间隔 (30s) - 平衡性能和检测速度
-  heartbeat_interval: "30s"  # ✅ 推荐默认值
-  
-  # 长心跳间隔 (60s) - 减少网络开销
-  heartbeat_interval: "60s"  # 适用于稳定环境
+  # Activity 心跳超时 - Temporal 内部检测机制
+  activity_heartbeat_timeout: "10s"  # 短超时，快速检测 Activity 失败
+  activity_heartbeat_timeout: "30s"  # ✅ 推荐默认值
+  activity_heartbeat_timeout: "60s"  # 长超时，适用于稳定环境
 ```
 
-**权衡:**
-- 短间隔 → 快速发现故障 Agent,但增加网络流量
-- 长间隔 → 减少开销,但故障检测延迟
+**说明:**
+- Activity 心跳由 Temporal 自动管理
+- Agent 通过 Temporal Worker 自动注册和连接
 
 ## 3. 日志管理
 

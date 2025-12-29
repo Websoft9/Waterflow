@@ -24,7 +24,9 @@ func TestPluginManager_LoadPlugins_EmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	logger, _ := zap.NewDevelopment()
 	pm := NewPluginManager(tmpDir, logger)
@@ -45,13 +47,15 @@ func TestPluginManager_LoadPlugins_WithPlugins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	// Create dummy .so files
 	plugins := []string{"plugin1.so", "plugin2.so", "plugin3.so"}
 	for _, plugin := range plugins {
 		file := filepath.Join(tmpDir, plugin)
-		if err := os.WriteFile(file, []byte("dummy plugin content"), 0644); err != nil {
+		if err := os.WriteFile(file, []byte("dummy plugin content"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -82,17 +86,19 @@ func TestPluginManager_LoadPlugins_EmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	// Create empty .so file
 	emptyPlugin := filepath.Join(tmpDir, "empty.so")
-	if err := os.WriteFile(emptyPlugin, []byte(""), 0644); err != nil {
+	if err := os.WriteFile(emptyPlugin, []byte(""), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create valid .so file
 	validPlugin := filepath.Join(tmpDir, "valid.so")
-	if err := os.WriteFile(validPlugin, []byte("valid content"), 0644); err != nil {
+	if err := os.WriteFile(validPlugin, []byte("valid content"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,22 +130,24 @@ func TestPluginManager_LoadPlugins_MixedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	// Create .so files
 	soFile := filepath.Join(tmpDir, "plugin.so")
-	if err := os.WriteFile(soFile, []byte("plugin"), 0644); err != nil {
+	if err := os.WriteFile(soFile, []byte("plugin"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create non-.so files (should be ignored)
 	txtFile := filepath.Join(tmpDir, "readme.txt")
-	if err := os.WriteFile(txtFile, []byte("readme"), 0644); err != nil {
+	if err := os.WriteFile(txtFile, []byte("readme"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	goFile := filepath.Join(tmpDir, "source.go")
-	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
+	if err := os.WriteFile(goFile, []byte("package main"), 0600); err != nil {
 		t.Fatal(err)
 	}
 

@@ -1,8 +1,50 @@
-# Waterflow 示例工作流
+# Waterflow 示例
 
-本目录包含 Waterflow YAML DSL 示例工作流，帮助您快速了解和验证 Waterflow 功能。
+本目录包含 Waterflow 的示例工作流和配置文件。
 
-## 📁 示例列表
+## 📁 目录结构
+
+```
+examples/
+├── configs/                    # 配置文件模板
+│   ├── config.example.yaml          # Server 配置模板
+│   ├── config.agent.example.yaml    # Agent 配置模板
+│   └── server-groups.example.yaml   # Server Groups 配置模板
+├── hello-world.yaml            # 工作流示例
+├── multi-step.yaml
+├── matrix.yaml
+├── multi-server.yaml
+├── providers/                  # Provider 插件示例
+└── README.md
+```
+
+## 🔧 配置文件模板
+
+### Server 配置
+
+```bash
+# 复制模板创建配置文件
+cp examples/configs/config.example.yaml config.yaml
+
+# 编辑配置
+vim config.yaml
+```
+
+详细配置说明参见：[配置指南](../docs/configuration.md)
+
+### Agent 配置
+
+```bash
+# 复制模板
+cp examples/configs/config.agent.example.yaml config.agent.yaml
+
+# 编辑配置
+vim config.agent.yaml
+```
+
+详细说明参见：[docs/guides/agent-README.md](../docs/guides/agent-README.md)
+
+## 📋 工作流示例
 
 ### 1. hello-world.yaml - 基础示例
 最简单的 Waterflow 工作流，演示：

@@ -56,11 +56,6 @@ type AgentConfig struct {
 	// Optional: If empty, auto-generated from hostname and timestamp.
 	ID string `mapstructure:"id"`
 
-	// ServerURL is the Waterflow server URL for agent registration.
-	// Example: "http://localhost:8080"
-	// Optional: If empty, agent won't register to server.
-	ServerURL string `mapstructure:"server_url"`
-
 	// PluginDir is the directory containing node plugins (.so files).
 	// Default: /opt/waterflow/plugins
 	PluginDir string `mapstructure:"plugin_dir"`
@@ -121,12 +116,14 @@ func Load(configFile string) (*Config, error) {
 	if configFile != "" {
 		v.SetConfigFile(configFile)
 		if err := v.ReadInConfig(); err != nil {
-			// If config file is explicitly specified but not found, return error
-			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			// Check if it's a "file not found" error
+			if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file") {
+				// Warn if config file not found but continue with defaults
+				fmt.Fprintf(os.Stderr, "Warning: config file %s not found, using defaults and environment variables\n", configFile)
+			} else {
+				// Other errors (e.g., parse errors) should fail
 				return nil, fmt.Errorf("failed to read config file: %w", err)
 			}
-			// Warn if config file not found but continue with defaults
-			fmt.Fprintf(os.Stderr, "Warning: config file %s not found, using defaults and environment variables\n", configFile)
 		}
 	}
 
@@ -232,7 +229,7 @@ func LoadAgent(configFile string) (*Config, error) {
 
 	// Same defaults as Server for Temporal and Log
 	v.SetDefault("temporal.host", "localhost:7233")
-	v.SetDefault("temporal.namespace", "waterflow")
+	v.SetDefault("temporal.namespace", "default")
 	// Note: Agent does NOT need task_queue config (uses agent.task_queues instead)
 	v.SetDefault("temporal.connection_timeout", 10*time.Second)
 	v.SetDefault("temporal.max_retries", 10)

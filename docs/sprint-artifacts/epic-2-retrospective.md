@@ -105,6 +105,81 @@
    - 改进: 添加错误捕获和清理函数
    - 教训: Shell 脚本应标准包含错误处理
 
+5. **架构设计重复（CRITICAL - 新发现）**
+   - 问题: Agent 注册机制与 Temporal Worker 功能重复
+   - 发现: 部署测试时发现 Agent 维护两个连接
+   - 影响: Story 2.3、2.4、2.7 的部分功能可删除
+   - 解决: 创建 ADR-0007，计划在 Epic 3 后重构
+   - 教训: **架构设计应在 Epic 开始前充分讨论**
+
+---
+
+## 🔄 架构改进计划（基于 ADR-0007）
+
+### 问题总结
+
+**当前架构的问题：**
+
+1. **Temporal 对用户可见**
+   - 用户需要配置 `TEMPORAL_SERVER_URL`（内部实现细节）
+   - Docker Compose 包含独立的 `temporal` 容器
+   - 破坏了封装性
+
+2. **Agent 注册功能重复**
+   - Temporal Worker 已提供：连接、心跳、健康检测、负载均衡
+   - Waterflow Agent 注册重复实现：注册、心跳、健康检测
+   - 维护两套机制，增加复杂度
+
+3. **ServerGroupProvider 未被使用**
+   - 查询的数据不用于任务分发（Temporal 负责路由）
+   - 仅用于 `/v1/agents` API 查询
+   - 可直接查询 Temporal Worker 列表
+
+### 改进方案（已记录在 ADR-0007）
+
+**决策：内嵌 Temporal + 取消 Agent 注册**
+
+1. **Temporal 内嵌化**
+   - 使用 supervisord 管理多进程（Waterflow + Temporal）
+   - 暴露 7233 端口，但逻辑上属于 Waterflow
+   - 用户配置：`SERVER_URL: waterflow:7233`（不知道有 Temporal）
+
+2. **删除 Agent 注册**
+   - 删除 `registerToServer()` 和心跳逻辑（~800 行代码）
+   - 删除 `pkg/provider/` 整个目录（ServerGroupProvider）
+   - 删除 `POST /v1/agents/register` 和 `PUT /v1/agents/heartbeat` API
+
+3. **可观测性改为查询 Temporal**
+   - `GET /v1/agents` 调用 Temporal 的 ListWorkers API
+   - 用户可直接使用 Temporal UI（端口 8088）
+   - 单一数据源，无同步延迟
+
+### 重构范围评估
+
+**影响的 Stories：**
+- Story 2.3：ServerGroupProvider 接口 → 删除
+- Story 2.4：Agent 注册和心跳 → 删除注册逻辑
+- Story 2.7：健康监控 API → 改为查询 Temporal
+
+**代码改动：**
+- 删除代码：~800 行（Agent 注册 + ServerGroupProvider）
+- 新增代码：~200 行（Dockerfile + supervisord + Temporal 查询）
+- 净减少：~600 行代码
+
+**预计工作量：** 3-5 天
+
+### 实施计划
+
+**时机：** Epic 3 完成后（或创建独立 Epic 12）
+
+**理由：**
+- Epic 2 已完成，不影响里程碑
+- Agent 注册是"可选功能"（失败不影响任务执行）
+- 给架构优化更多思考时间
+
+**参考文档：**
+- [ADR-0007: Waterflow 内嵌 Temporal 并简化 Agent 架构](../adr/0007-waterflow-server-as-single-entry-point.md)
+
 ---
 
 ## 📈 度量指标

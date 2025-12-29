@@ -56,7 +56,7 @@ WORKDIR /app
 COPY --from=builder /build/agent /app/agent
 
 # Copy default config template
-COPY config.agent.example.yaml /app/config.example.yaml
+COPY examples/configs/config.agent.example.yaml /app/config.example.yaml
 
 # Create directories
 RUN mkdir -p /app/plugins /app/logs /app/config && \
@@ -72,7 +72,7 @@ EXPOSE 9090
 # Note: 30s interval allows sufficient time for Temporal connection
 # 10s start-period accommodates slow network/Temporal startup
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD pgrep -x agent > /dev/null || exit 1
+    CMD pgrep agent > /dev/null || exit 1
 
 # Environment variables
 ENV TEMPORAL_SERVER_URL="temporal:7233" \
