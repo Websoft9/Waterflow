@@ -1,4 +1,7 @@
-.PHONY: build test coverage lint fmt run docker-build clean help
+.PHONY: help build build-agent build-all test test-integration test-quick coverage \
+        lint fmt check verify run run-agent dev \
+        docker-build docker-server docker-agent docker-all docker-push docker-agent-push docker-agent-run \
+        clean tidy install-tools
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -29,12 +32,18 @@ AGENT_BINARY_NAME := agent
 
 ## help: Display this help message
 help:
-	@echo "Waterflow Server - Build Targets"
+	@echo "Waterflow - Build Targets"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
-	@echo "Targets:"
-	@grep -E '^## ' Makefile | sed 's/^## /  /'
+	@echo "Development Targets:"
+	@grep -E '^## (build|test|lint|fmt|check|verify|run|dev):' Makefile | sed 's/^## /  /'
+	@echo ""
+	@echo "Docker Targets:"
+	@grep -E '^## docker-' Makefile | sed 's/^## /  /'
+	@echo ""
+	@echo "Utility Targets:"
+	@grep -E '^## (clean|tidy|install):' Makefile | sed 's/^## /  /'
 
 ## build: Compile server binary with version information
 build:
@@ -59,6 +68,11 @@ build-all: build build-agent
 test:
 	@echo "Running unit tests (skipping integration tests)..."
 	go test -v -race -short ./...
+
+## test-quick: Run unit tests without verbose output (faster for development)
+test-quick:
+	@echo "Running unit tests..."
+	go test -race -short ./...
 
 ## test-integration: Run all tests including integration tests (requires Temporal server)
 test-integration:
@@ -88,6 +102,14 @@ fmt:
 	go fmt ./...
 	gofmt -s -w .
 
+## check: Run all checks (format, lint, test)
+check: fmt lint test-quick
+	@echo "✅ All checks passed!"
+
+## verify: Quick verification before commit (format, lint, build)
+verify: fmt lint build build-agent
+	@echo "✅ Verification passed!"
+
 ## run: Run server locally
 run: build
 	@echo "Starting server..."
@@ -98,12 +120,31 @@ run-agent: build-agent
 	@echo "Running $(AGENT_BINARY_NAME)..."
 	./$(BIN_DIR)/$(AGENT_BINARY_NAME) --config config.agent.example.yaml
 
-## docker-build: Build Docker image
-docker-build:
-	@echo "Building Docker image..."
-	docker build -t waterflow:$(VERSION) .
-	docker tag waterflow:$(VERSION) waterflow:latest
-	@echo "Docker image built: waterflow:$(VERSION)"
+## dev: Run server in development mode with hot reload (requires air)
+dev:
+	@if ! command -v air &> /dev/null; then \
+		echo "Installing air for hot reload..."; \
+		go install github.com/cosmtrek/air@latest; \
+	fi
+	@echo "Starting server in development mode..."
+	air
+
+## docker-build: Build Server Docker image (alias for docker-server)
+docker-build: docker-server
+
+## docker-server: Build Server Docker image with version information
+docker-server:
+	@echo "Building Server Docker image..."
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		-f build/Dockerfile.server \
+		-t $(IMAGE_NAME_SERVER):$(TAG_VERSION) \
+		-t $(IMAGE_NAME_SERVER):$(TAG_LATEST) \
+		-t waterflow:$(VERSION) \
+		-t waterflow:latest \
+		.
+	@echo "Server image built: $(IMAGE_NAME_SERVER):$(TAG_VERSION)"
 
 ## docker-agent: Build Agent Docker image
 docker-agent:
@@ -134,11 +175,13 @@ docker-agent-run:
 		$(IMAGE_NAME_AGENT):$(TAG_LATEST)
 
 ## docker-all: Build both Server and Agent images
-docker-all: docker-build docker-agent
+docker-all: docker-server docker-agent
 
 ## docker-push: Push both Server and Agent images
-docker-push: docker-build docker-agent-push
+docker-push: docker-server docker-agent-push
 	@echo "Pushing Server image..."
+	docker push $(IMAGE_NAME_SERVER):$(TAG_VERSION)
+	docker push $(IMAGE_NAME_SERVER):$(TAG_LATEST)
 	docker push waterflow:$(VERSION)
 	docker push waterflow:latest
 
