@@ -26,9 +26,26 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 go build -o dist/waterflow-linux-amd64
-          GOOS=darwin GOARCH=amd64 go build -o dist/waterflow-darwin-amd64
-          GOOS=windows GOARCH=amd64 go build -o dist/waterflow-windows-amd64.exe
+          
+          # Build server binaries
+          GOOS=linux GOARCH=amd64 make build
+          mv bin/server dist/waterflow-server-linux-amd64
+          
+          GOOS=darwin GOARCH=amd64 make build
+          mv bin/server dist/waterflow-server-darwin-amd64
+          
+          GOOS=windows GOARCH=amd64 make build
+          mv bin/server dist/waterflow-server-windows-amd64.exe
+          
+          # Build agent binaries
+          GOOS=linux GOARCH=amd64 make build-agent
+          mv bin/agent dist/waterflow-agent-linux-amd64
+          
+          GOOS=darwin GOARCH=amd64 make build-agent
+          mv bin/agent dist/waterflow-agent-darwin-amd64
+          
+          GOOS=windows GOARCH=amd64 make build-agent
+          mv bin/agent dist/waterflow-agent-windows-amd64.exe
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

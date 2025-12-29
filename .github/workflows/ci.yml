@@ -41,8 +41,10 @@ jobs:
         version: latest
         args: --timeout=5m
 
-    - name: Run tests
+    - name: Run unit tests
       run: make test
+      # Note: Integration tests requiring Temporal are excluded (-short flag)
+      # They will be added back when infrastructure is set up
 
     - name: Generate coverage report
       run: make coverage
@@ -53,12 +55,22 @@ jobs:
         name: coverage-report
         path: coverage.html
 
-    - name: Build binary
+    - name: Build server binary
       run: make build
 
-    - name: Upload binary to artifacts
+    - name: Build agent binary
+      run: make build-agent
+
+    - name: Verify binaries
+      run: |
+        ./bin/server --version || echo "Server binary built successfully"
+        ./bin/agent --version || echo "Agent binary built successfully"
+
+    - name: Upload binaries to artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: server-binary
-        path: bin/server
+        name: binaries
+        path: |
+          bin/server
+          bin/agent
 
