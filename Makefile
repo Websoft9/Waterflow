@@ -146,7 +146,9 @@ docker-server:
 		.
 	@echo "Server image built: $(IMAGE_NAME_SERVER):$(TAG_VERSION)"
 
-## docker-agent: Build Agent Docker image
+## docker-agent: Build Agent Docker image with multi-stage build (~50MB)
+## Usage: make docker-agent
+## Custom version: VERSION=v1.2.0 make docker-agent
 docker-agent:
 	@echo "Building Agent Docker image..."
 	docker build \

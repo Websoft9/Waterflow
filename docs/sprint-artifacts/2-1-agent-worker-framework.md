@@ -48,8 +48,15 @@ internal/
     README.md            # Agent 内部实现说明
     worker.go            # Temporal Worker 封装
     worker_test.go       # Worker 测试
-    plugin_manager.go    # 插件管理器 (Epic 4)
-    config.go            # Agent 配置
+    plugin_manager.go    # 插件管理器 (Story 2.1 stub, Epic 4 完整实现)
+    plugin_manager_test.go # 插件管理器测试
+    # 注: config.go 未单独创建，配置逻辑在 pkg/config/config.go 的 LoadAgent()
+examples/
+  configs/
+    config.agent.example.yaml  # Agent 配置示例
+pkg/
+  config/
+    config.go            # Agent 和 Server 配置 (包含 LoadAgent)
 ```
 
 **And** `cmd/agent/main.go` 实现基础框架:
@@ -77,7 +84,7 @@ var (
 )
 
 func main() {
-	configFile := flag.String("config", "/etc/waterflow/agent.yaml", "config file path")
+	configFile := flag.String("config", "/app/config/config.yaml", "config file path")
 	taskQueues := flag.String("task-queues", "", "comma-separated task queue names")
 	logLevel := flag.String("log-level", "", "log level (overrides config)")
 	showVersion := flag.Bool("version", false, "show version information")
@@ -294,11 +301,21 @@ func validateQueueName(name string) error {
 }
 ```
 
-**And** 提供 Agent 配置文件示例 `config.agent.example.yaml`:
+**And** 提供 Agent 配置文件示例 `examples/configs/config.agent.example.yaml`:
+
+**路径说明：**
+- 开发环境：`./examples/configs/config.agent.example.yaml`
+- Docker 容器：`/app/config/config.yaml` (通过 volume 挂载 `examples/configs/`)
+- 生产部署：`/etc/waterflow/agent.yaml` (通过安装脚本从 `examples/configs/` 复制)
 
 ```yaml
 # Waterflow Agent Configuration
 # This agent polls specified task queues and executes workflow steps.
+
+# 使用方式：
+# 开发环境：./agent --config examples/configs/config.agent.example.yaml
+# Docker 容器：docker run -v $(pwd)/examples/configs:/app/config waterflow/agent
+# 生产部署：sudo cp examples/configs/config.agent.example.yaml /etc/waterflow/agent.yaml
 
 # Temporal connection settings
 temporal:
@@ -1063,7 +1080,7 @@ make build-agent
 # Output: bin/agent
 
 # 运行 Agent (需要 Temporal Server 运行)
-bin/agent --config config.agent.example.yaml
+bin/agent --config examples/configs/config.agent.example.yaml
 
 # 指定 Task Queues (覆盖配置文件)
 bin/agent --task-queues linux-amd64,linux-common
@@ -1287,18 +1304,24 @@ Claude Sonnet 4.5
 ### File List
 
 **新增文件:**
-- [cmd/agent/main.go](../../cmd/agent/main.go) - Agent 启动入口 (120 行)
-- [internal/agent/worker.go](../../internal/agent/worker.go) - Worker 实现 (136 行)
-- [internal/agent/worker_test.go](../../internal/agent/worker_test.go) - Worker 测试 (136 行)
-- [internal/agent/plugin_manager.go](../../internal/agent/plugin_manager.go) - 插件管理器 stub (41 行)
-- [config.agent.example.yaml](../../config.agent.example.yaml) - Agent 配置示例 (35 行)
+- [cmd/agent/main.go](../../cmd/agent/main.go) - Agent 启动入口 (177 行)
+- [internal/agent/worker.go](../../internal/agent/worker.go) - Worker 实现 (164 行)
+- [internal/agent/worker_test.go](../../internal/agent/worker_test.go) - Worker 测试 (208 行)
+- [internal/agent/plugin_manager.go](../../internal/agent/plugin_manager.go) - 插件管理器 stub (95 行)
+- [internal/agent/plugin_manager_test.go](../../internal/agent/plugin_manager_test.go) - 插件管理器测试 (120 行)
+- [internal/agent/README.md](../../internal/agent/README.md) - Agent 内部实现说明 (220 行)
+- [examples/configs/config.agent.example.yaml](../../examples/configs/config.agent.example.yaml) - Agent 配置示例 (100 行)
 
 **修改文件:**
 - [pkg/config/config.go](../../pkg/config/config.go) - 扩展 AgentConfig (+118 行,新增 LoadAgent, validateQueueName)
 - [pkg/config/config_test.go](../../pkg/config/config_test.go) - 添加 Agent 配置测试 (+126 行)
 - [Makefile](../../Makefile) - 添加 build-agent, build-all, run-agent 目标 (+14 行)
 
-**总计:** 5 个新文件, 3 个修改文件, ~726 新增代码行
+**总计:** 7 个新文件, 3 个修改文件, ~1200 新增代码行
+
+**说明：**
+- `internal/agent/config.go` 未单独创建 - Agent 配置逻辑集成在 `pkg/config/config.go` 的 `LoadAgent()` 函数中，避免配置代码重复
+- 配置文件路径遵循容器化最佳实践：开发环境使用 `examples/configs/`，生产环境通过安装脚本复制到 `/etc/waterflow/`
 
 
 ## Change Log
@@ -1323,7 +1346,12 @@ Claude Sonnet 4.5
 - ✅ Agent 二进制编译成功: bin/agent (30.5MB)
 - ✅ 版本信息验证通过 (--version 显示正确)
 
-**新增文件:** 5 个 (cmd/agent/main.go, internal/agent/worker.go, worker_test.go, plugin_manager.go, config.agent.example.yaml)  
+**新增文件:** 7 个 (cmd/agent/main.go, internal/agent/worker.go, worker_test.go, plugin_manager.go, plugin_manager_test.go, README.md, examples/configs/config.agent.example.yaml)  
 **修改文件:** 3 个 (pkg/config/config.go, pkg/config/config_test.go, Makefile)  
-**新增代码:** ~726 行
+**新增代码:** ~1200 行
+
+**架构决策说明：**
+- Agent 配置统一在 `pkg/config/config.go` 管理，避免与 Server 配置重复代码
+- 配置文件示例放在 `examples/configs/` 符合容器化部署最佳实践
+- 默认配置路径 `/app/config/config.yaml` 适配 Docker 容器，生产环境通过安装脚本复制到 `/etc/waterflow/`
 

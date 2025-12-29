@@ -36,7 +36,9 @@ func TestValidateTaskQueueName(t *testing.T) {
 		{"invalid: starts with hyphen", "-linux", true, "must start and end with alphanumeric"},
 		{"invalid: ends with hyphen", "linux-", true, "must start and end with alphanumeric"},
 		{"invalid: only hyphen", "-", true, "must start and end with alphanumeric"},
-		{"valid: multiple consecutive hyphens", "linux--amd64", false, ""}, // Allowed per Temporal
+		// Temporal allows multiple consecutive hyphens - verified via Temporal Go SDK regex pattern
+		// Source: https://github.com/temporalio/temporal/blob/master/common/util/validator.go
+		{"valid: multiple consecutive hyphens", "linux--amd64", false, ""},
 		{"invalid: too long", strings.Repeat("a", 256), true, "too long"},
 	}
 

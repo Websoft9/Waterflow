@@ -55,7 +55,7 @@ so that **快速上手 Agent 部署和故障排查**。
 # 
 # 快速开始:
 #   1. 复制此文件为 config.yaml
-#   2. 修改 temporal.server_url 和 agent.task_queues
+#   2. 修改 temporal.host 和 agent.task_queues
 #   3. 启动 Agent: ./agent --config config.yaml
 # ==============================================
 
@@ -77,9 +77,9 @@ agent:
 # Temporal 连接配置
 temporal:
   # Temporal Server 地址 (必填)
-  # 环境变量: TEMPORAL_SERVER_URL
-  # 注意: 连接到 Waterflow Server 的 Temporal 端口 (默认7233)
-  server_url: "localhost:7233"
+  # 环境变量: TEMPORAL_HOST
+  # 注意: 连接到 Waterflow 内部 Temporal 服务 (默认7233)
+  host: "localhost:7233"
   
   # Temporal Namespace
   # 默认: default
@@ -174,9 +174,6 @@ security:
 advanced:
   # 优雅关闭超时时间
   graceful_shutdown_timeout: "30s"
-  
-  # 心跳上报间隔
-  heartbeat_interval: "30s"
   
   # Activity 心跳超时 (Temporal)
   activity_heartbeat_timeout: "10s"
@@ -363,7 +360,7 @@ sudo systemctl disable waterflow-agent
 ```bash
 docker run -d \
   --name waterflow-agent \
-  -e TEMPORAL_SERVER_URL=temporal.example.com:7233 \
+  -e TEMPORAL_HOST=temporal.example.com:7233 \
   -e TASK_QUEUES=linux-amd64 \
   -e AGENT_ID=my-first-agent \
   -e LOG_LEVEL=info \
@@ -417,7 +414,7 @@ services:
   agent:
     image: waterflow/agent:latest
     environment:
-      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_HOST: temporal:7233
       TASK_QUEUES: linux-amd64,linux-common
       LOG_LEVEL: info
     depends_on:
@@ -514,7 +511,7 @@ spec:
       - name: agent
         image: waterflow/agent:latest
         env:
-        - name: TEMPORAL_SERVER_URL
+        - name: TEMPORAL_HOST
           value: "temporal.default.svc.cluster.local:7233"
         - name: TASK_QUEUES
           value: "linux-amd64"
@@ -711,23 +708,21 @@ htop
 # CPU 使用率 > 90% → 减少并发数
 ```
 
-### 心跳间隔优化
+### Activity 心跳超时
+
+> **注意:** Agent 不再需要配置心跳间隔（已在 ADR-0008 中移除）。Temporal Worker 自动处理心跳。
 
 ```yaml
 advanced:
-  # 短心跳间隔 (10s) - 快速故障检测
-  heartbeat_interval: "10s"  # 适用于关键任务
-  
-  # 中等心跳间隔 (30s) - 平衡性能和检测速度
-  heartbeat_interval: "30s"  # ✅ 推荐默认值
-  
-  # 长心跳间隔 (60s) - 减少网络开销
-  heartbeat_interval: "60s"  # 适用于稳定环境
+  # Activity 心跳超时 - Temporal 内部检测机制
+  activity_heartbeat_timeout: "10s"  # 短超时，快速检测失败
+  activity_heartbeat_timeout: "30s"  # ✅ 推荐默认值
+  activity_heartbeat_timeout: "60s"  # 长超时，适用于稳定环境
 ```
 
-**权衡:**
-- 短间隔 → 快速发现故障 Agent,但增加网络流量
-- 长间隔 → 减少开销,但故障检测延迟
+**说明:**
+- Activity 心跳由 Temporal 自动管理
+- Agent 通过 Temporal Worker 自动注册和连接
 
 ## 3. 日志管理
 
@@ -837,8 +832,8 @@ ReadWritePaths=/var/log/waterflow  # 仅允许写日志
 
 ```bash
 # 每个 Task Queue 至少 2 个 Agent
-docker run -d --name agent-1 -e TASK_QUEUES=linux-amd64 waterflow/agent:latest
-docker run -d --name agent-2 -e TASK_QUEUES=linux-amd64 waterflow/agent:latest
+docker run -d --name agent-1 -e TEMPORAL_HOST=temporal:7233 -e TASK_QUEUES=linux-amd64 waterflow/agent:latest
+docker run -d --name agent-2 -e TEMPORAL_HOST=temporal:7233 -e TASK_QUEUES=linux-amd64 waterflow/agent:latest
 
 # ✅ 好处:
 # - 故障自动转移
@@ -1117,7 +1112,7 @@ diff config.agent.example.yaml /etc/waterflow/agent.yaml
 # 启动新版本 Agent (不停止旧版本)
 docker run -d \
   --name agent-v2 \
-  -e TEMPORAL_SERVER_URL=temporal:7233 \
+  -e TEMPORAL_HOST=temporal:7233 \
   -e TASK_QUEUES=linux-amd64 \
   waterflow/agent:v1.1.0
 ```
@@ -1155,7 +1150,7 @@ docker rm agent
 # 4. 启动新容器
 docker run -d \
   --name agent \
-  -e TEMPORAL_SERVER_URL=temporal:7233 \
+  -e TEMPORAL_HOST=temporal:7233 \
   -e TASK_QUEUES=linux-amd64 \
   waterflow/agent:v1.1.0
 
@@ -1207,16 +1202,12 @@ sudo journalctl -u waterflow-agent -f
 **场景: v1.1.0 新增配置字段**
 
 ```yaml
-# 旧配置 (v1.0.0)
+# 配置示例 (v1.0.0)
 agent:
   task_queues: ["linux-amd64"]
 
-# 新配置 (v1.1.0)
-agent:
-  task_queues: ["linux-amd64"]
-  # 新增字段 (可选,有默认值)
-  max_task_retries: 3  # 默认 3
-  task_timeout: "5m"   # 默认 5 分钟
+temporal:
+  host: "localhost:7233"  # 连接 Temporal 内部服务
 ```
 
 **迁移脚本** (`scripts/migrate-config.sh`):
@@ -1352,8 +1343,8 @@ telnet temporal.example.com 7233
 nc -zv temporal.example.com 7233
 
 # 2. 检查 Agent 配置
-cat config.yaml | grep server_url
-# 输出: server_url: "temporal.example.com:7233"
+cat config.yaml | grep "temporal.host"
+# 输出: host: "temporal.example.com:7233"
 
 # 3. 检查 DNS 解析
 nslookup temporal.example.com
@@ -1366,8 +1357,8 @@ docker exec agent ping temporal
 ```
 
 **常见原因:**
-- ❌ `server_url: "http://localhost:7233"` (不应包含 http://)
-- ✅ `server_url: "localhost:7233"` (正确格式)
+- ❌ `host: "http://localhost:7233"` (不应包含 http://)
+- ✅ `host: "localhost:7233"` (正确格式)
 
 ---
 
@@ -1539,9 +1530,9 @@ sudo iptables -L -n -v | grep 8080
 
 **解决:**
 ```yaml
-# 增加心跳超时时间
+# 增加 Activity 心跳超时时间
 advanced:
-  heartbeat_interval: "60s"  # 从 30s 增加到 60s
+  activity_heartbeat_timeout: "60s"  # 从 30s 增加到 60s
 
 # 或配置 HTTP Proxy
 environment:
@@ -1818,7 +1809,7 @@ groups:
 # 1. 启动 Agent (Docker)
 docker run -d \
   --name waterflow-agent \
-  -e TEMPORAL_SERVER_URL=temporal:7233 \
+  -e TEMPORAL_HOST=temporal:7233 \
   -e TASK_QUEUES=linux-amd64 \
   waterflow/agent:latest
 
@@ -1847,7 +1838,7 @@ curl http://localhost:8080/v1/agents
 agent:
   task_queues: ["linux-amd64"]
 temporal:
-  server_url: "localhost:7233"
+  host: "localhost:7233"
 ```
 
 ### 高级配置
@@ -2007,13 +1998,24 @@ markdown-link-check docs/guides/*.md
 
 ### Code Review Record
 
-**审查日期:** 2025-12-26  
+**第一轮审查日期:** 2025-12-26  
 **审查者:** AI Senior Developer  
 **审查结果:** ✅ 通过 (所有问题已修复)
 
 **发现问题:** 9 个 (CRITICAL×1, HIGH×2, MEDIUM×4, LOW×2)  
 **已修复:** 7 个 (CRITICAL×1, HIGH×2, MEDIUM×4)  
 **改进建议:** 2 个 (LOW×2)
+
+---
+
+**第二轮审查日期:** 2025-12-29  
+**审查者:** Amelia (Dev Agent)  
+**触发原因:** 架构变更 (ADR-0008) 后的合规性检查  
+**审查结果:** ✅ 通过 (所有架构不一致问题已修复)
+
+**发现问题:** 6 个 (CRITICAL×2, HIGH×1, MEDIUM×2, LOW×1)  
+**已修复:** 6 个 (全部)  
+**遗留问题:** 0 个
 
 #### 修复的问题
 
@@ -2038,6 +2040,65 @@ markdown-link-check docs/guides/*.md
 - 可维护性: File List 完整追踪所有变更
 
 **完成时间:** 2025-12-26
+
+#### 第二轮审查问题 (2025-12-29)
+
+**架构不一致问题 - ADR-0008 合规性检查:**
+
+1. ✅ **CRITICAL: Story AC1 使用废弃字段 `temporal.server_url`**
+   - 位置: 第 58、80、82 行
+   - 修复: 全部替换为 `temporal.host`
+   - 影响: 用户复制配置后 Agent 无法启动
+
+2. ✅ **CRITICAL: AC1 包含已删除字段 `heartbeat_interval`**
+   - 位置: 第 179 行
+   - 修复: 已从 `advanced` 配置节删除
+   - 原因: ADR-0008 决策，Temporal Worker 自动处理心跳
+
+3. ✅ **HIGH: agent-quickstart.md 使用错误环境变量**
+   - 位置: agent-quickstart.md 第 15、69 行
+   - 错误: `TEMPORAL_SERVER_URL`
+   - 修复: 改为 `TEMPORAL_HOST`
+   - 影响: Docker 启动命令无效，连接失败
+
+4. ✅ **MEDIUM: Story 正文与实际配置文件不一致**
+   - 实际文件 `examples/configs/config.agent.example.yaml` 使用正确字段
+   - Story AC1 使用废弃字段
+   - 修复: 同步 Story 与实际配置
+
+5. ✅ **MEDIUM: 最佳实践文档仍提及废弃配置**
+   - 位置: 第 719-725 行 "心跳间隔优化" 章节
+   - 修复: 改为 "Activity 心跳超时"，添加 ADR-0008 引用
+   - 保留 `activity_heartbeat_timeout` (Temporal 配置)
+
+6. ✅ **LOW: 新增文件未加入 Git 追踪**
+   - 文件存在但 `git status` 未显示
+   - 修复: `git add` 所有新增文件
+   - 影响: 版本控制完整性
+
+**修复操作:**
+- 批量替换 13 处 `temporal.server_url` → `temporal.host`
+- 批量替换 8 处 `TEMPORAL_SERVER_URL` → `TEMPORAL_HOST`
+- 删除 1 处 `heartbeat_interval` 配置
+- 重写心跳配置章节，明确 ADR-0008 架构决策
+- 将 8 个新增文件加入 Git 追踪
+
+**修复文件清单:**
+- `docs/sprint-artifacts/2-10-agent-configuration-guide.md` (13 处替换)
+- `docs/guides/agent-quickstart.md` (2 处替换)
+- Git 追踪: `deployments/systemd/*.service`, `scripts/*.sh`, `docs/guides/agent-*.md`
+
+**根本原因分析:**
+- Story 创建于 ADR-0008 架构变更之前
+- 后续添加警告标记但未更新正文
+- 第一轮代码审查未检查架构合规性
+
+**预防措施:**
+- 架构变更后必须审查所有相关文档
+- 代码审查增加 "架构合规性" 检查项
+- 文档顶部警告必须触发正文更新
+
+**完成时间:** 2025-12-29
 
 ### Implementation Plan
 

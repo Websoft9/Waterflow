@@ -12,7 +12,7 @@
 ```bash
 docker run -d \
   --name waterflow-agent \
-  -e TEMPORAL_SERVER_URL=temporal.example.com:7233 \
+  -e TEMPORAL_HOST=temporal.example.com:7233 \
   -e TASK_QUEUES=linux-amd64 \
   -e AGENT_ID=my-first-agent \
   -e LOG_LEVEL=info \
@@ -66,7 +66,7 @@ services:
   agent:
     image: waterflow/agent:latest
     environment:
-      TEMPORAL_SERVER_URL: temporal:7233
+      TEMPORAL_HOST: temporal:7233
       TASK_QUEUES: linux-amd64,linux-common
       LOG_LEVEL: info
     depends_on:

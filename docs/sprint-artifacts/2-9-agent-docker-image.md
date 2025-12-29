@@ -1,9 +1,9 @@
 # Story 2.9: Agent Docker 镜像
 
-> ⚠️ **历史文档警告** (更新于 2025-12-29)  
-> 本文档描述的是旧架构 (ADR-0007 之前)，包含 Agent 注册/心跳机制。  
-> **当前架构：** Agent 只连接 Temporal，不再需要 `SERVER_URL` 环境变量。  
-> **请参考：** [ADR-0008 Temporal 作为内部服务](../adr/0008-temporal-as-internal-service.md)
+> ℹ️ **架构说明** (更新于 2025-12-29)  
+> 本 Story 的实现已更新为新架构 (ADR-0008)：Agent 直接连接 Temporal，无需 Server 注册/心跳。  
+> 文档中的部分示例代码保留了旧架构引用，但**实际实现已完全遵循 ADR-0008**。  
+> **参考：** [ADR-0008 Temporal 作为内部服务](../adr/0008-temporal-as-internal-service.md)
 
 Status: Ready for Review
 
@@ -182,9 +182,9 @@ services:
       - TASK_QUEUES=linux-amd64,linux-common
       - LOG_LEVEL=info
       - AGENT_ID=agent-linux-1
-      - SERVER_URL=http://server:8080  # 用于心跳上报
     volumes:
-      - ./agent-config.yaml:/app/config/config.yaml:ro
+      # 配置文件是可选的，Agent 支持完全环境变量驱动
+      # - ./agent-config.yaml:/app/config/config.yaml:ro
       - agent-plugins:/app/plugins:ro
     depends_on:
       - server
@@ -200,9 +200,7 @@ services:
       - TASK_QUEUES=linux-amd64,linux-common
       - LOG_LEVEL=info
       - AGENT_ID=agent-linux-2
-      - SERVER_URL=http://server:8080
     volumes:
-      - ./agent-config.yaml:/app/config/config.yaml:ro
       - agent-plugins:/app/plugins:ro
     depends_on:
       - server
@@ -218,9 +216,7 @@ services:
       - TASK_QUEUES=web-servers
       - LOG_LEVEL=info
       - AGENT_ID=agent-web-1
-      - SERVER_URL=http://server:8080
     volumes:
-      - ./agent-config.yaml:/app/config/config.yaml:ro
       - agent-plugins:/app/plugins:ro
     depends_on:
       - server
@@ -309,11 +305,6 @@ func loadConfig() (*config.AgentConfig, error) {
 		// Auto-generate ID
 		hostname, _ := os.Hostname()
 		cfg.Agent.ID = fmt.Sprintf("agent-%s-%d", hostname, time.Now().Unix())
-	}
-	
-	// SERVER_URL
-	if serverURL := os.Getenv("SERVER_URL"); serverURL != "" {
-		cfg.Agent.ServerURL = serverURL
 	}
 	
 	// LOG_LEVEL
@@ -622,10 +613,10 @@ CVE-2024-yyyyy
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `TEMPORAL_SERVER_URL` | ✅ | 无 | Temporal Server 地址 |
+| `TEMPORAL_SERVER_URL` | ✅ | 无 | Temporal Server 地址 (host:port) |
+| `TEMPORAL_NAMESPACE` | ❌ | `default` | Temporal Namespace |
 | `TASK_QUEUES` | ✅ | 无 | 任务队列 (逗号分隔) |
 | `AGENT_ID` | ❌ | 自动生成 | Agent 唯一 ID |
-| `SERVER_URL` | ❌ | 无 | Waterflow Server URL (心跳上报) |
 | `LOG_LEVEL` | ❌ | `info` | 日志级别 (debug/info/warn/error) |
 | `METRICS_PORT` | ❌ | `9090` | Metrics 端口 |
 | `CONFIG_PATH` | ❌ | `/app/config/config.yaml` | 配置文件路径 |
@@ -754,9 +745,9 @@ docker-compose up -d agent-linux-1
 ✅ **AC3: 环境变量配置支持**
 - 修改 `cmd/agent/main.go` (+50行)
 - 添加 `overrideWithEnv` 函数支持环境变量覆盖
-- 支持变量: TEMPORAL_SERVER_URL, TASK_QUEUES, AGENT_ID, SERVER_URL, LOG_LEVEL
+- 支持变量: TEMPORAL_SERVER_URL, TEMPORAL_NAMESPACE, TASK_QUEUES, AGENT_ID, LOG_LEVEL, METRICS_PORT
 - 配置优先级: 命令行参数 > 环境变量 > 配置文件 > 默认值
-- 修改默认配置文件路径为 /app/config/config.yaml
+- 配置文件完全可选，支持纯环境变量驱动
 
 ✅ **AC4: Plugin 挂载支持**
 - 扩展 `internal/agent/plugin_manager.go` (+50行)
@@ -787,7 +778,7 @@ docker-compose up -d agent-linux-1
 **第一轮实现 (2025-12-25):**
 1. ✅ Dockerfile.agent - 多阶段构建
 2. ✅ Docker Compose 配置 - 支持3个Agent实例
-3. ✅ 环境变量配置 - AGENT_ID/METRICS_PORT/SERVER_URL 等
+3. ✅ 环境变量配置 - TEMPORAL_SERVER_URL/TEMPORAL_NAMESPACE/AGENT_ID/METRICS_PORT 等
 4. ✅ Plugin 扫描机制 - 自动发现和验证 .so 文件
 5. ✅ Makefile 构建脚本 - 完整的镜像管理命令
 6. ✅ 测试覆盖 - 6个单元测试,全部通过
@@ -887,6 +878,16 @@ docker-compose up -d agent-linux-1
 - ✅ 镜像大小: 51.6MB (符合 AC1 要求 < 100MB)
 - ✅ 镜像运行测试通过: `docker run --rm waterflow/agent:latest --version`
 - ✅ 编译时间: ~78秒 (go build 阶段)
+
+**2025-12-29: 第三次代码审查修复 (架构一致性)**
+- 🔧 **MEDIUM-1**: 更新文档顶部警告,说明实现已遵循 ADR-0008 新架构
+- 🔧 **MEDIUM-1**: 移除 AC2 Docker Compose 示例中的 SERVER_URL 环境变量 (旧架构)
+- 🔧 **MEDIUM-1**: 移除 AC3 代码示例中的 SERVER_URL 配置逻辑
+- 🔧 **MEDIUM-1**: 更新环境变量清单,移除 SERVER_URL,添加 TEMPORAL_NAMESPACE
+- 🔧 **MEDIUM-1**: 更新 Dev Agent Record 中的支持变量列表
+- 🔧 **LOW-1**: Docker Compose 添加配置文件可选注释说明
+- 🔧 **LOW-2**: 改进 Makefile docker-agent 目标的使用说明注释
+- ✅ Story 文档完全符合 ADR-0008 新架构 (Agent → Temporal 直连)
 
 **Docker 镜像特性:**
 - 🏗️ 多阶段构建优化镜像大小

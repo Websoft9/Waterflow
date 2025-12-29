@@ -28,14 +28,25 @@ runs-on: prod-us-west     # 环境 + 区域
 runs-on: a                # 单字符
 ```
 
-**❌ 无效名称:**
+**❌ 无效名称及验证错误:**
 ```yaml
 runs-on: linux_amd64      # ❌ 包含下划线
+# 错误: invalid task queue name: must contain only alphanumeric characters and hyphens
+
 runs-on: "web servers"    # ❌ 包含空格
+# 错误: invalid task queue name: must contain only alphanumeric characters and hyphens
+
 runs-on: linux@amd64      # ❌ 包含特殊字符@
+# 错误: invalid task queue name: must contain only alphanumeric characters and hyphens
+
 runs-on: linux.amd64      # ❌ 包含特殊字符.
+# 错误: invalid task queue name: must contain only alphanumeric characters and hyphens
+
 runs-on: -linux           # ❌ 以连字符开头
+# 错误: invalid task queue name: must start and end with alphanumeric
+
 runs-on: linux-           # ❌ 以连字符结尾
+# 错误: invalid task queue name: must start and end with alphanumeric
 ```
 
 ## 推荐命名模式

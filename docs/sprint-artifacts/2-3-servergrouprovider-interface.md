@@ -1,6 +1,16 @@
 # Story 2.3: ServerGroupProvider 接口实现
 
-Status: done
+Status: cancelled
+
+**取消原因:** 根据 ADR-0007 和 ADR-0008 架构调整决策，Agent 注册机制与 Temporal Worker 机制重复，已决定删除 ServerGroupProvider 接口及相关功能。Agent 健康监控将直接使用 Temporal 的 Worker API 实现。
+
+**参考文档:**
+- [ADR-0007: Waterflow 内嵌 Temporal 并简化 Agent 架构](../adr/0007-waterflow-server-as-single-entry-point.md) (已废弃，但决策保留)
+- [ADR-0008: Temporal 作为内部服务容器](../adr/0008-temporal-as-internal-service.md) (已采纳)
+
+---
+
+## 原始 Story 内容（供参考）
 
 ## Story
 
@@ -1100,13 +1110,15 @@ curl http://localhost:8080/v1/agents
 
 ## Tasks/Subtasks
 
-- [x] AC1: ServerGroupProvider 接口定义
-- [x] AC2: InMemoryProvider 实现
-- [x] AC3: FileProvider 实现
-- [x] AC4: Server 集成 Provider
-- [x] AC5: Agent 自动注册到 Provider
-- [x] AC6: CMDB 集成示例和文档
-- [x] AC7: 单元测试 (覆盖率 100%)
+**注意：** 以下任务均未实施，Story 已因架构调整取消。
+
+- [ ] AC1: ServerGroupProvider 接口定义 (未实施 - Story cancelled)
+- [ ] AC2: InMemoryProvider 实现 (未实施 - Story cancelled)
+- [ ] AC3: FileProvider 实现 (未实施 - Story cancelled)
+- [ ] AC4: Server 集成 Provider (未实施 - Story cancelled)
+- [ ] AC5: Agent 自动注册到 Provider (未实施 - Story cancelled)
+- [ ] AC6: CMDB 集成示例和文档 (未实施 - Story cancelled)
+- [ ] AC7: 单元测试 (未实施 - Story cancelled)
 
 ## Dev Agent Record
 
@@ -1194,6 +1206,6 @@ curl http://localhost:8080/v1/agents
 
 ## Change Log
 
-- 2025-12-25: Story 2.3 实现完成 - ServerGroupProvider 接口及三种实现 (Interface, InMemory, File),Agent 注册 API,CMDB 集成文档,测试覆盖率 100%,性能测试全部通过
-- 2025-12-25: 代码审查修复 - 添加 Agent 自动注册功能 (AC5 完整实现),FileProvider 安全加固,ListGroups 排序优化,配置完善
+- 2025-12-29: **Story 取消** - 根据 ADR-0007/0008 架构调整决策，ServerGroupProvider 接口和 Agent 注册机制与 Temporal Worker 重复，已决定不实施此 Story。改用 Temporal 原生 Worker API 实现 Agent 健康监控功能。
+- 2025-12-25: Story 文件创建（仅设计阶段，未实施）
 

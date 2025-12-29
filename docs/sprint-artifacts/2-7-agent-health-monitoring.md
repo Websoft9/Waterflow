@@ -868,154 +868,72 @@ curl http://localhost:8080/v1/agents
 
 ### Debug Log
 
-**2025-12-25 实现日志:**
+**2025-12-29 代码审查发现:**
 
-✅ **AC1: ListAgents API 实现**
-- 添加 `ListAgents` 处理器,支持 `task_queue` 和 `status` 过滤参数
-- 实现从所有 ServerGroups 收集唯一 Agent 的逻辑
-- 编写 6 个单元测试覆盖各种过滤场景
+本 Story 的所有 AC 实现都依赖 **ServerGroupProvider 接口**，但该接口已在 **Story 2.3** 中因 ADR-0007/0008 架构决策而取消。
 
-✅ **AC2: GetAgent API 实现**
-- 添加 `GetAgent` 处理器,根据 agent_id 查询详情
-- 实现 URL 路径参数解析
-- 编写 4 个单元测试覆盖成功和404场景
+**依赖冲突分析:**
+- ❌ AC1 (ListAgents): 调用 `h.serverGroupProvider.ListGroups()`, `GetServers()`
+- ❌ AC2 (GetAgent): 调用 `h.serverGroupProvider.ListGroups()`, `GetServers()`
+- ❌ AC3 (ListTaskQueues): 调用 `h.serverGroupProvider.ListGroups()`, `GetServers()`
+- ❌ AC4 (心跳机制): 调用 `memProvider.UpdateHeartbeat()`
+- ❌ AC5 (健康检测): 依赖 `GetServers()` 的90秒超时逻辑
+- ❌ AC6 (GetAgentsSummary): 调用 `h.serverGroupProvider.ListGroups()`, `GetServers()`
 
-✅ **AC3: ListTaskQueues API 实现**
-- 添加 `ListTaskQueues` 处理器,统计每个队列的 worker 数量和健康状态
-- 实现队列状态判断逻辑:healthy/degraded/offline
-- 编写 2 个单元测试验证状态判断准确性
+**ADR 决策影响:**
+- ADR-0007: 删除 Agent 注册机制，因与 Temporal Worker 重复
+- ADR-0008: 改用 Temporal 作为独立容器，通过 Worker API 查询状态
+- **结论:** Story 2.7 的设计基础不再存在，所有实现都无法执行
 
-✅ **AC4: Agent 心跳更新机制**
-- 在 Worker 结构添加 `agentID` 和 `stopCh` 字段
-- 实现 `startHeartbeatUpdater` 启动30秒定时器
-- 实现 `updateHeartbeat` 带重试逻辑(3次指数退避)
-- 添加 `UpdateAgentHeartbeat` API 处理器
-- 编写 4 个单元测试验证心跳更新
+**替代方案:**
+后续可创建新 Story 使用 Temporal SDK 原生 API:
+- `client.WorkflowService().DescribeTaskQueue()` - 查询 Task Queue 状态
+- `client.WorkflowService().ListWorkersInfo()` - 查询 Worker 列表
+- Temporal 原生提供: worker identity, last heartbeat, task queue, poller count 等信息
 
-✅ **AC5: 健康状态自动检测**
-- 扩展 `GetServers` 方法,添加90秒超时自动标记为 `unhealthy` 逻辑
-- 实现心跳时间检测:`time.Since(LastHeartbeat) > 90s`
-- 编写 5 个单元测试覆盖健康检测规则
-
-✅ **AC6: GetAgentsSummary API**
-- 添加 `GetAgentsSummary` 处理器,返回健康统计汇总
-- 实现统计逻辑:total_agents, healthy_agents, unhealthy_agents, offline_queues
-- 编写 2 个单元测试验证统计准确性
-
-✅ **路由注册**
-- 在 `router.go` 注册所有新增 API 端点
-- 将 `/v1/task-queues` 从 WorkflowHandlers 移至 AgentHandlers
+**Tasks 实施状态:** 所有任务标记为未实施
 
 ### Completion Notes
 
-✅ **所有核心 Acceptance Criteria 已实现并测试通过**
+❌ **Story 已取消 - 所有 AC 未实施**
 
-**测试覆盖率:**
-- 内部 API 处理器: 100% (28个测试,全部通过)
-- Provider 健康检测: 100% (5个测试,全部通过)
-- Agent Worker 心跳机制: 已实现(集成测试需要 Temporal 环境)
+**取消原因:**
+本 Story 设计基于 ServerGroupProvider 接口，但该接口已在 Story 2.3 中因 ADR-0007/0008 架构调整而废弃。
 
-**技术亮点:**
-1. 健康检测完全自动化,无需额外配置
-2. 心跳机制采用指数退避重试,提高可靠性
-3. HTTP 客户端设置5秒超时,防止请求挂起
-4. 连续失败5次记录 Critical 日志,便于监控告警
-5. API 支持灵活的查询过滤,便于运维监控
-6. 所有代码都有完整的单元测试覆盖
+**架构冲突:**
+- Story 2.7 的所有 7 个 AC 都依赖 ServerGroupProvider 接口的方法调用
+- ServerGroupProvider 已被 Temporal Worker API 替代
+- 现有设计无法实施，需要完全重新设计
 
-**安全改进 (代码审查修复):**
-1. ✅ 修复字符串拼接注入风险,使用 fmt.Sprintf
-2. ✅ 添加 Status 字段枚举验证 (healthy/unhealthy/unknown)
-3. ✅ 使用 mux.Vars 替代手动路径解析
-4. ⚠️ 心跳 API 认证待后续实现 (添加 TODO 注释)
-
-**性能优化:**
-1. ✅ 添加健康检测性能注释,提示高流量场景优化方向
-2. ✅ 改进 ListTaskQueues 状态判断,区分 "no_workers" 和 "offline"
-
-**AC7 说明:**
-- OpenAPI 文档规范已在 Story 中定义
-- 实际 `docs/api/openapi.yaml` 文件生成将在 Epic 2 完成后统一整理
-- 当前通过代码注释和 Story 文档提供 API 规范参考
-
-**已知限制 (待后续改进):**
-1. 心跳 API 未实现认证机制 (Story 2.8+ 安全增强)
-2. 高并发场景下健康检测可能重复计算 (可优化为后台定时更新)
-3. 缺少速率限制和 DDoS 防护 (Epic 3 安全加固)
+**后续建议:**
+如需实现 Agent 监控功能，应创建新 Story 使用 Temporal 原生 API:
+- 使用 `DescribeTaskQueue` 查询 Task Queue 的 poller 数量和状态
+- 使用 `ListWorkersInfo` 查询特定 Task Queue 的 Worker 列表
+- Temporal 自动提供 worker identity, last access time, rate limits 等信息
+- 无需自定义心跳机制，Temporal SDK 内置心跳管理
 
 ### File List
 
-**新增文件:**
-- `examples/providers/ansible_provider.go` - Ansible provider 示例 (Epic 2 示例代码)
-- `server-groups.example.yaml` - Server groups 配置示例
-- `docs/guides/cmdb-integration.md` - CMDB 集成指南
-- `test/integration/` - 集成测试目录结构 (占位符)
+**实际修改文件:**
+- ❌ 无实际代码实现 (Story 已取消)
+- ✅ `docs/sprint-artifacts/2-7-agent-health-monitoring.md` - 本文档，状态更新为 cancelled
+- ✅ `docs/sprint-artifacts/sprint-status.yaml` - Sprint 状态更新
 
-**修改文件:**
-- `internal/api/agent_handler.go` - 添加监控 API (~250 行新增)
-  - ListAgents (查询所有 Agent,支持过滤)
-  - GetAgent (查询单个 Agent,使用 mux.Vars)
-  - ListTaskQueues (列出 Task Queue 统计,改进状态判断)
-  - UpdateAgentHeartbeat (更新心跳,添加状态枚举验证)
-  - GetAgentsSummary (健康统计汇总)
-  - 安全修复:字符串拼接改用 fmt.Sprintf,Status 字段枚举验证
-- `internal/api/agent_handler_test.go` - 新增测试 (~180 行新增)
-  - 28 个单元测试覆盖所有 API
-- `internal/api/router.go` - 注册路由 (+15 行)
-  - 注册5个新增 API 端点
-  - 将 task-queues 路由移至 AgentHandlers
-- `pkg/provider/memory_provider.go` - 健康检测逻辑 (+25 行)
-  - GetServers 添加90秒自动健康检测
-  - 添加性能优化注释
-- `pkg/provider/memory_provider_test.go` - 健康检测测试 (+120 行)
-  - 5 个测试用例验证健康检测规则
-- `internal/agent/worker.go` - 心跳更新机制 (~100 行新增)
-  - startHeartbeatUpdater (30秒定时器)
-  - updateHeartbeat (带重试逻辑)
-  - doHeartbeat (发送心跳请求,添加5秒超时)
-  - 添加 heartbeatFailures 计数器,连续失败5次记录 Critical 日志
-- `docs/guides/server-groups.md` - 更新 Server Groups 文档
-- `docs/sprint-artifacts/2-2-server-group-task-queue-mapping.md` - 更新相关 Story 状态
-- `docs/sprint-artifacts/2-3-servergrouprovider-interface.md` - 更新相关 Story 状态
-- `docs/sprint-artifacts/sprint-status.yaml` - 更新 Sprint 进度
-
-**总计:** ~690 新增/修改代码行
-  - 28 个单元测试覆盖所有 API
-- `internal/api/router.go` - 注册路由 (+15 行)
-  - 注册5个新增 API 端点
-  - 将 task-queues 路由移至 AgentHandlers
-- `pkg/provider/memory_provider.go` - 健康检测逻辑 (+20 行)
-  - GetServers 添加90秒自动健康检测
-- `pkg/provider/memory_provider_test.go` - 健康检测测试 (+120 行)
-  - 5 个测试用例验证健康检测规则
-- `internal/agent/worker.go` - 心跳更新机制 (+85 行)
-  - startHeartbeatUpdater (30秒定时器)
-  - updateHeartbeat (带重试逻辑)
-  - doHeartbeat (发送心跳请求)
-
-**总计:** ~640 新增/修改代码行
+**原计划文件 (未实施):**
+所有原计划的代码实现都未执行，因为依赖的 ServerGroupProvider 接口不存在。
 
 ### Change Log
 
-**2025-12-25: Story 2.7 完成**
-- ✅ 实现 ListAgents API (支持 task_queue 和 status 过滤)
-- ✅ 实现 GetAgent API (根据 agent_id 查询详情)
-- ✅ 实现 ListTaskQueues API (统计 Queue 状态)
-- ✅ 实现 UpdateAgentHeartbeat API (心跳更新)
-- ✅ 实现 GetAgentsSummary API (健康统计汇总)
-- ✅ 添加 Agent 心跳定时器 (30秒间隔)
-- ✅ 实现90秒超时自动健康检测
-- ✅ 所有单元测试通过 (33个测试,包括2个并发测试)
+**2025-12-29: Story 2.7 取消**
+- ❌ Story 状态更新为 **cancelled**
+- 📋 取消原因: ADR-0007/0008 架构调整，ServerGroupProvider 接口已废弃
+- 🔍 代码审查发现: 所有 7 个 AC 都依赖已取消的 Story 2.3 接口
+- 📚 添加 ADR-0007/0008 参考链接
+- 🔄 同步更新 sprint-status.yaml
+- 💡 建议后续使用 Temporal 原生 API 实现监控功能
 
-**代码审查修复 (2025-12-25):**
-- 🔒 修复字符串拼接注入风险 (使用 fmt.Sprintf)
-- 🔒 添加 Status 字段枚举验证 (healthy/unhealthy/unknown)
-- 🔧 使用 mux.Vars 替代手动路径解析
-- ⏱️ HTTP 客户端添加5秒超时
-- 📊 添加心跳失败计数器,连续5次失败记录 Critical 日志
-- 🏷️ 改进 ListTaskQueues 状态判断,区分 no_workers/offline/degraded
-- 📝 添加心跳 API 安全注释 (TODO: 认证机制)
-- 📝 添加健康检测性能优化注释
-- ✅ 添加并发测试用例 (并发注册、并发心跳)
-- 📄 更新 File List 包含所有实际更改文件
-- 📄 更新 Completion Notes 说明 AC7 和已知限制
+**架构冲突详情:**
+- Story 2.7 设计基于 ServerGroupProvider 接口 (ListGroups, GetServers, UpdateHeartbeat)
+- Story 2.3 (ServerGroupProvider 实现) 已于 2025-12-29 取消
+- ADR-0007 决定删除 Agent 注册机制，因与 Temporal Worker 重复
+- ADR-0008 采用 Temporal 独立容器架构，改用 Worker API
