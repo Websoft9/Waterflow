@@ -55,15 +55,20 @@ build-agent:
 ## build-all: Compile both server and agent binaries
 build-all: build build-agent
 
-## test: Run all tests
+## test: Run unit tests only (skip integration tests)
 test:
-	@echo "Running tests..."
+	@echo "Running unit tests (skipping integration tests)..."
+	go test -v -race -short ./...
+
+## test-integration: Run all tests including integration tests (requires Temporal server)
+test-integration:
+	@echo "Running all tests including integration tests..."
 	go test -v -race ./...
 
-## coverage: Generate test coverage report
+## coverage: Generate test coverage report (unit tests only)
 coverage:
 	@echo "Generating coverage report..."
-	go test -v -coverprofile=coverage.out ./...
+	go test -v -short -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 	@go tool cover -func=coverage.out | grep total | awk '{print "Total coverage: " $$3}' || echo "Coverage report generated successfully"
