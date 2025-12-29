@@ -2,7 +2,7 @@ name: Docker Build
 
 on:
   push:
-    branches: [ main, develop ]
+    # branches: [ main, develop ]  # 注释掉，仅在打tag时构建
     tags:
       - 'v*.*.*'
   pull_request:
