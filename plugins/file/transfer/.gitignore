@@ -1,0 +1,11 @@
+# Build outputs
+*.so
+transfer.so
+
+# Test outputs
+coverage.out
+*.test
+
+# Backup files
+*.backup
+*.orig

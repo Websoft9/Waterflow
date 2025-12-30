@@ -1031,7 +1031,7 @@ So that **快速在服务器上部署 Agent**。
 
 ## Epic 3: 核心节点插件库
 
-用户可以使用 8 个核心节点构建实用的工作流,覆盖 Shell 操作、文件传输、HTTP 请求、Docker 管理等常见场景。所有节点都编译为 .so 插件,通过 Agent 启动时自动加载 (ADR-0003 插件化节点系统)。控制流（条件、循环）由 DSL 原生支持 (if 条件、matrix 并行)。
+用户可以使用 7 个核心节点构建实用的工作流,覆盖 Shell 操作、文件传输、HTTP 请求、Docker 管理等常见场景。所有节点都编译为 .so 插件,通过 Agent 启动时自动加载 (ADR-0003 插件化节点系统)。控制流（条件、循环）由 DSL 原生支持 (if 条件、matrix 并行)。
 
 **FRs covered:** FR12
 
@@ -1039,7 +1039,7 @@ So that **快速在服务器上部署 Agent**。
 - 插件化节点系统: 所有节点编译为 Go Plugin (.so 文件)
 - 自动加载: Agent 启动时扫描 /opt/waterflow/plugins/ 目录
 - 统一接口: 所有节点实现 Node 接口 (Execute, Metadata, Schema)
-- 8个核心节点: shell, script, sleep, file/transfer, http/request, docker/exec, docker/compose-up, docker/compose-down
+- 7个核心节点: shell, script, sleep, file/transfer, http/request, docker/exec, docker/compose
 
 ### Story 3.1: 节点接口设计 (插件化接口)
 
@@ -1163,39 +1163,69 @@ So that **管理容器和镜像**。
 **And** Docker 未安装时返回明确错误  
 **And** 支持常用命令: run, ps, stop, rm, images, pull
 
-### Story 3.8: Docker Compose Up 节点
+### Story 3.8: Docker Compose 节点
 
 As a **工作流用户**,  
-I want **启动 Docker Compose 栈**,  
-So that **部署多容器应用**。
+I want **管理 Docker Compose 栈的完整生命周期**,  
+So that **部署和清理多容器应用**。
 
 **Acceptance Criteria:**
 
+**Docker Compose Up 操作:**
 **Given** Agent 服务器有 docker-compose 文件  
-**When** Step 使用 `docker/compose-up` 节点  
+**When** Step 使用 `docker/compose` 节点配置 `action: up`  
 **Then** 执行 docker-compose up  
-**And** 支持参数: file, project_name, detach, build  
+**And** 节点编译为 docker-compose.so 插件,Agent 启动时自动加载  
+**And** 支持参数: action (up/down), file, project_name, detach, build  
 **And** 等待所有服务启动完成  
 **And** 捕获启动日志  
-**And** 健康检查验证服务可用
+**And** 健康检查验证服务可用  
+**And** 返回输出: 已启动的容器列表, 服务状态  
 
-### Story 3.9: Docker Compose Down 节点
-
-As a **工作流用户**,  
-I want **停止 Docker Compose 栈**,  
-So that **清理部署的应用**。
-
-**Acceptance Criteria:**
-
+**Docker Compose Down 操作:**
 **Given** Docker Compose 栈正在运行  
-**When** Step 使用 `docker/compose-down` 节点  
+**When** Step 使用 `docker/compose` 节点配置 `action: down`  
 **Then** 执行 docker-compose down  
-**And** 支持参数: file, project_name, volumes, rmi  
+**And** 支持参数: action (down), file, project_name, volumes, rmi (none/local/all)  
 **And** 等待所有容器停止  
 **And** 可选删除 volumes 和镜像  
-**And** 捕获停止日志
+**And** 捕获停止日志  
+**And** 返回输出: 已停止的容器列表, 清理摘要  
 
-### Story 3.10: 节点参考文档
+**通用特性:**
+**Given** 使用 docker/compose 节点  
+**When** 执行任何操作  
+**Then** 自动检测 docker-compose 是否已安装  
+**And** docker-compose 未安装时返回明确错误  
+**And** 支持自定义工作目录  
+**And** 支持环境变量注入  
+**And** 操作超时时自动终止并清理资源  
+**And** 所有操作输出结构化日志 (JSON 格式)  
+
+**示例配置:**
+```yaml
+# 启动示例
+- name: Deploy application
+  uses: docker/compose
+  with:
+    action: up
+    file: docker-compose.yml
+    project_name: myapp
+    detach: true
+    build: false
+
+# 停止示例
+- name: Cleanup application
+  uses: docker/compose
+  with:
+    action: down
+    file: docker-compose.yml
+    project_name: myapp
+    volumes: true
+    rmi: local
+```
+
+### Story 3.9: 节点参考文档
 
 As a **工作流用户**,  
 I want **每个节点的完整参考文档**,  
@@ -1203,13 +1233,14 @@ So that **了解如何使用节点**。
 
 **Acceptance Criteria:**
 
-**Given** 11 个节点已实现  
+**Given** 7 个核心节点已实现  
 **When** 查阅节点文档  
 **Then** 每个节点有独立文档页面  
 **And** 文档包含描述、参数列表、返回值、示例  
 **And** 参数说明包含类型、必需性、默认值  
 **And** 至少 2 个实际使用示例  
-**And** 说明常见错误和解决方法
+**And** 说明常见错误和解决方法  
+**And** 核心节点包括: exec/shell, exec/script, flow/sleep, file/transfer, http/request, docker/exec, docker/compose
 
 ---
 

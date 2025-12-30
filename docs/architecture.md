@@ -409,18 +409,71 @@ func (pm *PluginManager) LoadPlugin(path string) error {
 - 根据 `uses` 字段查找节点
 - 提供节点元数据
 
-**接口:**
+**完整接口 (Story 3.1):**
 ```go
+// 核心节点接口 - 所有自定义节点必须实现
+type Node interface {
+    // 基础信息 (Story 1.3)
+    Name() string
+    Version() string
+    Params() map[string]ParamSpec
+    
+    // 执行和元数据 (Story 3.1)
+    Execute(ctx context.Context, inputs map[string]interface{}) (*NodeResult, error)
+    Metadata() NodeMetadata
+}
+
+// 节点注册表接口
 type NodeRegistry interface {
     Register(node Node) error
     Get(nodeType string) (Node, error)
     List() []NodeMetadata
 }
 
-type Node interface {
-    Execute(ctx context.Context, args map[string]interface{}) (NodeResult, error)
+// 执行结果结构
+type NodeResult struct {
+    Outputs  map[string]interface{} // 输出数据
+    Logs     []string               // 执行日志
+    Duration time.Duration          // 执行耗时
+    Metadata map[string]interface{} // 扩展元数据
+}
+
+// 节点元数据（用于文档和验证）
+type NodeMetadata struct {
+    Description  string                  // 节点描述
+    Category     string                  // 分类 (exec/docker/http/file/flow)
+    InputSchema  map[string]ParamSpec    // 输入参数 Schema
+    OutputSchema map[string]interface{}  // 输出结构定义
+}
+
+// 参数规格（支持高级验证）
+type ParamSpec struct {
+    Type        string        // 参数类型
+    Required    bool          // 是否必需
+    Description string        // 参数说明
+    Default     interface{}   // 默认值
+    Pattern     string        // 正则表达式验证
+    Enum        []interface{} // 枚举值验证
+    MinValue    *float64      // 最小值（数值类型）
+    MaxValue    *float64      // 最大值（数值类型）
 }
 ```
+
+**插件注册:**
+```go
+// 插件必须导出的注册函数
+type RegisterFunc func() Node
+
+// 插件示例
+func Register() Node {
+    return &CheckoutNode{}
+}
+```
+
+**关键决策:**
+- [ADR-0003: 插件化节点系统](adr/0003-plugin-based-node-system.md)
+- Story 1.3: 节点注册表实现
+- Story 3.1: 节点接口扩展
 
 #### 3.2.4 Workflow Handlers
 

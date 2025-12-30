@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -8,17 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MockNode 测试用节点
-type MockNode struct {
-	name    string
-	version string
-	params  map[string]ParamSpec
-}
-
-func (n *MockNode) Name() string    { return n.name }
-func (n *MockNode) Version() string { return n.version }
-func (n *MockNode) Params() map[string]ParamSpec {
-	return n.params
+// Helper function to create a simple mock node for testing
+func createMockNode(name, version string) *MockNode {
+	return &MockNode{
+		NameValue:    name,
+		VersionValue: version,
+		ParamsValue:  map[string]ParamSpec{},
+		MetadataValue: NodeMetadata{
+			Description:  "Test node",
+			Category:     "flow",
+			InputSchema:  map[string]ParamSpec{},
+			OutputSchema: map[string]interface{}{},
+		},
+		ExecuteFunc: func(ctx context.Context, inputs map[string]interface{}) (*NodeResult, error) {
+			return NewNodeResult(), nil
+		},
+	}
 }
 
 func TestNewRegistry(t *testing.T) {
@@ -31,11 +37,7 @@ func TestNewRegistry(t *testing.T) {
 func TestRegistry_Register(t *testing.T) {
 	registry := NewRegistry()
 
-	node := &MockNode{
-		name:    "test",
-		version: "v1",
-		params:  map[string]ParamSpec{},
-	}
+	node := createMockNode("test", "v1")
 
 	// 成功注册
 	err := registry.Register(node)
@@ -50,11 +52,7 @@ func TestRegistry_Register(t *testing.T) {
 func TestRegistry_Register_Duplicate(t *testing.T) {
 	registry := NewRegistry()
 
-	node := &MockNode{
-		name:    "duplicate",
-		version: "v1",
-		params:  map[string]ParamSpec{},
-	}
+	node := createMockNode("duplicate", "v1")
 
 	// 首次注册成功
 	err := registry.Register(node)
@@ -69,12 +67,9 @@ func TestRegistry_Register_Duplicate(t *testing.T) {
 func TestRegistry_Get(t *testing.T) {
 	registry := NewRegistry()
 
-	node := &MockNode{
-		name:    "checkout",
-		version: "v1",
-		params: map[string]ParamSpec{
-			"repository": {Type: "string", Required: true},
-		},
+	node := createMockNode("checkout", "v1")
+	node.ParamsValue = map[string]ParamSpec{
+		"repository": {Type: "string", Required: true},
 	}
 
 	_ = registry.Register(node)
@@ -99,9 +94,9 @@ func TestRegistry_List(t *testing.T) {
 
 	// 注册多个节点
 	nodes := []*MockNode{
-		{name: "checkout", version: "v1", params: map[string]ParamSpec{}},
-		{name: "run", version: "v1", params: map[string]ParamSpec{}},
-		{name: "notify", version: "v2", params: map[string]ParamSpec{}},
+		createMockNode("checkout", "v1"),
+		createMockNode("run", "v1"),
+		createMockNode("notify", "v2"),
 	}
 
 	for _, node := range nodes {
@@ -120,7 +115,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	registry := NewRegistry()
 
 	// 注册初始节点
-	baseNode := &MockNode{name: "base", version: "v1", params: map[string]ParamSpec{}}
+	baseNode := createMockNode("base", "v1")
 	_ = registry.Register(baseNode)
 
 	var wg sync.WaitGroup
@@ -142,11 +137,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 		idx := i
 		go func() {
 			defer wg.Done()
-			node := &MockNode{
-				name:    "node",
-				version: "v" + string(rune(idx)),
-				params:  map[string]ParamSpec{},
-			}
+			node := createMockNode("node", "v"+string(rune(idx)))
 			_ = registry.Register(node)
 		}()
 	}
@@ -163,8 +154,8 @@ func TestRegistry_MultipleVersions(t *testing.T) {
 	registry := NewRegistry()
 
 	// 注册同名节点的不同版本
-	v1 := &MockNode{name: "checkout", version: "v1", params: map[string]ParamSpec{}}
-	v2 := &MockNode{name: "checkout", version: "v2", params: map[string]ParamSpec{}}
+	v1 := createMockNode("checkout", "v1")
+	v2 := createMockNode("checkout", "v2")
 
 	err := registry.Register(v1)
 	require.NoError(t, err)

@@ -1,0 +1,234 @@
+# Sleep Node - Delay Examples
+# 演示 flow/sleep 节点的各种使用场景
+
+name: Sleep Node Examples
+description: Demonstrates various use cases of the flow/sleep node
+
+jobs:
+  # 场景 1: 基础延迟格式
+  basic-formats:
+    name: Basic Duration Formats
+    runs-on: linux-amd64
+    steps:
+      - name: Wait 30 seconds
+        uses: flow/sleep@v1
+        with:
+          duration: 30s
+      
+      - name: Wait 5 minutes
+        uses: flow/sleep@v1
+        with:
+          duration: 5m
+      
+      - name: Wait 1 hour
+        uses: flow/sleep@v1
+        with:
+          duration: 1h
+      
+      - name: Wait using number (defaults to seconds)
+        uses: flow/sleep@v1
+        with:
+          duration: 60  # 60 seconds
+      
+      - name: Wait combined format
+        uses: flow/sleep@v1
+        with:
+          duration: 1h30m  # 1.5 hours
+
+  # 场景 2: 服务启动等待
+  service-startup:
+    name: Service Startup Wait
+    runs-on: linux-amd64
+    steps:
+      - name: Start Docker container
+        uses: exec/shell@v1
+        with:
+          command: docker run -d --name webapp nginx:latest
+      
+      - name: Wait for container to be ready
+        uses: flow/sleep@v1
+        with:
+          duration: 30s
+      
+      - name: Verify container is running
+        uses: exec/shell@v1
+        with:
+          command: docker ps | grep webapp
+
+  # 场景 3: API 限流控制
+  api-rate-limiting:
+    name: API Rate Limiting
+    runs-on: linux-amd64
+    steps:
+      - name: First API call
+        uses: http/request@v1
+        with:
+          url: https://api.example.com/users/1
+          method: GET
+      
+      - name: Rate limit delay
+        uses: flow/sleep@v1
+        with:
+          duration: 2s
+      
+      - name: Second API call
+        uses: http/request@v1
+        with:
+          url: https://api.example.com/users/2
+          method: GET
+      
+      - name: Another delay
+        uses: flow/sleep@v1
+        with:
+          duration: 2s
+      
+      - name: Third API call
+        uses: http/request@v1
+        with:
+          url: https://api.example.com/users/3
+          method: GET
+
+  # 场景 4: 重试延迟
+  retry-with-delay:
+    name: Retry with Delay
+    runs-on: linux-amd64
+    steps:
+      - name: Try to connect
+        uses: exec/shell@v1
+        with:
+          command: nc -zv example.com 80
+        continue-on-error: true
+      
+      - name: Wait before retry
+        uses: flow/sleep@v1
+        with:
+          duration: 10s
+      
+      - name: Retry connection
+        uses: exec/shell@v1
+        with:
+          command: nc -zv example.com 80
+      
+      - name: Wait before final retry
+        uses: flow/sleep@v1
+        with:
+          duration: 10s
+      
+      - name: Final retry
+        uses: exec/shell@v1
+        with:
+          command: nc -zv example.com 80
+
+  # 场景 5: 部署验证
+  deployment-validation:
+    name: Deployment Validation
+    runs-on: linux-amd64
+    steps:
+      - name: Deploy application
+        uses: docker/compose@v1
+        with:
+          action: up
+          file: docker-compose.yml
+      
+      - name: Wait for system stabilization
+        uses: flow/sleep@v1
+        with:
+          duration: 1m30s  # 90 seconds
+      
+      - name: Run health checks
+        uses: exec/shell@v1
+        with:
+          command: ./scripts/health-check.sh
+      
+      - name: Wait before validation tests
+        uses: flow/sleep@v1
+        with:
+          duration: 30s
+      
+      - name: Run validation tests
+        uses: exec/shell@v1
+        with:
+          command: ./scripts/run-tests.sh
+
+  # 场景 6: 定期健康检查
+  periodic-health-check:
+    name: Periodic Health Check
+    runs-on: linux-amd64
+    steps:
+      - name: Initial health check
+        uses: http/request@v1
+        with:
+          url: http://localhost:8080/health
+          method: GET
+      
+      - name: Wait 1 minute
+        uses: flow/sleep@v1
+        with:
+          duration: 1m
+      
+      - name: Second health check
+        uses: http/request@v1
+        with:
+          url: http://localhost:8080/health
+          method: GET
+      
+      - name: Wait 1 minute
+        uses: flow/sleep@v1
+        with:
+          duration: 1m
+      
+      - name: Third health check
+        uses: http/request@v1
+        with:
+          url: http://localhost:8080/health
+          method: GET
+
+  # 场景 7: 长时间延迟
+  long-duration:
+    name: Long Duration Wait
+    runs-on: linux-amd64
+    steps:
+      - name: Start background job
+        uses: exec/shell@v1
+        with:
+          command: ./start-background-job.sh
+      
+      - name: Wait 2 hours for job completion
+        uses: flow/sleep@v1
+        with:
+          duration: 2h
+      
+      - name: Check job status
+        uses: exec/shell@v1
+        with:
+          command: ./check-job-status.sh
+
+  # 场景 8: 数据库迁移等待
+  database-migration:
+    name: Database Migration Wait
+    runs-on: linux-amd64
+    steps:
+      - name: Start database container
+        uses: exec/shell@v1
+        with:
+          command: docker run -d --name postgres -e POSTGRES_PASSWORD=secret postgres:14
+      
+      - name: Wait for database to be ready
+        uses: flow/sleep@v1
+        with:
+          duration: 15s
+      
+      - name: Run database migrations
+        uses: exec/shell@v1
+        with:
+          command: ./run-migrations.sh
+      
+      - name: Wait for migrations to complete
+        uses: flow/sleep@v1
+        with:
+          duration: 30s
+      
+      - name: Verify migration status
+        uses: exec/shell@v1
+        with:
+          command: ./verify-migrations.sh

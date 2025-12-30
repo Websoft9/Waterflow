@@ -1,0 +1,165 @@
+# File Transfer Node - Comprehensive Examples
+# Demonstrates file/transfer node usage for various scenarios
+
+name: File Transfer Examples
+
+jobs:
+  # Example 1: Upload configuration file with private key
+  upload-config:
+    name: Upload Config to Web Server
+    runs-on: linux-amd64
+    steps:
+      - name: Upload nginx configuration
+        uses: file/transfer@v1
+        with:
+          mode: upload
+          protocol: sftp
+          host: web-server-01.example.com
+          user: deploy
+          private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source_path: /local/configs/nginx.conf
+          target_path: /etc/nginx/nginx.conf
+          permissions: "0644"
+          timeout: 30s
+
+  # Example 2: Download logs with password authentication
+  download-logs:
+    name: Collect Application Logs
+    runs-on: linux-amd64
+    steps:
+      - name: Download error log
+        uses: file/transfer@v1
+        with:
+          mode: download
+          host: app-server-01.example.com
+          user: admin
+          password: ${{ secrets.SSH_PASSWORD }}
+          source_path: /var/log/app/error.log
+          target_path: /tmp/logs/error.log
+          timeout: 1m
+
+  # Example 3: Deploy binary with executable permissions
+  deploy-application:
+    name: Deploy Application Binary
+    runs-on: linux-amd64
+    steps:
+      - name: Upload application binary
+        uses: file/transfer@v1
+        with:
+          mode: upload
+          host: app-server-01.example.com
+          port: 22
+          user: deploy
+          private_key: ${{ secrets.DEPLOY_KEY }}
+          source_path: /build/app-binary
+          target_path: /opt/app/bin/app
+          permissions: "0755"
+
+  # Example 4: Large file transfer with extended timeout
+  backup-transfer:
+    name: Transfer Database Backup
+    runs-on: linux-amd64
+    steps:
+      - name: Upload database backup
+        uses: file/transfer@v1
+        with:
+          mode: upload
+          host: backup-server.example.com
+          user: backup
+          private_key: ${{ secrets.BACKUP_KEY }}
+          source_path: /tmp/database-backup.sql
+          target_path: /backups/db-20251230.sql
+          timeout: 10m
+
+  # Example 5: Development environment (skip host key check)
+  dev-deployment:
+    name: Deploy to Dev Environment
+    runs-on: linux-amd64
+    steps:
+      - name: Upload config to dev server
+        uses: file/transfer@v1
+        with:
+          mode: upload
+          host: dev-server.local
+          user: developer
+          password: devpass
+          source_path: /config/dev.yaml
+          target_path: /app/config.yaml
+          host_key_check: false  # Only for dev/test environments!
+
+  # Example 6: Multi-server certificate distribution
+  certificate-distribution:
+    name: SSL Certificate Distribution
+    runs-on: linux-amd64
+    strategy:
+      matrix:
+        server:
+          - web-01.example.com
+          - web-02.example.com
+          - web-03.example.com
+    steps:
+      - name: Upload SSL certificate
+        uses: file/transfer@v1
+        with:
+          mode: upload
+          host: ${{ matrix.server }}
+          user: root
+          private_key: ${{ secrets.ROOT_KEY }}
+          source_path: /certs/server.crt
+          target_path: /etc/ssl/certs/server.crt
+          permissions: "0644"
+
+      - name: Upload SSL private key
+        uses: file/transfer@v1
+        with:
+          mode: upload
+          host: ${{ matrix.server }}
+          user: root
+          private_key: ${{ secrets.ROOT_KEY }}
+          source_path: /certs/server.key
+          target_path: /etc/ssl/private/server.key
+          permissions: "0600"  # Restrictive permissions for private key
+
+  # Example 7: Inline private key usage
+  inline-key-upload:
+    name: Upload with Inline Private Key
+    runs-on: linux-amd64
+    steps:
+      - name: Upload using inline key
+        uses: file/transfer@v1
+        with:
+          mode: upload
+          host: remote.example.com
+          user: deploy
+          private_key: |
+            -----BEGIN OPENSSH PRIVATE KEY-----
+            ${{ secrets.SSH_PRIVATE_KEY_CONTENT }}
+            -----END OPENSSH PRIVATE KEY-----
+          source_path: /local/app.tar.gz
+          target_path: /tmp/app.tar.gz
+
+  # Example 8: Download from remote with custom port
+  custom-port-download:
+    name: Download from Custom SSH Port
+    runs-on: linux-amd64
+    steps:
+      - name: Download file from custom port
+        uses: file/transfer@v1
+        with:
+          mode: download
+          host: secure-server.example.com
+          port: 2222
+          user: datauser
+          password: ${{ secrets.DATA_PASSWORD }}
+          source_path: /data/export.csv
+          target_path: /local/data/export.csv
+
+# Common Use Cases Summary:
+# 1. Configuration Distribution - Upload config files to multiple servers
+# 2. Log Collection - Download logs from remote servers for analysis
+# 3. Deployment - Upload application binaries and set permissions
+# 4. Backup Transfer - Move backup files between servers
+# 5. Certificate Management - Distribute SSL certificates and keys
+# 6. Data Sync - Transfer data files between environments
+# 7. Development Testing - Quick file transfers with relaxed security
+# 8. Compliance - Transfer files with specific permission requirements

@@ -252,7 +252,7 @@ func TestScriptNode_Execute_InterpreterNotFound(t *testing.T) {
 
 func TestScriptNode_Execute_Timeout(t *testing.T) {
 	t.Skip("Timeout cleanup behavior is platform-dependent, skip for now")
-	
+
 	node := &ScriptNode{}
 
 	inputs := map[string]interface{}{

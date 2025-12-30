@@ -74,10 +74,9 @@ development_status:
   3-1-node-interface-design: done  # ✅代码审查完成,所有问题已修复(Makefile语法,File List更新,Task 5完成),AC1-AC3 100%达成,覆盖率92.2%,Echo示例编译&测试通过,性能达标(<1ms),完成日期2025-12-30
   3-2-shell-command-execution-node: done  # ✅代码审查通过,安全问题已修复(args转义,env清理),复杂度优化,文档增强,测试95.2%覆盖率,2025-12-30
   3-3-script-file-execution-node: done    # ✅实现完成,AC1-AC3达成,单元测试86.2%覆盖率,集成测试4场景全通过,插件编译4.9MB,多语言支持,完成日期2025-12-30
-  3-3-script-file-execution-node: ready-for-dev
-  3-4-sleep-delay-node: ready-for-dev
-  3-5-http-request-node: ready-for-dev
-  3-6-file-transfer-node: ready-for-dev
+  3-4-sleep-delay-node: done  # ✅代码审查通过,AC1-AC3达成,覆盖率97.2%,21个单元测试+4个集成测试全通过,插件5.1MB,支持context取消,README含限制章节,所有审查问题已修复,完成日期2025-12-30
+  3-5-http-request-node: done  # ✅代码审查完成,AC1-AC4达成,覆盖率92.3%,20个测试全通过(18单元+2集成),插件35MB,支持GET/POST/PUT/DELETE/PATCH,JSON自动处理,Temporal错误分类已修复(4xx/TLS永久错误,5xx临时错误),NonRetryable标记验证,集成测试修复,完成日期2025-12-30
+  3-6-file-transfer-node: done  # ✅代码审查完成并修复,AC1-AC4 100%达成,host_key_check真正验证已实现(knownhosts),集成测试8场景全通过,11单元测试+8集成测试,SCP日志优化,permissions错误处理优化,所有审查问题已修复(2 CRITICAL+3 MEDIUM+2 LOW),完成日期2025-12-30
   3-7-docker-exec-node: ready-for-dev
   3-8-docker-compose-up-node: ready-for-dev
   3-9-docker-compose-down-node: backlog

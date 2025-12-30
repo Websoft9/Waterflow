@@ -1,6 +1,10 @@
 package builtin
 
-import "github.com/Websoft9/waterflow/pkg/dsl/node"
+import (
+	"context"
+
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
+)
 
 type CheckoutNode struct{}
 
@@ -13,6 +17,25 @@ func (n *CheckoutNode) Params() map[string]node.ParamSpec {
 	}
 }
 
+func (n *CheckoutNode) Execute(ctx context.Context, inputs map[string]interface{}) (*node.NodeResult, error) {
+	// Stub implementation - will be implemented in future stories
+	result := node.NewNodeResult()
+	result.SetOutput("status", "checkout executed (stub)")
+	result.AddLog("CheckoutNode.Execute called (stub implementation)")
+	return result, nil
+}
+
+func (n *CheckoutNode) Metadata() node.NodeMetadata {
+	return node.NodeMetadata{
+		Description: "Checks out code from a Git repository",
+		Category:    "exec",
+		InputSchema: n.Params(),
+		OutputSchema: map[string]interface{}{
+			"status": "string",
+		},
+	}
+}
+
 type RunNode struct{}
 
 func (n *RunNode) Name() string    { return "run" }
@@ -20,5 +43,24 @@ func (n *RunNode) Version() string { return "v1" }
 func (n *RunNode) Params() map[string]node.ParamSpec {
 	return map[string]node.ParamSpec{
 		"command": {Type: "string", Required: true, Description: "Shell command"},
+	}
+}
+
+func (n *RunNode) Execute(ctx context.Context, inputs map[string]interface{}) (*node.NodeResult, error) {
+	// Stub implementation - will be implemented in future stories
+	result := node.NewNodeResult()
+	result.SetOutput("status", "run executed (stub)")
+	result.AddLog("RunNode.Execute called (stub implementation)")
+	return result, nil
+}
+
+func (n *RunNode) Metadata() node.NodeMetadata {
+	return node.NodeMetadata{
+		Description: "Executes a shell command",
+		Category:    "exec",
+		InputSchema: n.Params(),
+		OutputSchema: map[string]interface{}{
+			"status": "string",
+		},
 	}
 }

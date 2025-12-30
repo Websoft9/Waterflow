@@ -78,87 +78,255 @@ Waterflow 需要支持多种类型的节点(Node):
 
 ## 实现示例
 
-### 节点插件接口:
+### 节点插件接口 (Story 3.1 实际实现):
 
 ```go
-// pkg/node/interface.go
+// pkg/dsl/node/interface.go
+package node
+
+import (
+    "context"
+    "time"
+)
+
+// Node 接口 - 所有自定义节点必须实现
 type Node interface {
-    Execute(ctx context.Context, args map[string]interface{}) (NodeResult, error)
+    // 基础信息 (Story 1.3)
+    Name() string
+    Version() string
+    Params() map[string]ParamSpec
+    
+    // 执行和元数据 (Story 3.1)
+    Execute(ctx context.Context, inputs map[string]interface{}) (*NodeResult, error)
+    Metadata() NodeMetadata
 }
 
+// 节点执行结果
 type NodeResult struct {
-    Outputs map[string]string
-    Logs    []string
+    Outputs  map[string]interface{} // 输出数据
+    Logs     []string               // 执行日志
+    Duration time.Duration          // 执行耗时
+    Metadata map[string]interface{} // 扩展元数据
 }
+
+// 节点元数据（用于文档和验证）
+type NodeMetadata struct {
+    Description  string                  // 节点描述
+    Category     string                  // 分类 (exec/docker/http/file/flow)
+    InputSchema  map[string]ParamSpec    // 输入参数 Schema
+    OutputSchema map[string]interface{}  // 输出结构定义
+}
+
+// 参数规格（支持高级验证）
+type ParamSpec struct {
+    Type        string        // 参数类型
+    Required    bool          // 是否必需
+    Description string        // 参数说明
+    Default     interface{}   // 默认值
+    Pattern     string        // 正则表达式验证
+    Enum        []interface{} // 枚举值验证 (Story 3.1 新增)
+    MinValue    *float64      // 最小值（数值类型，Story 3.1 新增）
+    MaxValue    *float64      // 最大值（数值类型，Story 3.1 新增）
+}
+
+// 插件注册函数签名
+type RegisterFunc func() Node
 ```
 
-### 插件实现:
+### 插件实现 (实际示例):
 
 ```go
-// plugins/checkout/main.go
+// examples/plugins/echo/main.go
 package main
 
 import (
     "context"
-    "waterflow/pkg/node"
+    "fmt"
+    "time"
+    "github.com/Websoft9/waterflow/pkg/dsl/node"
 )
 
-type CheckoutNode struct{}
+// EchoNode 实现 Node 接口
+type EchoNode struct{}
 
-func (n *CheckoutNode) Execute(ctx context.Context, args map[string]interface{}) (node.NodeResult, error) {
-    repo := args["repository"].(string)
-    
-    // Git checkout 逻辑
-    return node.NodeResult{
-        Outputs: map[string]string{
-            "commit": "abc123",
-        },
-    }, nil
+// Name 返回节点名称
+func (n *EchoNode) Name() string {
+    return "exec/echo"
 }
 
-// 插件注册函数
+// Version 返回节点版本
+func (n *EchoNode) Version() string {
+    return "v1.0.0"
+}
+
+// Params 返回参数规格
+func (n *EchoNode) Params() map[string]node.ParamSpec {
+    return map[string]node.ParamSpec{
+        "message": {
+            Type:        "string",
+            Required:    true,
+            Description: "Message to echo",
+        },
+    }
+}
+
+// Execute 执行节点逻辑
+func (n *EchoNode) Execute(ctx context.Context, inputs map[string]interface{}) (*node.NodeResult, error) {
+    startTime := time.Now()
+    
+    // 获取输入参数
+    message, ok := inputs["message"].(string)
+    if !ok {
+        return nil, fmt.Errorf("message must be string")
+    }
+    
+    // 创建结果
+    result := node.NewNodeResult()
+    result.AddLog(fmt.Sprintf("Echoing: %s", message))
+    result.SetOutput("echo", message)
+    result.Duration = time.Since(startTime)
+    
+    return result, nil
+}
+
+// Metadata 返回节点元数据
+func (n *EchoNode) Metadata() node.NodeMetadata {
+    return node.NewNodeMetadata(
+        "Echo a message",
+        "exec",
+        map[string]node.ParamSpec{
+            "message": {
+                Type:        "string",
+                Required:    true,
+                Description: "Message to echo",
+            },
+        },
+        map[string]interface{}{
+            "echo": "string",
+        },
+    )
+}
+
+// Register 是插件必须导出的注册函数
 func Register() node.Node {
-    return &CheckoutNode{}
+    return &EchoNode{}
 }
 ```
 
-### 插件管理器:
+**编译插件:**
+```bash
+cd examples/plugins/echo
+export CGO_ENABLED=1
+go build -buildmode=plugin -o echo.so main.go
+```
+
+### 插件管理器 (实际实现):
 
 ```go
-// pkg/agent/plugin_manager.go
+// internal/agent/plugin_manager.go
+package agent
+
+import (
+    "fmt"
+    "path/filepath"
+    "plugin"
+    "strings"
+    "go.uber.org/zap"
+    "github.com/Websoft9/waterflow/pkg/dsl/node"
+)
+
 type PluginManager struct {
-    plugins map[string]plugin.Plugin
-    nodes   map[string]node.Node
+    logger   *zap.Logger
+    plugins  map[string]*plugin.Plugin
+    registry *node.NodeRegistry
+}
+
+func NewPluginManager(logger *zap.Logger, registry *node.NodeRegistry) *PluginManager {
+    return &PluginManager{
+        logger:   logger,
+        plugins:  make(map[string]*plugin.Plugin),
+        registry: registry,
+    }
 }
 
 func (pm *PluginManager) LoadPlugin(path string) error {
-    // 加载 .so 文件
+    // 1. 加载 .so 文件
     p, err := plugin.Open(path)
     if err != nil {
-        return err
+        return &node.PluginLoadError{PluginPath: path, Cause: err}
     }
     
-    // 查找 Register 函数
+    // 2. 查找 Register 函数
     symbol, err := p.Lookup("Register")
     if err != nil {
+        return &node.RegisterFunctionNotFoundError{PluginPath: path}
+    }
+    
+    // 3. 调用 Register 获取 Node 实例
+    register, ok := symbol.(func() node.Node)
+    if !ok {
+        return &node.RegisterFunctionSignatureError{PluginPath: path}
+    }
+    
+    nodeInstance := register()
+    
+    // 4. 验证节点
+    if err := node.ValidateNode(nodeInstance); err != nil {
         return err
     }
     
-    // 调用 Register 获取 Node 实例
-    register := symbol.(func() node.Node)
-    nodeInstance := register()
+    // 5. 注册到 NodeRegistry
+    if err := pm.registry.Register(nodeInstance); err != nil {
+        return err
+    }
     
-    // 注册到 NodeRegistry
-    pm.nodes[name] = nodeInstance
+    pm.logger.Info("Plugin loaded successfully",
+        zap.String("path", path),
+        zap.String("node", nodeInstance.Name()),
+    )
+    
     return nil
 }
 
 func (pm *PluginManager) GetNode(nodeType string) (node.Node, error) {
-    node, ok := pm.nodes[nodeType]
-    if !ok {
-        return nil, fmt.Errorf("node not found: %s", nodeType)
-    }
-    return node, nil
+    return pm.registry.Get(nodeType)
+}
+```
+
+**插件错误类型 (Story 3.1):**
+```go
+// pkg/dsl/node/errors.go
+type PluginNotFoundError struct {
+    PluginPath string
+}
+
+type PluginLoadError struct {
+    PluginPath string
+    Cause      error
+}
+
+type PluginVersionMismatchError struct {
+    PluginPath     string
+    ExpectedGoVersion string
+    ActualGoVersion   string
+}
+
+type RegisterFunctionNotFoundError struct {
+    PluginPath string
+}
+
+type RegisterFunctionSignatureError struct {
+    PluginPath string
+}
+
+type InvalidNodeError struct {
+    NodeName string
+    Reason   string
+}
+
+type NodeValidationError struct {
+    NodeName string
+    Errors   []string
 }
 ```
 
@@ -213,6 +381,156 @@ for {
             pm.ReloadPlugin(event.Name)
         }
     }
+}
+```
+
+## 最佳实践 (Story 3.1 总结)
+
+### 1. 开发环境要求
+
+**必需条件:**
+- Go 版本: 与 Agent 完全一致 (当前 1.22.0+)
+- CGO_ENABLED=1 (Go Plugin 强制要求)
+- GOOS: linux 或 darwin (不支持 Windows)
+- GOARCH: amd64 或 arm64
+
+**验证命令:**
+```bash
+# 检查 Go 版本
+go version  # 必须与 Agent 一致
+
+# 检查 CGO
+go env CGO_ENABLED  # 必须为 1
+
+# 检查平台
+go env GOOS GOARCH
+```
+
+### 2. 节点实现规范
+
+**5个必需方法:**
+```go
+type Node interface {
+    Name() string                     // 格式: category/name (如 exec/echo)
+    Version() string                  // 格式: vX.Y.Z (如 v1.0.0)
+    Params() map[string]ParamSpec     // 参数规格
+    Execute(ctx, inputs) (*Result, error)  // 执行逻辑
+    Metadata() NodeMetadata           // 节点元数据
+}
+```
+
+**参数验证:**
+- 使用 ParamSpec 定义参数类型和验证规则
+- 支持 Required, Pattern, Enum, MinValue, MaxValue
+- Execute 方法应进行额外验证
+- 使用 ValidateInputs() 辅助函数
+
+**错误处理:**
+- 返回明确的错误信息
+- 使用 context 支持超时和取消
+- 关键操作添加日志到 NodeResult.Logs
+
+### 3. 测试要求
+
+**单元测试 (必需):**
+```go
+func TestEchoNode_Execute(t *testing.T) {
+    node := &EchoNode{}
+    result, err := node.Execute(context.Background(), map[string]interface{}{
+        "message": "test",
+    })
+    assert.NoError(t, err)
+    assert.Equal(t, "test", result.Outputs["echo"])
+}
+```
+
+**覆盖率目标:** >80%
+
+**性能基准 (建议):**
+```go
+func BenchmarkEchoNode_Execute(b *testing.B) {
+    node := &EchoNode{}
+    inputs := map[string]interface{}{"message": "test"}
+    for i := 0; i < b.N; i++ {
+        node.Execute(context.Background(), inputs)
+    }
+}
+```
+
+### 4. 编译和部署
+
+**编译命令:**
+```bash
+go build -buildmode=plugin -o mynode.so main.go
+```
+
+**部署:**
+```bash
+# 复制到 Agent 插件目录
+cp mynode.so /opt/waterflow/plugins/
+
+# 重启 Agent 或等待热加载
+systemctl restart waterflow-agent
+```
+
+**文件大小:** 典型插件 3-10 MB (由于 Go runtime 开销)
+
+### 5. 常见问题
+
+**问题 1: "plugin was built with a different version of package"**
+- 原因: Go 版本不匹配
+- 解决: 使用与 Agent 相同的 Go 版本编译
+
+**问题 2: "plugin.Open: plugin.so: undefined symbol"**
+- 原因: 依赖库不一致
+- 解决: 确保 go.mod 与 Agent 一致
+
+**问题 3: "plugin: not a Go plugin"**
+- 原因: CGO_ENABLED=0
+- 解决: 设置 `export CGO_ENABLED=1`
+
+**问题 4: 插件无法在 Windows 编译**
+- 原因: Go Plugin 不支持 Windows
+- 解决: 使用 Linux/macOS 开发，或使用 WSL2
+
+### 6. 开发工作流
+
+1. **开发阶段:**
+   ```bash
+   cd examples/plugins/template
+   make check  # 验证环境
+   make build  # 编译插件
+   make test   # 运行测试
+   ```
+
+2. **测试阶段:**
+   - 在本地 Agent 环境加载插件
+   - 使用 YAML workflow 测试节点功能
+   - 检查日志和输出结果
+
+3. **发布阶段:**
+   - 确保测试覆盖率 >80%
+   - 编写 README.md 说明使用方法
+   - 发布 .so 文件和文档
+
+### 7. 性能考虑
+
+- **插件加载:** 每个插件约 10-50ms 加载时间
+- **执行开销:** Go Plugin 调用开销 <1μs (可忽略)
+- **内存占用:** 每个插件约 5-20MB (共享 Go runtime)
+- **并发安全:** 确保 Node 实例是线程安全的
+
+**推荐架构:**
+```go
+type MyNode struct {
+    mu    sync.Mutex  // 保护共享状态
+    cache map[string]interface{}
+}
+
+func (n *MyNode) Execute(ctx context.Context, inputs map[string]interface{}) (*NodeResult, error) {
+    n.mu.Lock()
+    defer n.mu.Unlock()
+    // 执行逻辑
 }
 ```
 

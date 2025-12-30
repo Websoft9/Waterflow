@@ -5,17 +5,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 	"go.uber.org/zap"
 )
 
-// Node represents a workflow node plugin interface.
-// Full implementation will be in Epic 4 (Story 4.1).
-type Node interface {
-	Execute(ctx interface{}, params map[string]interface{}) (interface{}, error)
-}
-
 // PluginManager manages node plugins (.so files).
 // Story 2.9: Basic plugin scanning and validation
+// Story 3.1: Uses unified pkg/dsl/node.Node interface
 // Epic 4: Full plugin loading with reflection
 type PluginManager struct {
 	pluginDir string
@@ -91,6 +87,7 @@ func (pm *PluginManager) LoadPlugins() error {
 
 // GetNode retrieves a node plugin by type.
 // Story 2.1: Stub - returns error (plugins not loaded).
-func (pm *PluginManager) GetNode(nodeType string) (Node, error) {
+// Story 3.1: Returns pkg/dsl/node.Node interface
+func (pm *PluginManager) GetNode(nodeType string) (node.Node, error) {
 	return nil, fmt.Errorf("plugins not loaded yet (Epic 4)")
 }
