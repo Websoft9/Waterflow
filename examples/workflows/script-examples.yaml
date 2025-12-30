@@ -1,0 +1,263 @@
+name: Script Node Examples
+
+jobs:
+  bash-scripts:
+    name: Bash Script Examples
+    runs-on: linux-amd64
+    steps:
+      # Inline bash script
+      - name: Bash inline script
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            echo "Current user: $(whoami)"
+            echo "Current directory: $(pwd)"
+            echo "System: $(uname -a)"
+          interpreter: bash
+      
+      # Bash script with arguments
+      - name: Bash script with args
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            echo "First arg: $1"
+            echo "Second arg: $2"
+            echo "All args: $@"
+          interpreter: bash
+          args: ["production", "v1.2.3"]
+      
+      # Bash script with environment variables
+      - name: Bash with env vars
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            echo "Database: $DB_HOST:$DB_PORT"
+            echo "API Key: $API_KEY"
+          interpreter: bash
+          env:
+            DB_HOST: "db.example.com"
+            DB_PORT: "5432"
+            API_KEY: "secret-key-123"
+
+  python-scripts:
+    name: Python Script Examples
+    runs-on: linux-amd64
+    steps:
+      # Simple Python script
+      - name: Python inline script
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/usr/bin/env python3
+            import sys
+            import os
+            
+            print(f"Python version: {sys.version}")
+            print(f"Platform: {sys.platform}")
+            print(f"Current directory: {os.getcwd()}")
+          interpreter: python3
+      
+      # Python with arguments and env
+      - name: Python data processing
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/usr/bin/env python3
+            import sys
+            import os
+            import json
+            
+            if len(sys.argv) < 3:
+                print("Usage: script <input> <output>")
+                sys.exit(1)
+            
+            input_file = sys.argv[1]
+            output_file = sys.argv[2]
+            env_name = os.getenv('ENVIRONMENT', 'development')
+            
+            print(f"Processing: {input_file} -> {output_file}")
+            print(f"Environment: {env_name}")
+            
+            # Simulate data processing
+            data = {"input": input_file, "output": output_file, "env": env_name}
+            print(f"Result: {json.dumps(data, indent=2)}")
+          interpreter: python3
+          args: ["input.csv", "output.json"]
+          env:
+            ENVIRONMENT: "production"
+
+  script-files:
+    name: Script File Examples
+    runs-on: linux-amd64
+    steps:
+      # Execute existing script file
+      - name: Run deployment script
+        uses: exec/script@v1
+        with:
+          script_path: /app/scripts/deploy.sh
+          interpreter: bash
+          args: ["production", "--verbose"]
+          timeout: 300
+      
+      # Run Python script file
+      - name: Run Python analysis
+        uses: exec/script@v1
+        with:
+          script_path: /app/scripts/analyze.py
+          interpreter: python3
+          workdir: /app/data
+          env:
+            DATA_PATH: "/app/data/input"
+            OUTPUT_PATH: "/app/data/output"
+
+  multi-language:
+    name: Multi-Language Examples
+    runs-on: linux-amd64
+    steps:
+      # Node.js script
+      - name: Node.js script
+        uses: exec/script@v1
+        with:
+          script_content: |
+            const os = require('os');
+            const fs = require('fs');
+            
+            console.log('Node.js version:', process.version);
+            console.log('Platform:', process.platform);
+            console.log('Hostname:', os.hostname());
+            console.log('CPUs:', os.cpus().length);
+          interpreter: node
+      
+      # Ruby script
+      - name: Ruby script
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/usr/bin/env ruby
+            
+            puts "Ruby version: #{RUBY_VERSION}"
+            puts "Platform: #{RUBY_PLATFORM}"
+            
+            # Process arguments
+            if ARGV.length > 0
+              puts "Arguments: #{ARGV.join(', ')}"
+            end
+          interpreter: ruby
+          args: ["arg1", "arg2"]
+
+  error-handling:
+    name: Error Handling Examples
+    runs-on: linux-amd64
+    steps:
+      # Script with timeout
+      - name: Long-running script with timeout
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            echo "Starting long task..."
+            sleep 100
+            echo "Task completed"
+          interpreter: bash
+          timeout: 5
+        continue-on-error: true
+      
+      # Script that might fail
+      - name: Conditional script
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            if [ ! -f /tmp/config.txt ]; then
+              echo "Warning: Config file not found" >&2
+              echo "Creating default config..."
+              echo "default=true" > /tmp/config.txt
+            fi
+            cat /tmp/config.txt
+          interpreter: bash
+      
+      # Cleanup script (always runs)
+      - name: Cleanup
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            echo "Cleaning up temporary files..."
+            rm -f /tmp/config.txt
+            echo "Cleanup complete"
+          interpreter: bash
+
+  complex-workflows:
+    name: Complex Workflow Examples
+    runs-on: linux-amd64
+    steps:
+      # Multi-step deployment
+      - name: Pre-deployment checks
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            set -e
+            
+            echo "Checking prerequisites..."
+            command -v docker >/dev/null 2>&1 || { echo "Docker not installed"; exit 1; }
+            command -v git >/dev/null 2>&1 || { echo "Git not installed"; exit 1; }
+            
+            echo "Checking disk space..."
+            available=$(df / | tail -1 | awk '{print $4}')
+            if [ "$available" -lt 1000000 ]; then
+              echo "Insufficient disk space"
+              exit 1
+            fi
+            
+            echo "All checks passed!"
+          interpreter: bash
+      
+      - name: Build application
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/bin/bash
+            set -e
+            
+            echo "Building application..."
+            npm install
+            npm run build
+            
+            echo "Build complete!"
+            ls -lh dist/
+          interpreter: bash
+          workdir: /app/frontend
+          timeout: 600
+      
+      - name: Run tests
+        uses: exec/script@v1
+        with:
+          script_content: |
+            #!/usr/bin/env python3
+            import subprocess
+            import sys
+            
+            print("Running test suite...")
+            
+            # Run unit tests
+            result = subprocess.run(['pytest', 'tests/unit'], capture_output=True)
+            if result.returncode != 0:
+                print("Unit tests failed!")
+                sys.exit(1)
+            
+            # Run integration tests
+            result = subprocess.run(['pytest', 'tests/integration'], capture_output=True)
+            if result.returncode != 0:
+                print("Integration tests failed!")
+                sys.exit(1)
+            
+            print("All tests passed!")
+          interpreter: python3
+          workdir: /app/backend
+          env:
+            PYTHONPATH: "/app/backend/src"
+            TEST_ENV: "ci"
