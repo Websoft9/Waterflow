@@ -69,18 +69,18 @@ development_status:
   2-10-agent-configuration-guide: done  # Agent配置和部署文档完成,2233行新增,代码审查通过,6个问题已修复,完成日期2025-12-26
   epic-2-retrospective: completed  # Epic 2 回顾完成,总结成就/经验/改进建议,为 Epic 3 提供指导,完成日期2025-12-26
 
-  # Epic 3: 核心节点插件库 (10 stories)
-  epic-3: backlog
-  3-1-node-interface-design: backlog
-  3-2-shell-command-execution-node: backlog
-  3-3-script-file-execution-node: backlog
-  3-4-sleep-delay-node: backlog
-  3-5-http-request-node: backlog
-  3-6-file-transfer-node: backlog
-  3-7-docker-exec-node: backlog
-  3-8-docker-compose-up-node: backlog
+  # Epic 3: 核心节点插件库 (9 stories) - IN PROGRESS 2025-12-30
+  epic-3: in-progress
+  3-1-node-interface-design: done  # ✅代码审查完成,所有问题已修复(Makefile语法,File List更新,Task 5完成),AC1-AC3 100%达成,覆盖率92.2%,Echo示例编译&测试通过,性能达标(<1ms),完成日期2025-12-30
+  3-2-shell-command-execution-node: done  # ✅代码审查通过,安全问题已修复(args转义,env清理),复杂度优化,文档增强,测试95.2%覆盖率,2025-12-30
+  3-3-script-file-execution-node: ready-for-dev
+  3-4-sleep-delay-node: ready-for-dev
+  3-5-http-request-node: ready-for-dev
+  3-6-file-transfer-node: ready-for-dev
+  3-7-docker-exec-node: ready-for-dev
+  3-8-docker-compose-up-node: ready-for-dev
   3-9-docker-compose-down-node: backlog
-  3-10-node-reference-documentation: backlog
+  3-10-node-reference-documentation: ready-for-dev
   epic-3-retrospective: optional
 
   # Epic 4: 节点扩展系统 (5 stories)

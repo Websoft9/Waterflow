@@ -1,0 +1,73 @@
+name: Shell Node Examples
+
+jobs:
+  basic-commands:
+    name: Basic Shell Commands
+    runs-on: linux-amd64
+    steps:
+      - name: Simple echo
+        uses: exec/shell@v1
+        with:
+          command: echo "Hello Waterflow"
+      
+      - name: Check system info
+        uses: exec/shell@v1
+        with:
+          command: uname -a
+      
+      - name: List files
+        uses: exec/shell@v1
+        with:
+          command: ls
+          args: ["-la", "/tmp"]
+          timeout: 10
+
+  environment-variables:
+    name: Environment Variables
+    runs-on: linux-amd64
+    steps:
+      - name: Use custom env
+        uses: exec/shell@v1
+        with:
+          command: echo "API_KEY=$API_KEY"
+          env:
+            API_KEY: "secret-key-123"
+            ENV: "production"
+
+  working-directory:
+    name: Working Directory
+    runs-on: linux-amd64
+    steps:
+      - name: Create temp file
+        uses: exec/shell@v1
+        with:
+          command: touch test.txt
+          workdir: /tmp
+      
+      - name: Verify file exists
+        uses: exec/shell@v1
+        with:
+          command: ls test.txt
+          workdir: /tmp
+
+  error-handling:
+    name: Error Handling
+    runs-on: linux-amd64
+    steps:
+      - name: Timeout example
+        uses: exec/shell@v1
+        with:
+          command: sleep 100
+          timeout: 5
+        continue-on-error: true
+      
+      - name: Command failure
+        uses: exec/shell@v1
+        with:
+          command: exit 1
+        continue-on-error: true
+      
+      - name: This step runs anyway
+        uses: exec/shell@v1
+        with:
+          command: echo "Execution continues"
