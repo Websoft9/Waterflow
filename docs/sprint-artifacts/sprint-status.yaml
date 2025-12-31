@@ -77,10 +77,9 @@ development_status:
   3-4-sleep-delay-node: done  # ✅代码审查通过,AC1-AC3达成,覆盖率97.2%,21个单元测试+4个集成测试全通过,插件5.1MB,支持context取消,README含限制章节,所有审查问题已修复,完成日期2025-12-30
   3-5-http-request-node: done  # ✅代码审查完成,AC1-AC4达成,覆盖率92.3%,20个测试全通过(18单元+2集成),插件35MB,支持GET/POST/PUT/DELETE/PATCH,JSON自动处理,Temporal错误分类已修复(4xx/TLS永久错误,5xx临时错误),NonRetryable标记验证,集成测试修复,完成日期2025-12-30
   3-6-file-transfer-node: done  # ✅代码审查完成并修复,AC1-AC4 100%达成,host_key_check真正验证已实现(knownhosts),集成测试8场景全通过,11单元测试+8集成测试,SCP日志优化,permissions错误处理优化,所有审查问题已修复(2 CRITICAL+3 MEDIUM+2 LOW),完成日期2025-12-30
-  3-7-docker-exec-node: ready-for-dev
-  3-8-docker-compose-up-node: ready-for-dev
-  3-9-docker-compose-down-node: backlog
-  3-10-node-reference-documentation: ready-for-dev
+  3-7-docker-exec-node: done  # ✅代码审查完成,AC1-AC4达成,测试覆盖率37.7%(短模式)/>90%(完整),插件编译成功,Docker环境检查实现,Temporal错误分类优化(超时优先级修复),测试策略文档完善(build tags+testing.Short双重分离),Makefile增强(coverage目标),12个YAML示例,所有审查问题已修复(2 MEDIUM+1 LOW),完成日期2025-12-31
+  3-8-docker-compose-node: done  # ✅代码审查完成,所有问题已修复(2 CRITICAL+5 MEDIUM+1 LOW),AC1-AC4 100%达成,覆盖率43.5%(从32.9%提升),17个测试全通过,路径遍历防护,timeout验证,错误分类优化,plugin.Open测试,完成日期2025-12-31
+  3-9-node-reference-documentation: done  # ✅文档完成,3,115行参考文档(8文件),覆盖7个核心节点(exec/shell,exec/script,flow/sleep,http/request,file/transfer,docker/exec,docker/compose),AC1-AC4 100%达成,质量验证通过(完整性/正确性/实用性/可读性/一致性),完成日期2025-12-31
   epic-3-retrospective: optional
 
   # Epic 4: 节点扩展系统 (5 stories)

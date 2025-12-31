@@ -1,0 +1,454 @@
+# Docker Exec Node - Comprehensive Examples
+# Demonstrates all common Docker operations using docker/exec node
+
+name: docker-exec-examples
+description: Comprehensive examples for Docker command execution node
+
+# Example 1: Pull and Run Container
+example_1_pull_and_run:
+  name: Pull and Run nginx
+  steps:
+    - name: Pull nginx image
+      uses: docker/exec@v1
+      with:
+        command: pull
+        args: ["nginx:latest"]
+        timeout: 10m
+
+    - name: Run nginx container
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "web-server"
+          - "-p"
+          - "8080:80"
+          - "nginx:latest"
+
+    - name: Verify container is running
+      uses: docker/exec@v1
+      with:
+        command: ps
+        args: ["--filter", "name=web-server", "--filter", "status=running"]
+
+# Example 2: Container Operations
+example_2_container_ops:
+  name: Container Lifecycle Management
+  steps:
+    - name: List all containers
+      uses: docker/exec@v1
+      with:
+        command: ps
+        args: ["-a"]
+
+    - name: Stop container
+      uses: docker/exec@v1
+      with:
+        command: stop
+        args: ["web-server"]
+
+    - name: Start container
+      uses: docker/exec@v1
+      with:
+        command: start
+        args: ["web-server"]
+
+    - name: Restart container
+      uses: docker/exec@v1
+      with:
+        command: restart
+        args: ["web-server"]
+
+    - name: Remove container
+      uses: docker/exec@v1
+      with:
+        command: rm
+        args: ["-f", "web-server"]
+
+# Example 3: Execute Commands in Container
+example_3_container_exec:
+  name: Execute Commands in Running Container
+  steps:
+    - name: Start alpine container
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "alpine-test"
+          - "alpine:latest"
+          - "sleep"
+          - "300"
+
+    - name: Execute echo command
+      uses: docker/exec@v1
+      with:
+        command: exec
+        args: ["alpine-test", "echo", "Hello from container"]
+
+    - name: Check container processes
+      uses: docker/exec@v1
+      with:
+        command: exec
+        args: ["alpine-test", "ps", "aux"]
+
+    - name: Check container environment
+      uses: docker/exec@v1
+      with:
+        command: exec
+        args: ["alpine-test", "env"]
+
+# Example 4: View Container Logs
+example_4_logs:
+  name: Container Log Operations
+  steps:
+    - name: View all logs
+      uses: docker/exec@v1
+      with:
+        command: logs
+        args: ["web-server"]
+
+    - name: View last 50 lines
+      uses: docker/exec@v1
+      with:
+        command: logs
+        args: ["--tail", "50", "web-server"]
+
+    - name: Follow logs (real-time)
+      uses: docker/exec@v1
+      with:
+        command: logs
+        args: ["-f", "--tail", "10", "web-server"]
+        timeout: 30s
+
+    - name: View logs with timestamps
+      uses: docker/exec@v1
+      with:
+        command: logs
+        args: ["-t", "web-server"]
+
+# Example 5: Image Management
+example_5_images:
+  name: Docker Image Operations
+  steps:
+    - name: List all images
+      uses: docker/exec@v1
+      with:
+        command: images
+        args: ["-a"]
+
+    - name: Pull specific version
+      uses: docker/exec@v1
+      with:
+        command: pull
+        args: ["alpine:3.18"]
+        timeout: 10m
+
+    - name: Tag image
+      uses: docker/exec@v1
+      with:
+        command: tag
+        args: ["alpine:3.18", "myregistry/alpine:3.18"]
+
+    - name: Remove image
+      uses: docker/exec@v1
+      with:
+        command: rmi
+        args: ["myregistry/alpine:3.18"]
+
+    - name: Prune unused images
+      uses: docker/exec@v1
+      with:
+        command: image
+        args: ["prune", "-f"]
+
+# Example 6: Network Operations
+example_6_networks:
+  name: Docker Network Management
+  steps:
+    - name: Create network
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["create", "app-network"]
+
+    - name: List networks
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["ls"]
+
+    - name: Inspect network
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["inspect", "app-network"]
+
+    - name: Connect container to network
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["connect", "app-network", "web-server"]
+
+    - name: Disconnect from network
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["disconnect", "app-network", "web-server"]
+
+    - name: Remove network
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["rm", "app-network"]
+
+# Example 7: Volume Operations
+example_7_volumes:
+  name: Docker Volume Management
+  steps:
+    - name: Create volume
+      uses: docker/exec@v1
+      with:
+        command: volume
+        args: ["create", "data-volume"]
+
+    - name: List volumes
+      uses: docker/exec@v1
+      with:
+        command: volume
+        args: ["ls"]
+
+    - name: Inspect volume
+      uses: docker/exec@v1
+      with:
+        command: volume
+        args: ["inspect", "data-volume"]
+
+    - name: Use volume in container
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "data-container"
+          - "-v"
+          - "data-volume:/data"
+          - "alpine:latest"
+          - "sleep"
+          - "300"
+
+    - name: Remove volume
+      uses: docker/exec@v1
+      with:
+        command: volume
+        args: ["rm", "data-volume"]
+
+# Example 8: Multi-Container Deployment
+example_8_multi_container:
+  name: Deploy Application with Database
+  steps:
+    - name: Create network
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["create", "app-network"]
+
+    - name: Start PostgreSQL database
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "app-db"
+          - "--network"
+          - "app-network"
+          - "-e"
+          - "POSTGRES_PASSWORD=secretpass"
+          - "-e"
+          - "POSTGRES_DB=myapp"
+          - "postgres:15"
+
+    - name: Wait for database to be ready
+      uses: docker/exec@v1
+      with:
+        command: exec
+        args: ["app-db", "pg_isready", "-U", "postgres"]
+        timeout: 30s
+
+    - name: Start application server
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "app-server"
+          - "--network"
+          - "app-network"
+          - "-p"
+          - "8080:8080"
+          - "-e"
+          - "DATABASE_URL=postgresql://postgres:secretpass@app-db:5432/myapp"
+          - "myapp:latest"
+
+    - name: Verify deployment
+      uses: docker/exec@v1
+      with:
+        command: ps
+        args: ["--filter", "network=app-network", "--filter", "status=running"]
+
+# Example 9: Container Health Check
+example_9_health_check:
+  name: Monitor Container Health
+  steps:
+    - name: Check container status
+      uses: docker/exec@v1
+      with:
+        command: inspect
+        args: ["--format", "{{.State.Status}}", "web-server"]
+
+    - name: Check container health
+      uses: docker/exec@v1
+      with:
+        command: inspect
+        args: ["--format", "{{.State.Health.Status}}", "web-server"]
+
+    - name: Get container stats
+      uses: docker/exec@v1
+      with:
+        command: stats
+        args: ["--no-stream", "web-server"]
+
+    - name: View container processes
+      uses: docker/exec@v1
+      with:
+        command: top
+        args: ["web-server"]
+
+# Example 10: Cleanup Operations
+example_10_cleanup:
+  name: System Cleanup and Maintenance
+  steps:
+    - name: Stop all running containers
+      uses: docker/exec@v1
+      with:
+        command: stop
+        args: ["$(docker ps -q)"]
+
+    - name: Remove stopped containers
+      uses: docker/exec@v1
+      with:
+        command: container
+        args: ["prune", "-f"]
+
+    - name: Remove unused images
+      uses: docker/exec@v1
+      with:
+        command: image
+        args: ["prune", "-a", "-f"]
+
+    - name: Remove unused networks
+      uses: docker/exec@v1
+      with:
+        command: network
+        args: ["prune", "-f"]
+
+    - name: Remove unused volumes
+      uses: docker/exec@v1
+      with:
+        command: volume
+        args: ["prune", "-f"]
+
+    - name: System-wide cleanup
+      uses: docker/exec@v1
+      with:
+        command: system
+        args: ["prune", "-a", "-f", "--volumes"]
+
+# Example 11: Blue-Green Deployment
+example_11_blue_green:
+  name: Blue-Green Container Deployment
+  steps:
+    - name: Pull new version
+      uses: docker/exec@v1
+      with:
+        command: pull
+        args: ["myapp:v2.0"]
+        timeout: 10m
+
+    - name: Start green (new) container
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "app-green"
+          - "-p"
+          - "8081:8080"
+          - "myapp:v2.0"
+
+    - name: Health check green container
+      uses: docker/exec@v1
+      with:
+        command: exec
+        args: ["app-green", "curl", "-f", "http://localhost:8080/health"]
+        timeout: 30s
+
+    - name: Switch traffic (update reverse proxy or port mapping)
+      uses: docker/exec@v1
+      with:
+        command: stop
+        args: ["app-blue"]
+
+    - name: Start new blue container
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "app-blue-new"
+          - "-p"
+          - "8080:8080"
+          - "myapp:v2.0"
+
+    - name: Remove old containers
+      uses: docker/exec@v1
+      with:
+        command: rm
+        args: ["-f", "app-blue", "app-green"]
+
+# Example 12: Secure Container Execution
+example_12_security:
+  name: Run Container with Security Best Practices
+  steps:
+    - name: Run container with security constraints
+      uses: docker/exec@v1
+      with:
+        command: run
+        args:
+          - "-d"
+          - "--name"
+          - "secure-app"
+          - "--user"
+          - "1000:1000"                    # Non-root user
+          - "--memory"
+          - "512m"                          # Memory limit
+          - "--cpus"
+          - "1"                             # CPU limit
+          - "--read-only"                   # Read-only filesystem
+          - "--tmpfs"
+          - "/tmp:rw,noexec,nosuid,size=64m" # Secure temp directory
+          - "--security-opt"
+          - "no-new-privileges:true"        # Prevent privilege escalation
+          - "--cap-drop"
+          - "ALL"                           # Drop all capabilities
+          - "--cap-add"
+          - "NET_BIND_SERVICE"              # Add only needed capabilities
+          - "myapp:latest"
