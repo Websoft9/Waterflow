@@ -157,7 +157,26 @@ func validateParamSpec(paramName string, spec ParamSpec) error {
 func ValidateInputs(inputs map[string]interface{}, specs map[string]ParamSpec) error {
 	var errors []ParameterError
 
-	// 1. Apply default values for optional parameters
+	// 1. Apply default values
+	applyDefaultValues(inputs, specs)
+
+	// 2. Check required parameters
+	errors = append(errors, checkRequiredParameters(inputs, specs)...)
+
+	// 3. Validate parameter types and constraints
+	errors = append(errors, validateAllParameters(inputs, specs)...)
+
+	if len(errors) > 0 {
+		return &InputValidationError{
+			Errors: errors,
+		}
+	}
+
+	return nil
+}
+
+// applyDefaultValues applies default values for optional parameters.
+func applyDefaultValues(inputs map[string]interface{}, specs map[string]ParamSpec) {
 	for paramName, spec := range specs {
 		if !spec.Required && spec.Default != nil {
 			if _, exists := inputs[paramName]; !exists {
@@ -165,8 +184,11 @@ func ValidateInputs(inputs map[string]interface{}, specs map[string]ParamSpec) e
 			}
 		}
 	}
+}
 
-	// 2. Check required parameters
+// checkRequiredParameters validates that all required parameters are present.
+func checkRequiredParameters(inputs map[string]interface{}, specs map[string]ParamSpec) []ParameterError {
+	var errors []ParameterError
 	for paramName, spec := range specs {
 		if spec.Required {
 			if _, exists := inputs[paramName]; !exists {
@@ -180,8 +202,12 @@ func ValidateInputs(inputs map[string]interface{}, specs map[string]ParamSpec) e
 			}
 		}
 	}
+	return errors
+}
 
-	// 3. Validate parameter types and constraints
+// validateAllParameters validates types and constraints for all parameters.
+func validateAllParameters(inputs map[string]interface{}, specs map[string]ParamSpec) []ParameterError {
+	var errors []ParameterError
 	for paramName, value := range inputs {
 		spec, exists := specs[paramName]
 		if !exists {
@@ -195,131 +221,161 @@ func ValidateInputs(inputs map[string]interface{}, specs map[string]ParamSpec) e
 			continue // Skip constraint validation if type is wrong
 		}
 
-		// Pattern validation (only for string type)
-		if spec.Pattern != "" && spec.Type == "string" {
-			if err := validatePattern(paramName, value.(string), spec.Pattern); err != nil {
-				errors = append(errors, *err)
-			}
-		}
+		// Constraint validations
+		errors = append(errors, validateConstraints(paramName, value, spec)...)
+	}
+	return errors
+}
 
-		// Enum validation
-		if len(spec.Enum) > 0 {
-			if err := validateEnumConstraint(paramName, value, spec.Enum); err != nil {
-				errors = append(errors, *err)
-			}
-		}
+// validateConstraints validates pattern, enum, and range constraints.
+func validateConstraints(paramName string, value interface{}, spec ParamSpec) []ParameterError {
+	var errors []ParameterError
 
-		// Numeric range validation
-		if (spec.Type == "int" || spec.Type == "float") && (spec.MinValue != nil || spec.MaxValue != nil) {
-			if err := validateRange(paramName, value, spec.MinValue, spec.MaxValue); err != nil {
-				errors = append(errors, *err)
-			}
+	// Pattern validation (only for string type)
+	if spec.Pattern != "" && spec.Type == "string" {
+		if err := validatePattern(paramName, value.(string), spec.Pattern); err != nil {
+			errors = append(errors, *err)
 		}
 	}
 
-	if len(errors) > 0 {
-		return &InputValidationError{
-			Errors: errors,
+	// Enum validation
+	if len(spec.Enum) > 0 {
+		if err := validateEnumConstraint(paramName, value, spec.Enum); err != nil {
+			errors = append(errors, *err)
 		}
 	}
 
-	return nil
+	// Numeric range validation
+	if (spec.Type == "int" || spec.Type == "float") && (spec.MinValue != nil || spec.MaxValue != nil) {
+		if err := validateRange(paramName, value, spec.MinValue, spec.MaxValue); err != nil {
+			errors = append(errors, *err)
+		}
+	}
+
+	return errors
 }
 
 // validateType validates parameter type matches expected type.
 // Handles JSON number compatibility (all numbers parsed as float64).
 func validateType(paramName string, value interface{}, expectedType string) *ParameterError {
-	actualType := getGoType(value)
-
 	switch expectedType {
 	case "string":
-		if _, ok := value.(string); !ok {
-			return &ParameterError{
-				ParamName: paramName,
-				ErrorType: "TypeMismatch",
-				Expected:  "string",
-				Actual:    actualType,
-				Message:   fmt.Sprintf("expected string, got %s", actualType),
-			}
-		}
-
+		return validateStringType(paramName, value)
 	case "int":
-		switch v := value.(type) {
-		case int, int32, int64:
-			return nil // Native int types
-		case float64:
-			// JSON-parsed numbers, check if it's a whole number
-			if v == float64(int64(v)) {
-				return nil // ✅ 30.0 is valid int
-			}
-			// Reject floats with decimal parts
-			return &ParameterError{
-				ParamName: paramName,
-				ErrorType: "TypeMismatch",
-				Expected:  "int (whole number)",
-				Actual:    fmt.Sprintf("float64(%v)", v),
-				Message:   fmt.Sprintf("expected integer, got float with decimal: %v", v),
-			}
-		default:
-			return &ParameterError{
-				ParamName: paramName,
-				ErrorType: "TypeMismatch",
-				Expected:  "int",
-				Actual:    actualType,
-				Message:   fmt.Sprintf("expected int, got %s", actualType),
-			}
-		}
-
+		return validateIntType(paramName, value)
 	case "float":
-		switch value.(type) {
-		case float32, float64:
-			return nil
-		case int, int32, int64:
-			return nil // ✅ int can be implicitly converted to float
-		default:
-			return &ParameterError{
-				ParamName: paramName,
-				ErrorType: "TypeMismatch",
-				Expected:  "float",
-				Actual:    actualType,
-				Message:   fmt.Sprintf("expected float, got %s", actualType),
-			}
-		}
-
+		return validateFloatType(paramName, value)
 	case "bool":
-		if _, ok := value.(bool); !ok {
-			return &ParameterError{
-				ParamName: paramName,
-				ErrorType: "TypeMismatch",
-				Expected:  "bool",
-				Actual:    actualType,
-				Message:   fmt.Sprintf("expected bool, got %s", actualType),
-			}
-		}
-
+		return validateBoolType(paramName, value)
 	case "object":
-		if _, ok := value.(map[string]interface{}); !ok {
-			return &ParameterError{
-				ParamName: paramName,
-				ErrorType: "TypeMismatch",
-				Expected:  "object (map[string]interface{})",
-				Actual:    actualType,
-				Message:   fmt.Sprintf("expected object, got %s", actualType),
-			}
-		}
-
+		return validateObjectType(paramName, value)
 	case "array":
-		if _, ok := value.([]interface{}); !ok {
-			return &ParameterError{
-				ParamName: paramName,
-				ErrorType: "TypeMismatch",
-				Expected:  "array ([]interface{})",
-				Actual:    actualType,
-				Message:   fmt.Sprintf("expected array, got %s", actualType),
-			}
+		return validateArrayType(paramName, value)
+	default:
+		return nil
+	}
+}
+
+// validateStringType validates string type.
+func validateStringType(paramName string, value interface{}) *ParameterError {
+	if _, ok := value.(string); !ok {
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "TypeMismatch",
+			Expected:  "string",
+			Actual:    getGoType(value),
+			Message:   fmt.Sprintf("expected string, got %s", getGoType(value)),
 		}
 	}
+	return nil
+}
 
+// validateIntType validates integer type with JSON compatibility.
+func validateIntType(paramName string, value interface{}) *ParameterError {
+	switch v := value.(type) {
+	case int, int32, int64:
+		return nil // Native int types
+	case float64:
+		// JSON-parsed numbers, check if it's a whole number
+		if v == float64(int64(v)) {
+			return nil // ✅ 30.0 is valid int
+		}
+		// Reject floats with decimal parts
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "TypeMismatch",
+			Expected:  "int (whole number)",
+			Actual:    fmt.Sprintf("float64(%v)", v),
+			Message:   fmt.Sprintf("expected integer, got float with decimal: %v", v),
+		}
+	default:
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "TypeMismatch",
+			Expected:  "int",
+			Actual:    getGoType(value),
+			Message:   fmt.Sprintf("expected int, got %s", getGoType(value)),
+		}
+	}
+}
+
+// validateFloatType validates float type.
+func validateFloatType(paramName string, value interface{}) *ParameterError {
+	switch value.(type) {
+	case float32, float64:
+		return nil
+	case int, int32, int64:
+		return nil // ✅ int can be implicitly converted to float
+	default:
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "TypeMismatch",
+			Expected:  "float",
+			Actual:    getGoType(value),
+			Message:   fmt.Sprintf("expected float, got %s", getGoType(value)),
+		}
+	}
+}
+
+// validateBoolType validates boolean type.
+func validateBoolType(paramName string, value interface{}) *ParameterError {
+	if _, ok := value.(bool); !ok {
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "TypeMismatch",
+			Expected:  "bool",
+			Actual:    getGoType(value),
+			Message:   fmt.Sprintf("expected bool, got %s", getGoType(value)),
+		}
+	}
+	return nil
+}
+
+// validateObjectType validates object (map) type.
+func validateObjectType(paramName string, value interface{}) *ParameterError {
+	if _, ok := value.(map[string]interface{}); !ok {
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "TypeMismatch",
+			Expected:  "object (map[string]interface{})",
+			Actual:    getGoType(value),
+			Message:   fmt.Sprintf("expected object, got %s", getGoType(value)),
+		}
+	}
+	return nil
+}
+
+// validateArrayType validates array (slice) type.
+func validateArrayType(paramName string, value interface{}) *ParameterError {
+	if _, ok := value.([]interface{}); !ok {
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "TypeMismatch",
+			Expected:  "array ([]interface{})",
+			Actual:    getGoType(value),
+			Message:   fmt.Sprintf("expected array, got %s", getGoType(value)),
+		}
+	}
 	return nil
 }
 
