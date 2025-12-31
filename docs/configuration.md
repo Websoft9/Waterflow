@@ -281,3 +281,83 @@ Failed to load config: invalid configuration: log.level must be one of [debug, i
 - 检查配置文件中的值是否符合要求
 - 参考本文档中的可选值列表
 - 使用默认值或环境变量覆盖
+## Step 配置参考
+
+### retry-strategy (重试策略)
+
+配置 Step 失败时的重试行为。(Story 4.3)
+
+**字段:**
+
+| 字段 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| max-attempts | integer | 否 | 3 | 最大尝试次数 (1-10) |
+| initial-interval | string | 否 | "1s" | 首次重试间隔 (≥1s) |
+| backoff-coefficient | float | 否 | 2.0 | 退避系数 (1.0-10.0) |
+| max-interval | string | 否 | "60s" | 最大重试间隔 |
+
+**示例:**
+
+```yaml
+steps:
+  # 默认重试策略 (3次,指数退避)
+  - name: Quick Task
+    uses: exec/script@v1
+    with:
+      command: ./task.sh
+  
+  # 自定义重试策略 - 网络调用
+  - name: API Call
+    uses: http/request@v1
+    retry-strategy:
+      max-attempts: 10
+      initial-interval: 2s
+      backoff-coefficient: 1.5
+      max-interval: 60s
+    with:
+      url: https://api.example.com/data
+  
+  # 禁用重试
+  - name: One Shot
+    uses: exec/script@v1
+    retry-strategy:
+      max-attempts: 1
+    with:
+      command: ./critical-task.sh
+```
+
+**重试算法:**
+
+指数退避算法:
+```
+下次间隔 = min(
+    initial-interval * (backoff-coefficient ^ attempt),
+    max-interval
+)
+```
+
+示例 (initial-interval=1s, backoff-coefficient=2.0):
+```
+尝试 1: 失败 → 等待 1s
+尝试 2: 失败 → 等待 2s
+尝试 3: 失败 → 等待 4s
+尝试 4: 失败 → 等待 8s
+```
+
+**永久性错误 (不重试):**
+
+以下错误类型不会重试,立即失败:
+- `validation_error` - 参数验证错误
+- `schema_error` - JSON Schema 验证错误
+- `not_found` - 资源不存在
+- `permission_denied` - 权限不足
+- `invalid_argument` - 参数无效
+- `node_not_registered` - 节点未注册
+- `plugin_load_error` - 插件加载失败
+
+**最佳实践:**
+
+- 🎯 **网络调用:** 使用较高的 max-attempts (5-10次)
+- 🎯 **本地脚本:** 使用默认策略 (3次)
+- 🎯 **关键任务:** 禁用重试 (max-attempts: 1)
+- 🎯 **长时间任务:** 增大 max-interval (避免过长等待)

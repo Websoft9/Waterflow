@@ -87,29 +87,93 @@ func (n *MyNode) Params() map[string]node.ParamSpec {
 - `Enum` - Allowed values
 - `MinValue` / `MaxValue` - Numeric ranges (for int/float)
 
+#### Parameter Validation Details
+
+**Automatic Validation**: Waterflow automatically validates all parameters against your `ParamSpec` definitions:
+
+1. **Submission Time** (Static Values): DSL parser validates non-expression parameters when workflow is submitted
+2. **Runtime** (All Values): Activity validates all parameters (including expression results) before calling `Execute()`
+
+**Validation Rules**:
+
+| Constraint | Applies To | Example |
+|------------|-----------|---------|
+| `Required` | All types | Missing required parameter → Error |
+| `Type` | All types | String expected, int provided → Error |
+| `Pattern` | `string` | Email regex `^[a-z]+@[a-z]+\.[a-z]+$` |
+| `Enum` | All types | Must be one of `["GET", "POST", "PUT"]` |
+| `MinValue`/`MaxValue` | `int`, `float` | Value must be in range `[1, 100]` |
+| `Default` | Optional params | Applied if value not provided |
+
+**Type Compatibility** (JSON/YAML Parsing):
+- Numbers in JSON/YAML are parsed as `float64`
+- `Type: "int"` accepts `float64` if no decimal part (e.g., `30.0` → valid int)
+- `Type: "float"` accepts both `int` and `float64`
+
+**Expression Parameters**:
+- Expressions like `${{ vars.timeout }}` skip validation at submission time
+- Validated after expression evaluation at runtime
+- Expression results must match the declared type
+
+**Error Handling**:
+```go
+// Validation errors are NonRetryableError (permanent)
+err := node.ValidateInputs(inputs, n.Params())
+if err != nil {
+    // Error type: *node.InputValidationError
+    // Properties:
+    //   - NodeName: "exec/shell@v1"
+    //   - Errors: []ParameterError
+    //     - ParamName: "timeout"
+    //     - ErrorType: "RangeViolation"
+    //     - Expected: "<= 60"
+    //     - Actual: 120
+    //     - Message: "value 120 exceeds maximum 60"
+    return nil, err
+}
+```
+
+**Validation Error Types**:
+- `Missing` - Required parameter not provided
+- `TypeMismatch` - Wrong type (e.g., string instead of int)
+- `PatternMismatch` - String doesn't match regex pattern
+- `EnumViolation` - Value not in allowed list
+- `RangeViolation` - Number outside min/max range
+
+**Best Practices**:
+- Use `Pattern` for formats (emails, URLs, file paths)
+- Use `Enum` for limited choices (methods, log levels)
+- Use `MinValue`/`MaxValue` for sensible ranges (timeouts, counts)
+- Provide `Default` values for optional parameters
+- Write descriptive `Description` to help users
+
 ### 5. Implement Execute Logic
 
 ```go
 func (n *MyNode) Execute(ctx context.Context, inputs map[string]interface{}) (*node.NodeResult, error) {
     start := time.Now()
     
-    // 1. Validate inputs
-    if err := node.ValidateInputs(inputs, n.Params()); err != nil {
-        return nil, err
-    }
+    // ⚠️ 参数已由 Temporal Activity 验证，无需再次验证
+    // Waterflow 保证传入的 inputs 100% 符合 ParamSpec 定义
     
-    // 2. Extract parameters
+    // 1. 提取参数 (类型断言安全，因为已验证)
     command := inputs["command"].(string)
-    timeout := 60
+    timeout := 60 // Default value
     if t, ok := inputs["timeout"]; ok {
-        timeout = t.(int)
+        // Type already validated - safe to assert
+        switch v := t.(type) {
+        case int:
+            timeout = v
+        case float64:
+            timeout = int(v) // JSON numbers are float64
+        }
     }
     
-    // 3. Create result
+    // 2. Create result
     result := node.NewNodeResult()
     result.AddLog("Execution started")
     
-    // 4. Perform work (check context cancellation)
+    // 3. Perform work (check context cancellation)
     select {
     case <-ctx.Done():
         return nil, ctx.Err()
@@ -124,7 +188,7 @@ func (n *MyNode) Execute(ctx context.Context, inputs map[string]interface{}) (*n
         result.SetOutput("exit_code", 0)
     }
     
-    // 5. Record duration and logs
+    // 4. Record duration and logs
     result.Duration = time.Since(start)
     result.AddLog("Execution completed")
     
@@ -133,11 +197,11 @@ func (n *MyNode) Execute(ctx context.Context, inputs map[string]interface{}) (*n
 ```
 
 **Best Practices**:
-- Always validate inputs first
-- Handle `ctx.Done()` for cancellation
-- Log execution progress
-- Return structured outputs
-- Record execution duration
+- **Do NOT validate inputs** - Already validated by Activity layer
+- Handle `ctx.Done()` for cancellation support
+- Log execution progress for debugging
+- Return structured outputs in OutputSchema format
+- Record execution duration for metrics
 
 ### 6. Provide Metadata
 

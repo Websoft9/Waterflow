@@ -178,3 +178,57 @@ func TestRegistry_MultipleVersions(t *testing.T) {
 	assert.Contains(t, list, "checkout@v1")
 	assert.Contains(t, list, "checkout@v2")
 }
+
+// Test custom error types
+func TestRegistry_ErrorTypes(t *testing.T) {
+	registry := NewRegistry()
+
+	node := createMockNode("test", "v1")
+	_ = registry.Register(node)
+
+	// Test NodeAlreadyRegisteredError
+	err := registry.Register(node)
+	assert.Error(t, err)
+	var alreadyRegistered *NodeAlreadyRegisteredError
+	assert.ErrorAs(t, err, &alreadyRegistered)
+	if alreadyRegistered != nil {
+		assert.Equal(t, "test@v1", alreadyRegistered.NodeKey)
+	}
+
+	// Test NodeNotFoundError
+	_, err = registry.Get("nonexistent@v1")
+	assert.Error(t, err)
+	var notFound *NodeNotFoundError
+	assert.ErrorAs(t, err, &notFound)
+	if notFound != nil {
+		assert.Equal(t, "nonexistent@v1", notFound.NodeType)
+	}
+}
+
+// Test Update method for hot-reload
+func TestRegistry_Update(t *testing.T) {
+	registry := NewRegistry()
+
+	// Register initial node
+	node1 := createMockNode("test", "v1")
+	err := registry.Register(node1)
+	require.NoError(t, err)
+
+	// Update the node with a new instance
+	node2 := createMockNode("test", "v1")
+	node2.MetadataValue.Description = "Updated description"
+	err = registry.Update(node2)
+	assert.NoError(t, err)
+
+	// Verify the node was updated
+	retrieved, err := registry.Get("test@v1")
+	require.NoError(t, err)
+	assert.Equal(t, "Updated description", retrieved.Metadata().Description)
+
+	// Test updating non-existent node
+	nonExistentNode := createMockNode("nonexistent", "v1")
+	err = registry.Update(nonExistentNode)
+	assert.Error(t, err)
+	var notFound *NodeNotFoundError
+	assert.ErrorAs(t, err, &notFound)
+}

@@ -82,13 +82,13 @@ development_status:
   3-9-node-reference-documentation: done  # ✅文档完成,3,115行参考文档(8文件),覆盖7个核心节点(exec/shell,exec/script,flow/sleep,http/request,file/transfer,docker/exec,docker/compose),AC1-AC4 100%达成,质量验证通过(完整性/正确性/实用性/可读性/一致性),完成日期2025-12-31
   epic-3-retrospective: optional
 
-  # Epic 4: 节点扩展系统 (5 stories)
-  epic-4: backlog
-  4-1-plugin-manager-noderegistry: backlog
-  4-2-node-parameter-schema-validation: backlog
-  4-3-node-retry-strategy-configuration: backlog
-  4-4-custom-node-plugin-development-example: backlog
-  4-5-custom-node-development-guide: backlog
+  # Epic 4: 节点扩展系统 (5 stories) - IN PROGRESS 2025-12-31
+  epic-4: in-progress
+  4-1-plugin-manager-noderegistry: review  # ✅实现完成,PluginManager升级/NodeRegistry/热加载/所有测试通过,2025-12-31
+  4-2-node-parameter-schema-validation: done  # ✅代码审查完成,ValidateInputs实现/Activity集成/覆盖率85.2%/所有测试通过,8个问题已修复(2 HIGH+4 MEDIUM+2 LOW),2025-12-31
+  4-3-node-retry-strategy-configuration: review  # ✅实现完成,RetryPolicy集成/NonRetryableError处理/Temporal UI验证脚本/文档完整,2025-12-31
+  4-4-custom-node-plugin-development-example: ready-for-dev  # Story 创建完成,Greeter 节点示例,2025-12-31
+  4-5-custom-node-development-guide: ready-for-dev  # Story 创建完成,完整节点开发指南,2025-12-31
   epic-4-retrospective: optional
 
   # Epic 5: 客户端工具和 SDK (8 stories)

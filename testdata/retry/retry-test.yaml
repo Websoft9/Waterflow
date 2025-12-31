@@ -1,0 +1,45 @@
+name: Retry Strategy Test
+on: push
+
+jobs:
+  retry-test:
+    runs-on: linux-amd64
+    steps:
+      # 场景 1: 临时故障重试成功 (网络调用)
+      - name: Network Call with Retry
+        uses: http/request@v1
+        retry-strategy:
+          max-attempts: 5
+          initial-interval: 1s
+          backoff-coefficient: 2.0
+          max-interval: 30s
+        with:
+          url: http://localhost:8080/flaky  # 模拟不稳定接口
+          method: GET
+      
+      # 场景 2: 默认重试策略 (sleep 节点)
+      - name: Default Retry
+        uses: flow/sleep@v1
+        # retry-strategy 为 nil,使用默认策略 (3次,指数退避)
+        with:
+          duration: 1s
+      
+      # 场景 3: 禁用重试 (max-attempts: 1)
+      - name: One Shot Task
+        uses: exec/shell@v1
+        retry-strategy:
+          max-attempts: 1  # 只执行 1 次,不重试
+        with:
+          command: "echo 'Critical task executed once'"
+      
+      # 场景 4: 最大重试次数 (10次)
+      - name: Max Retry Task
+        uses: http/request@v1
+        timeout-minutes: 2
+        retry-strategy:
+          max-attempts: 10
+          initial-interval: 2s
+          backoff-coefficient: 1.5
+        with:
+          url: http://localhost:8080/unstable
+          method: POST

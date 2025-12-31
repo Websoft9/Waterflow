@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/config"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 	"github.com/Websoft9/waterflow/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,7 +102,8 @@ func TestPluginManager(t *testing.T) {
 	// Initialize logger
 	require.NoError(t, logger.Init("info", "json"))
 
-	pm := NewPluginManager("/opt/waterflow/plugins", logger.Log)
+	registry := node.NewRegistry()
+	pm := NewPluginManager("/opt/waterflow/plugins", registry, logger.Log)
 	assert.NotNil(t, pm)
 
 	// Test LoadPlugins (stub returns nil)
@@ -111,7 +113,7 @@ func TestPluginManager(t *testing.T) {
 	// Test GetNode (stub returns error - this is expected in Story 2.1)
 	_, err = pm.GetNode("shell")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Epic 4")
+	assert.Contains(t, err.Error(), "not found") // Node not registered
 }
 
 func TestConnectToTemporal_Retry(t *testing.T) {

@@ -2,23 +2,28 @@ package temporal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 	"go.temporal.io/sdk/activity"
+	temporal "go.temporal.io/sdk/temporal"
 	"go.uber.org/zap"
 )
 
 // Activities holds all workflow activities.
 type Activities struct {
-	logger *zap.Logger
+	logger       *zap.Logger
+	nodeRegistry *node.Registry
 }
 
 // NewActivities creates a new Activities instance.
-func NewActivities(logger *zap.Logger) *Activities {
+func NewActivities(logger *zap.Logger, nodeRegistry *node.Registry) *Activities {
 	return &Activities{
-		logger: logger,
+		logger:       logger,
+		nodeRegistry: nodeRegistry,
 	}
 }
 
@@ -42,7 +47,14 @@ type StepResult struct {
 // It evaluates if conditions, renders expressions, and executes the node.
 func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepInput) (*StepResult, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info("Executing step", "name", input.Step.Name, "uses", input.Step.Uses)
+
+	// 获取当前 Attempt 信息 (Story 4.3)
+	info := activity.GetInfo(ctx)
+	logger.Info("Executing step",
+		"name", input.Step.Name,
+		"uses", input.Step.Uses,
+		"attempt", info.Attempt, // 当前尝试次数 (1-based)
+	)
 
 	startTime := time.Now()
 
@@ -52,7 +64,12 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 		condEval := dsl.NewConditionEvaluator(engine)
 		shouldRun, err := condEval.Evaluate(input.Step.If, input.Context)
 		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate if condition: %w", err)
+			// 条件求值错误 - 永久性错误
+			return nil, temporal.NewNonRetryableApplicationError(
+				fmt.Sprintf("failed to evaluate if condition: %v", err),
+				"validation_error",
+				err,
+			)
 		}
 
 		if !shouldRun {
@@ -68,24 +85,125 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 	renderer := dsl.NewWorkflowRenderer()
 	renderedStep, err := renderer.RenderStep(input.Workflow, input.Job, input.Step, input.Context)
 	if err != nil {
-		return nil, fmt.Errorf("failed to render step: %w", err)
+		// 表达式渲染错误 - 永久性错误
+		return nil, temporal.NewNonRetryableApplicationError(
+			fmt.Sprintf("failed to render step: %v", err),
+			"validation_error",
+			err,
+		)
 	}
 
-	// 3. Execute node
-	// TODO(Story 1.1): Integrate with NodeExecutor when Story 1.1 is completed
-	// Current implementation is a placeholder for testing Temporal integration.
-	// Expected integration:
-	//   nodeExecutor := executor.NewNodeExecutor(a.nodeRegistry)
-	//   nodeResult, err := nodeExecutor.Execute(ctx, renderedStep)
-	//   if err != nil { return error }
-	//   outputs = nodeResult.Outputs
-	logger.Info("Node execution placeholder (awaiting Story 1.1 NodeExecutor)", "uses", renderedStep.Uses)
+	// 2.5. Validate parameters (Story 4.2 - AC4)
+	if a.nodeRegistry != nil {
+		nodeInstance, err := a.nodeRegistry.Get(renderedStep.Uses)
+		if err != nil {
+			// Node not found - 永久性错误
+			logger.Error("Node not found", "uses", renderedStep.Uses, "error", err)
+			return nil, temporal.NewNonRetryableApplicationError(
+				fmt.Sprintf("node not found: %s", renderedStep.Uses),
+				"node_not_registered",
+				err,
+			)
+		}
+
+		// Validate inputs against node's parameter specifications
+		if err := node.ValidateInputs(renderedStep.With, nodeInstance.Params()); err != nil {
+			// Set NodeName in validation error for better debugging
+			if validationErr, ok := err.(*node.InputValidationError); ok {
+				validationErr.NodeName = renderedStep.Uses
+			}
+			logger.Error("Parameter validation failed",
+				"step", input.Step.Name,
+				"uses", renderedStep.Uses,
+				"error", err)
+
+			// 参数验证错误 - 永久性错误
+			return nil, temporal.NewNonRetryableApplicationError(
+				err.Error(),
+				"validation_error",
+				err,
+			)
+		}
+
+		logger.Info("Parameter validation passed", "step", input.Step.Name, "uses", renderedStep.Uses)
+
+		// 3. Execute node (Story 4.3 - 真正执行节点)
+		nodeResult, err := nodeInstance.Execute(ctx, renderedStep.With)
+
+		if err != nil {
+			// 检查是否为 NonRetryableError (Story 4.3)
+			var nonRetryable *node.NonRetryableError
+			if errors.As(err, &nonRetryable) {
+				logger.Warn("Non-retryable error detected",
+					"step", input.Step.Name,
+					"error_type", nonRetryable.ErrorType,
+					"message", nonRetryable.Message,
+					"attempt", info.Attempt,
+					"retryable", false,
+				)
+
+				// 返回 Temporal ApplicationError,标记为不可重试
+				return nil, temporal.NewNonRetryableApplicationError(
+					nonRetryable.Message,
+					nonRetryable.ErrorType,
+					err,
+				)
+			}
+
+			// 其他错误 - 可重试 (网络错误、临时故障等)
+			logger.Warn("Step failed, will retry according to policy",
+				"step", input.Step.Name,
+				"error", err,
+				"attempt", info.Attempt,
+				"retryable", true,
+			)
+			return nil, err
+		}
+
+		// 4. 返回成功结果
+		duration := time.Since(startTime)
+
+		// 成功时记录重试信息 (如果经过重试)
+		if info.Attempt > 1 {
+			logger.Info("Step succeeded after retry",
+				"name", input.Step.Name,
+				"attempt", info.Attempt,
+				"duration_ms", duration.Milliseconds(),
+			)
+		} else {
+			logger.Info("Step completed",
+				"name", input.Step.Name,
+				"duration_ms", duration.Milliseconds(),
+			)
+		}
+
+		// 转换 NodeResult.Outputs 为 map[string]string
+		outputs := make(map[string]string)
+		for k, v := range nodeResult.Outputs {
+			outputs[k] = fmt.Sprintf("%v", v)
+		}
+
+		// Record heartbeat
+		activity.RecordHeartbeat(ctx, map[string]interface{}{
+			"step":     input.Step.Name,
+			"progress": "completed",
+		})
+
+		return &StepResult{
+			Status:     "success",
+			Outputs:    outputs,
+			DurationMs: duration.Milliseconds(),
+		}, nil
+	}
+
+	// Fallback: no node registry (测试模式)
+	logger.Warn("Node registry not available, using placeholder execution")
 
 	// Simulate execution
 	outputs := make(map[string]string)
 	outputs["result"] = "success"
 
-	// Record heartbeat (in production, this should be called periodically during long operations)
+	// Record heartbeat
 	activity.RecordHeartbeat(ctx, map[string]interface{}{
 		"step":     input.Step.Name,
 		"progress": "completed",

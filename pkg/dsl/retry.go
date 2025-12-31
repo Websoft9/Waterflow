@@ -143,5 +143,16 @@ func (p *ResolvedRetryPolicy) ToTemporalRetryPolicy() *temporal.RetryPolicy {
 		BackoffCoefficient: p.BackoffCoefficient,
 		MaximumInterval:    p.MaxInterval,
 		MaximumAttempts:    int32(maxAttempts), //nolint:gosec // checked above
+
+		// 永久性错误类型 (不重试) - Story 4.3
+		NonRetryableErrorTypes: []string{
+			"validation_error",    // Story 4.2 参数验证错误
+			"schema_error",        // JSON Schema 验证错误
+			"not_found",           // 资源不存在
+			"permission_denied",   // 权限不足
+			"invalid_argument",    // 参数无效
+			"node_not_registered", // 节点未注册 (Story 4.1)
+			"plugin_load_error",   // 插件加载失败 (Story 4.1)
+		},
 	}
 }

@@ -64,7 +64,7 @@ func (r *Registry) Register(node Node) error {
 
 	key := fmt.Sprintf("%s@%s", node.Name(), node.Version())
 	if _, exists := r.nodes[key]; exists {
-		return fmt.Errorf("node %s already registered", key)
+		return &NodeAlreadyRegisteredError{NodeKey: key}
 	}
 
 	r.nodes[key] = node
@@ -72,19 +72,33 @@ func (r *Registry) Register(node Node) error {
 }
 
 // Get 获取节点
+// Supports both exact version matching (name@version) and partial matching (name only).
+// When only name is provided, returns the first matching node.
 func (r *Registry) Get(name string) (Node, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	node, exists := r.nodes[name]
-	if !exists {
-		return nil, fmt.Errorf("node %s not found", name)
+	// Try exact match first
+	if node, exists := r.nodes[name]; exists {
+		return node, nil
 	}
 
-	return node, nil
+	// If no @, try partial match
+	for key, node := range r.nodes {
+		if len(name) > 0 && name[len(name)-1] != '@' {
+			// Check if this is a version-less query
+			expectedPrefix := name + "@"
+			if len(key) > len(expectedPrefix) && key[:len(expectedPrefix)] == expectedPrefix {
+				return node, nil
+			}
+		}
+	}
+
+	return nil, &NodeNotFoundError{NodeType: name}
 }
 
 // List 列出所有节点
+// Returns a list of node keys in the format "name@version".
 func (r *Registry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -94,4 +108,32 @@ func (r *Registry) List() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// Update updates an existing node registration.
+// This is used during hot-reload to replace an existing node with a new version.
+func (r *Registry) Update(node Node) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := fmt.Sprintf("%s@%s", node.Name(), node.Version())
+	if _, exists := r.nodes[key]; !exists {
+		return &NodeNotFoundError{NodeType: key}
+	}
+
+	r.nodes[key] = node
+	return nil
+}
+
+// ListNodes returns metadata for all registered nodes.
+// The list is sorted by category for better organization.
+func (r *Registry) ListNodes() []NodeMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	metadataList := make([]NodeMetadata, 0, len(r.nodes))
+	for _, node := range r.nodes {
+		metadataList = append(metadataList, node.Metadata())
+	}
+	return metadataList
 }

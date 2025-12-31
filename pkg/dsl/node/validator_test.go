@@ -343,7 +343,7 @@ func TestValidateParamSpec_NumericRanges(t *testing.T) {
 func TestValidateInputs_RequiredParameters(t *testing.T) {
 	specs := map[string]ParamSpec{
 		"command": {Type: "string", Required: true},
-		"timeout": {Type: "int", Required: false, Default: 60},
+		"timeout": {Type: "int", Required: false, Default: float64(60)},
 	}
 
 	tests := []struct {
@@ -372,7 +372,12 @@ func TestValidateInputs_RequiredParameters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateInputs(tt.inputs, specs)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
+
+				// Verify error type
+				validationErr, ok := err.(*InputValidationError)
+				assert.True(t, ok, "error should be InputValidationError")
+				assert.Greater(t, len(validationErr.Errors), 0)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -411,7 +416,10 @@ func TestValidateInputs_EnumConstraints(t *testing.T) {
 			err := ValidateInputs(tt.inputs, specs)
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), "not in enum")
+
+				validationErr, ok := err.(*InputValidationError)
+				assert.True(t, ok)
+				assert.Equal(t, "EnumViolation", validationErr.Errors[0].ErrorType)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -436,7 +444,6 @@ func TestValidateInputs_NumericRanges(t *testing.T) {
 		name    string
 		inputs  map[string]interface{}
 		wantErr bool
-		errMsg  string
 	}{
 		{
 			name:    "within range",
@@ -447,13 +454,11 @@ func TestValidateInputs_NumericRanges(t *testing.T) {
 			name:    "below minimum",
 			inputs:  map[string]interface{}{"timeout": 0},
 			wantErr: true,
-			errMsg:  "< minimum",
 		},
 		{
 			name:    "above maximum",
 			inputs:  map[string]interface{}{"timeout": 150},
 			wantErr: true,
-			errMsg:  "> maximum",
 		},
 		{
 			name:    "at minimum boundary",
@@ -472,7 +477,10 @@ func TestValidateInputs_NumericRanges(t *testing.T) {
 			err := ValidateInputs(tt.inputs, specs)
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
+
+				validationErr, ok := err.(*InputValidationError)
+				assert.True(t, ok)
+				assert.Equal(t, "RangeViolation", validationErr.Errors[0].ErrorType)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -511,7 +519,10 @@ func TestValidateInputs_StringPatterns(t *testing.T) {
 			err := ValidateInputs(tt.inputs, specs)
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), "does not match pattern")
+
+				validationErr, ok := err.(*InputValidationError)
+				assert.True(t, ok)
+				assert.Equal(t, "PatternMismatch", validationErr.Errors[0].ErrorType)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -540,7 +551,7 @@ func TestValidateInputs_TypeValidation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "float64 type",
+			name:    "float64 type (whole number)",
 			inputs:  map[string]interface{}{"count": float64(42)},
 			wantErr: false,
 		},
@@ -555,7 +566,11 @@ func TestValidateInputs_TypeValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateInputs(tt.inputs, specs)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
+
+				validationErr, ok := err.(*InputValidationError)
+				assert.True(t, ok)
+				assert.Equal(t, "TypeMismatch", validationErr.Errors[0].ErrorType)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -639,4 +654,157 @@ func TestIsValidCategory(t *testing.T) {
 			assert.False(t, isValidCategory(cat))
 		})
 	}
+}
+
+func TestGetGoType_AllTypes(t *testing.T) {
+	tests := []struct {
+		name  string
+		value interface{}
+		want  string
+	}{
+		{"nil", nil, "nil"},
+		{"string", "hello", "string"},
+		{"int", 42, "int"},
+		{"int32", int32(42), "int"},
+		{"int64", int64(42), "int"},
+		{"float32", float32(3.14), "float64"},
+		{"float64", float64(3.14), "float64"},
+		{"bool", true, "bool"},
+		{"object", map[string]interface{}{"key": "value"}, "object"},
+		{"array", []interface{}{1, 2, 3}, "array"},
+		{"struct", struct{}{}, "struct {}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getGoType(tt.value)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestToFloat64_AllTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   interface{}
+		want    float64
+		wantErr bool
+	}{
+		{"int", 42, 42.0, false},
+		{"int64", int64(100), 100.0, false},
+		{"float64", float64(3.14), 3.14, false},
+		{"float32", float32(2.5), 2.5, false},
+		{"string", "invalid", 0, true},
+		{"bool", true, 0, true},
+		{"nil", nil, 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := toFloat64(tt.value)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestValidateInputs_JSONNumberHandling(t *testing.T) {
+	specs := map[string]ParamSpec{
+		"timeout": {Type: "int", Required: true},
+		"ratio":   {Type: "float", Required: true},
+	}
+
+	// 模拟 JSON 解析结果（所有数字都是 float64）
+	inputs := map[string]interface{}{
+		"timeout": float64(30),  // ✅ 应接受（整数值）
+		"ratio":   float64(0.5), // ✅ 应接受
+	}
+
+	err := ValidateInputs(inputs, specs)
+	assert.NoError(t, err)
+
+	// 拒绝非整数的 float64
+	inputs["timeout"] = float64(30.5)
+	err = ValidateInputs(inputs, specs)
+	assert.Error(t, err)
+
+	validationErr, ok := err.(*InputValidationError)
+	assert.True(t, ok)
+	assert.Len(t, validationErr.Errors, 1)
+	assert.Equal(t, "TypeMismatch", validationErr.Errors[0].ErrorType)
+	assert.Contains(t, validationErr.Errors[0].Message, "decimal")
+}
+
+func TestValidateInputs_IntToFloatConversion(t *testing.T) {
+	specs := map[string]ParamSpec{
+		"ratio": {Type: "float", Required: true},
+	}
+
+	// int 转 float 应该被接受
+	inputs := map[string]interface{}{
+		"ratio": 5, // int → float 隐式转换
+	}
+
+	err := ValidateInputs(inputs, specs)
+	assert.NoError(t, err)
+}
+
+func TestValidateEnum_DeepEquality(t *testing.T) {
+	specs := map[string]ParamSpec{
+		"mode": {
+			Type: "string",
+			Enum: []interface{}{"mode1", "mode2", "mode3"},
+		},
+	}
+
+	// 测试精确匹配
+	inputs := map[string]interface{}{"mode": "mode1"}
+	err := ValidateInputs(inputs, specs)
+	assert.NoError(t, err)
+
+	// 测试不匹配
+	inputs["mode"] = "mode4"
+	err = ValidateInputs(inputs, specs)
+	assert.Error(t, err)
+	validationErr, ok := err.(*InputValidationError)
+	assert.True(t, ok)
+	assert.Equal(t, "EnumViolation", validationErr.Errors[0].ErrorType)
+}
+
+func TestInputValidationError_NonRetryable(t *testing.T) {
+	err := &InputValidationError{
+		NodeName: "exec/shell@v1",
+		Errors: []ParameterError{
+			{ParamName: "command", ErrorType: "Missing", Message: "required parameter missing"},
+		},
+	}
+
+	assert.True(t, err.NonRetryable(), "InputValidationError should be non-retryable")
+}
+
+func TestInputValidationError_ErrorMessage(t *testing.T) {
+	// Single error
+	singleErr := &InputValidationError{
+		NodeName: "exec/shell@v1",
+		Errors: []ParameterError{
+			{ParamName: "command", ErrorType: "Missing", Message: "required parameter missing"},
+		},
+	}
+	assert.Contains(t, singleErr.Error(), "exec/shell@v1")
+	assert.Contains(t, singleErr.Error(), "required parameter missing")
+
+	// Multiple errors
+	multiErr := &InputValidationError{
+		NodeName: "http/request@v1",
+		Errors: []ParameterError{
+			{ParamName: "url", ErrorType: "Missing", Message: "missing url"},
+			{ParamName: "timeout", ErrorType: "RangeViolation", Message: "timeout out of range"},
+		},
+	}
+	assert.Contains(t, multiErr.Error(), "http/request@v1")
+	assert.Contains(t, multiErr.Error(), "2 errors")
 }

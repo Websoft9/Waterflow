@@ -146,25 +146,111 @@ steps:
     continue-on-error: true  # 容器不存在也继续执行
 ```
 
-#### 重试策略
+#### 重试策略 (Story 4.3)
 
 ```yaml
 steps:
   - name: Pull image with retry
     uses: docker/exec@v1
+    retry-strategy:
+      max-attempts: 3
+      initial-interval: 5s
+      backoff-coefficient: 2.0
+      max-interval: 60s
     with:
       command: pull
       args: ["nginx:latest"]
-    retry:
-      max_attempts: 3
-      initial_interval: 5s
-      backoff_coefficient: 2.0
 ```
 
 **重试参数:**
-- `max_attempts`: 最大尝试次数
-- `initial_interval`: 初始重试间隔
-- `backoff_coefficient`: 退避系数（每次重试间隔乘以此系数）
+- `max-attempts`: 最大尝试次数 (1-10)
+- `initial-interval`: 初始重试间隔 (≥1s)
+- `backoff-coefficient`: 退避系数 (1.0-10.0)
+- `max-interval`: 最大重试间隔
+
+**重试算法:** 指数退避 (`间隔 = initial-interval * backoff-coefficient ^ attempt`)
+
+**永久性错误 (不重试):**  
+某些错误类型会立即失败，不进行重试:
+- `validation_error` - 参数验证错误
+- `schema_error` - Schema 验证错误
+- `not_found` - 资源不存在
+- `permission_denied` - 权限不足
+- `invalid_argument` - 无效参数
+- `node_not_registered` - 节点未注册
+- `plugin_load_error` - 插件加载失败
+
+更多详情参考: [配置文档 - retry-strategy](../configuration.md#retry-strategy-重试策略)
+
+## 节点错误处理最佳实践
+
+在自定义节点中,应该正确区分永久性错误和临时性错误:
+
+### 永久性错误 (NonRetryableError)
+
+用于参数错误、权限问题等,重试无意义的场景:
+
+```go
+import "github.com/Websoft9/waterflow/pkg/dsl/node"
+
+func (n *MyNode) Execute(ctx context.Context, inputs map[string]interface{}) (*node.NodeResult, error) {
+    // 参数验证
+    replicas, ok := inputs["replicas"].(float64)
+    if !ok || replicas <= 0 {
+        return nil, &node.NonRetryableError{
+            ErrorType: "validation_error",
+            Message:   "parameter 'replicas' must be positive integer",
+        }
+    }
+    
+    // 权限检查
+    if !hasPermission(ctx) {
+        return nil, &node.NonRetryableError{
+            ErrorType: "permission_denied",
+            Message:   "insufficient permissions to execute this operation",
+        }
+    }
+    
+    // ... 执行逻辑
+}
+```
+
+### 临时性错误 (可重试)
+
+用于网络超时、服务不可用等,重试可能成功的场景:
+
+```go
+func (n *MyNode) Execute(ctx context.Context, inputs map[string]interface{}) (*node.NodeResult, error) {
+    // 网络调用
+    resp, err := http.Get(url)
+    if err != nil {
+        // 返回普通 error,Waterflow 会自动重试
+        return nil, fmt.Errorf("network call failed: %w", err)
+    }
+    
+    // 服务不可用 (503)
+    if resp.StatusCode == 503 {
+        return nil, fmt.Errorf("service temporarily unavailable")
+    }
+    
+    // ... 处理响应
+}
+```
+
+### 错误类型对照表
+
+| 场景 | 错误类型 | 重试 | 示例 |
+|------|----------|------|------|
+| 参数验证失败 | validation_error | ❌ | 缺少必填参数 |
+| JSON Schema 错误 | schema_error | ❌ | 参数类型不匹配 |
+| 资源不存在 | not_found | ❌ | 文件/容器不存在 |
+| 权限不足 | permission_denied | ❌ | SSH 认证失败 |
+| 无效参数 | invalid_argument | ❌ | 端口号超出范围 |
+| 网络超时 | (普通 error) | ✅ | http.Get() timeout |
+| 服务不可用 | (普通 error) | ✅ | API 返回 503 |
+| 临时故障 | (普通 error) | ✅ | 数据库连接失败 |
+
+更多节点开发指南,参考: [节点开发文档](../guides/node-development.md)
 
 ### 使用 Secrets
 

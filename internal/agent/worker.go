@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/config"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/zap"
@@ -19,6 +20,7 @@ type Worker struct {
 	temporalClient *temporal.Client
 	workers        []worker.Worker // One worker per task queue
 	pluginManager  *PluginManager
+	nodeRegistry   *node.Registry // Node registry for Activities
 	wg             sync.WaitGroup // Wait for worker goroutines
 }
 
@@ -30,8 +32,11 @@ func NewWorker(cfg *config.Config, logger *zap.Logger) (*Worker, error) {
 		return nil, fmt.Errorf("failed to connect to Temporal: %w", err)
 	}
 
-	// Initialize Plugin Manager (Epic 4 - stub for now)
-	pluginManager := NewPluginManager(cfg.Agent.PluginDir, logger)
+	// Initialize NodeRegistry
+	nodeRegistry := node.NewRegistry()
+
+	// Initialize Plugin Manager with registry
+	pluginManager := NewPluginManager(cfg.Agent.PluginDir, nodeRegistry, logger)
 
 	w := &Worker{
 		config:         cfg,
@@ -39,6 +44,7 @@ func NewWorker(cfg *config.Config, logger *zap.Logger) (*Worker, error) {
 		temporalClient: temporalClient,
 		workers:        make([]worker.Worker, 0, len(cfg.Agent.TaskQueues)),
 		pluginManager:  pluginManager,
+		nodeRegistry:   nodeRegistry, // Store for Activities
 	}
 
 	return w, nil
@@ -81,10 +87,23 @@ func connectToTemporal(cfg *config.Config, logger *zap.Logger) (*temporal.Client
 
 // Start starts the Agent Worker and begins polling task queues.
 func (w *Worker) Start() error {
-	// Load plugins (Epic 4 - stub for now)
+	// Load plugins
 	if err := w.pluginManager.LoadPlugins(); err != nil {
 		w.logger.Warn("Failed to load plugins", zap.Error(err))
-		// Don't fail startup - plugins are optional in Story 2.1
+		// Don't fail startup - plugins are optional
+	}
+
+	// Start hot-reload watcher if enabled
+	if w.config.Agent.AutoReloadPlugins {
+		w.wg.Add(1)
+		go func() {
+			defer w.wg.Done()
+			ctx := context.Background() // TODO: use worker context for cancellation
+			if err := w.pluginManager.WatchPlugins(ctx); err != nil {
+				w.logger.Error("Plugin watcher failed", zap.Error(err))
+			}
+		}()
+		w.logger.Info("Plugin hot-reload enabled")
 	}
 
 	// Create and start a worker for each task queue
@@ -100,7 +119,7 @@ func (w *Worker) Start() error {
 		workerInstance.RegisterWorkflow(temporal.RunWorkflowExecutor)
 
 		// Register activities (Step executor)
-		activities := temporal.NewActivities(w.logger)
+		activities := temporal.NewActivities(w.logger, w.nodeRegistry)
 		workerInstance.RegisterActivity(activities.ExecuteStepActivity)
 
 		w.workers = append(w.workers, workerInstance)

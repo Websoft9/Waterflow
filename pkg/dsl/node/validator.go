@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // ValidateNode validates that a node conforms to all interface requirements.
@@ -146,101 +147,301 @@ func validateParamSpec(paramName string, spec ParamSpec) error {
 }
 
 // ValidateInputs validates that input values match the node's parameter specifications.
-// This is a helper function for node implementations to use in their Execute method.
+// This function performs runtime validation of all parameters, including:
+// - Required parameter presence check
+// - Type validation (string, int, float, bool, object, array)
+// - Constraint validation (Pattern, Enum, MinValue, MaxValue)
+// - Default value application for optional parameters
+//
+// Returns InputValidationError if validation fails, nil if all parameters are valid.
 func ValidateInputs(inputs map[string]interface{}, specs map[string]ParamSpec) error {
-	var errors []string
+	var errors []ParameterError
 
-	for name, spec := range specs {
-		value, exists := inputs[name]
+	// 1. Apply default values for optional parameters
+	for paramName, spec := range specs {
+		if !spec.Required && spec.Default != nil {
+			if _, exists := inputs[paramName]; !exists {
+				inputs[paramName] = spec.Default
+			}
+		}
+	}
 
-		if spec.Required && !exists {
-			errors = append(errors, fmt.Sprintf("required parameter missing: %s", name))
+	// 2. Check required parameters
+	for paramName, spec := range specs {
+		if spec.Required {
+			if _, exists := inputs[paramName]; !exists {
+				errors = append(errors, ParameterError{
+					ParamName: paramName,
+					ErrorType: "Missing",
+					Expected:  "required",
+					Actual:    nil,
+					Message:   fmt.Sprintf("required parameter '%s' is missing", paramName),
+				})
+			}
+		}
+	}
+
+	// 3. Validate parameter types and constraints
+	for paramName, value := range inputs {
+		spec, exists := specs[paramName]
+		if !exists {
+			// Unknown parameter - allow extra parameters (backward compatibility)
 			continue
 		}
 
-		if !exists {
-			continue // Optional parameter not provided
+		// Type validation
+		if err := validateType(paramName, value, spec.Type); err != nil {
+			errors = append(errors, *err)
+			continue // Skip constraint validation if type is wrong
 		}
 
-		// Validate value against spec
-		if err := validateValue(name, value, spec); err != nil {
-			errors = append(errors, err.Error())
+		// Pattern validation (only for string type)
+		if spec.Pattern != "" && spec.Type == "string" {
+			if err := validatePattern(paramName, value.(string), spec.Pattern); err != nil {
+				errors = append(errors, *err)
+			}
+		}
+
+		// Enum validation
+		if len(spec.Enum) > 0 {
+			if err := validateEnumConstraint(paramName, value, spec.Enum); err != nil {
+				errors = append(errors, *err)
+			}
+		}
+
+		// Numeric range validation
+		if (spec.Type == "int" || spec.Type == "float") && (spec.MinValue != nil || spec.MaxValue != nil) {
+			if err := validateRange(paramName, value, spec.MinValue, spec.MaxValue); err != nil {
+				errors = append(errors, *err)
+			}
 		}
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf("input validation failed: %s", strings.Join(errors, "; "))
-	}
-
-	return nil
-}
-
-// validateValue validates a single input value against its spec
-func validateValue(name string, value interface{}, spec ParamSpec) error {
-	// Validate enum constraints
-	if err := validateEnum(name, value, spec.Enum); err != nil {
-		return err
-	}
-
-	// Validate numeric ranges
-	if spec.Type == "int" || spec.Type == "float" {
-		if err := validateNumericRange(name, value, spec); err != nil {
-			return err
-		}
-	}
-
-	// Validate string patterns
-	if spec.Type == "string" && spec.Pattern != "" {
-		if err := validateStringPattern(name, value, spec.Pattern); err != nil {
-			return err
+		return &InputValidationError{
+			Errors: errors,
 		}
 	}
 
 	return nil
 }
 
-// validateEnum validates enum constraints
-func validateEnum(name string, value interface{}, enum []interface{}) error {
-	if len(enum) == 0 {
+// validateType validates parameter type matches expected type.
+// Handles JSON number compatibility (all numbers parsed as float64).
+func validateType(paramName string, value interface{}, expectedType string) *ParameterError {
+	actualType := getGoType(value)
+
+	switch expectedType {
+	case "string":
+		if _, ok := value.(string); !ok {
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "TypeMismatch",
+				Expected:  "string",
+				Actual:    actualType,
+				Message:   fmt.Sprintf("expected string, got %s", actualType),
+			}
+		}
+
+	case "int":
+		switch v := value.(type) {
+		case int, int32, int64:
+			return nil // Native int types
+		case float64:
+			// JSON-parsed numbers, check if it's a whole number
+			if v == float64(int64(v)) {
+				return nil // ✅ 30.0 is valid int
+			}
+			// Reject floats with decimal parts
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "TypeMismatch",
+				Expected:  "int (whole number)",
+				Actual:    fmt.Sprintf("float64(%v)", v),
+				Message:   fmt.Sprintf("expected integer, got float with decimal: %v", v),
+			}
+		default:
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "TypeMismatch",
+				Expected:  "int",
+				Actual:    actualType,
+				Message:   fmt.Sprintf("expected int, got %s", actualType),
+			}
+		}
+
+	case "float":
+		switch value.(type) {
+		case float32, float64:
+			return nil
+		case int, int32, int64:
+			return nil // ✅ int can be implicitly converted to float
+		default:
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "TypeMismatch",
+				Expected:  "float",
+				Actual:    actualType,
+				Message:   fmt.Sprintf("expected float, got %s", actualType),
+			}
+		}
+
+	case "bool":
+		if _, ok := value.(bool); !ok {
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "TypeMismatch",
+				Expected:  "bool",
+				Actual:    actualType,
+				Message:   fmt.Sprintf("expected bool, got %s", actualType),
+			}
+		}
+
+	case "object":
+		if _, ok := value.(map[string]interface{}); !ok {
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "TypeMismatch",
+				Expected:  "object (map[string]interface{})",
+				Actual:    actualType,
+				Message:   fmt.Sprintf("expected object, got %s", actualType),
+			}
+		}
+
+	case "array":
+		if _, ok := value.([]interface{}); !ok {
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "TypeMismatch",
+				Expected:  "array ([]interface{})",
+				Actual:    actualType,
+				Message:   fmt.Sprintf("expected array, got %s", actualType),
+			}
+		}
+	}
+
+	return nil
+}
+
+// getGoType returns the Go type string for a value.
+func getGoType(value interface{}) string {
+	if value == nil {
+		return "nil"
+	}
+	switch value.(type) {
+	case string:
+		return "string"
+	case int, int32, int64:
+		return "int"
+	case float32, float64:
+		return "float64"
+	case bool:
+		return "bool"
+	case map[string]interface{}:
+		return "object"
+	case []interface{}:
+		return "array"
+	default:
+		return fmt.Sprintf("%T", value)
+	}
+}
+
+// patternCache caches compiled regex patterns for performance.
+// Uses sync.Map for lock-free reads in concurrent scenarios.
+var patternCache sync.Map // map[string]*regexp.Regexp
+
+// validatePattern validates string value against regex pattern.
+// Uses cached compiled regex for performance.
+func validatePattern(paramName, value, pattern string) *ParameterError {
+	// Try to load from cache (lock-free read)
+	if cached, ok := patternCache.Load(pattern); ok {
+		re := cached.(*regexp.Regexp)
+		if !re.MatchString(value) {
+			return &ParameterError{
+				ParamName: paramName,
+				ErrorType: "PatternMismatch",
+				Expected:  pattern,
+				Actual:    value,
+				Message:   fmt.Sprintf("value '%s' does not match pattern '%s'", value, pattern),
+			}
+		}
 		return nil
 	}
 
+	// Cache miss - compile and store
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		// Compilation failure - should have been caught in ValidateNode
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "PatternMismatch",
+			Message:   fmt.Sprintf("invalid regex pattern: %v", err),
+		}
+	}
+
+	// Store to cache (may store multiple times for same key, but harmless)
+	patternCache.Store(pattern, re)
+
+	// Validate
+	if !re.MatchString(value) {
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "PatternMismatch",
+			Expected:  pattern,
+			Actual:    value,
+			Message:   fmt.Sprintf("value '%s' does not match pattern '%s'", value, pattern),
+		}
+	}
+
+	return nil
+}
+
+// validateEnumConstraint validates value is in enum list.
+func validateEnumConstraint(paramName string, value interface{}, enum []interface{}) *ParameterError {
 	for _, allowed := range enum {
 		if value == allowed {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("parameter %s: value not in enum: %v", name, value)
+	return &ParameterError{
+		ParamName: paramName,
+		ErrorType: "EnumViolation",
+		Expected:  enum,
+		Actual:    value,
+		Message:   fmt.Sprintf("value '%v' is not in allowed enum: %v", value, enum),
+	}
 }
 
-// validateNumericRange validates numeric range constraints
-func validateNumericRange(name string, value interface{}, spec ParamSpec) error {
+// validateRange validates numeric value is within min/max range.
+func validateRange(paramName string, value interface{}, minValue, maxValue *float64) *ParameterError {
 	numVal, err := toFloat64(value)
 	if err != nil {
-		return fmt.Errorf("parameter %s: expected numeric type, got %T", name, value)
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "RangeViolation",
+			Message:   fmt.Sprintf("expected numeric type, got %T", value),
+		}
 	}
 
-	if spec.MinValue != nil && numVal < *spec.MinValue {
-		return fmt.Errorf("parameter %s: value %f < minimum %f", name, numVal, *spec.MinValue)
-	}
-	if spec.MaxValue != nil && numVal > *spec.MaxValue {
-		return fmt.Errorf("parameter %s: value %f > maximum %f", name, numVal, *spec.MaxValue)
-	}
-
-	return nil
-}
-
-// validateStringPattern validates string pattern constraints
-func validateStringPattern(name string, value interface{}, pattern string) error {
-	strVal, ok := value.(string)
-	if !ok {
-		return fmt.Errorf("parameter %s: expected string, got %T", name, value)
+	if minValue != nil && numVal < *minValue {
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "RangeViolation",
+			Expected:  fmt.Sprintf(">= %f", *minValue),
+			Actual:    numVal,
+			Message:   fmt.Sprintf("value %f is less than minimum %f", numVal, *minValue),
+		}
 	}
 
-	matched, _ := regexp.MatchString(pattern, strVal)
-	if !matched {
-		return fmt.Errorf("parameter %s: value does not match pattern %s", name, pattern)
+	if maxValue != nil && numVal > *maxValue {
+		return &ParameterError{
+			ParamName: paramName,
+			ErrorType: "RangeViolation",
+			Expected:  fmt.Sprintf("<= %f", *maxValue),
+			Actual:    numVal,
+			Message:   fmt.Sprintf("value %f exceeds maximum %f", numVal, *maxValue),
+		}
 	}
 
 	return nil
