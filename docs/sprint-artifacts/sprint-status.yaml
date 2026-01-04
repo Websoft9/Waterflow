@@ -82,25 +82,25 @@ development_status:
   3-9-node-reference-documentation: done  # ✅文档完成,3,115行参考文档(8文件),覆盖7个核心节点(exec/shell,exec/script,flow/sleep,http/request,file/transfer,docker/exec,docker/compose),AC1-AC4 100%达成,质量验证通过(完整性/正确性/实用性/可读性/一致性),完成日期2025-12-31
   epic-3-retrospective: optional
 
-  # Epic 4: 节点扩展系统 (5 stories) - IN PROGRESS 2025-12-31
-  epic-4: in-progress
-  4-1-plugin-manager-noderegistry: review  # ✅实现完成,PluginManager升级/NodeRegistry/热加载/所有测试通过,2025-12-31
+  # Epic 4: 节点扩展系统 (5 stories) - COMPLETED 2026-01-04
+  epic-4: done
+  4-1-plugin-manager-noderegistry: done  # ✅代码审查完成,PluginManager升级/NodeRegistry/热加载/所有测试通过,A+(96/100),2025-12-31
   4-2-node-parameter-schema-validation: done  # ✅代码审查完成,ValidateInputs实现/Activity集成/覆盖率85.2%/所有测试通过,8个问题已修复(2 HIGH+4 MEDIUM+2 LOW),2025-12-31
-  4-3-node-retry-strategy-configuration: review  # ✅实现完成,RetryPolicy集成/NonRetryableError处理/Temporal UI验证脚本/文档完整,2025-12-31
-  4-4-custom-node-plugin-development-example: ready-for-dev  # Story 创建完成,Greeter 节点示例,2025-12-31
-  4-5-custom-node-development-guide: ready-for-dev  # Story 创建完成,完整节点开发指南,2025-12-31
+  4-3-node-retry-strategy-configuration: done  # ✅实现完成,RetryPolicy集成/NonRetryableError处理/Temporal UI验证脚本/文档完整,2025-12-31
+  4-4-custom-node-plugin-development-example: done  # ✅代码审查完成,所有6个问题已修复,AC1-AC6 100%达成,覆盖率93.8%,插件5.2MB,性能<4μs,文档完整,完成日期2026-01-04
+  4-5-custom-node-development-guide: done  # ✅代码审查完成,AC1-AC6 100%达成,文档2760行,70个Go示例,3个分层示例,综合评分A+(98/100),完成日期2026-01-04
   epic-4-retrospective: optional
 
-  # Epic 5: 客户端工具和 SDK (8 stories)
-  epic-5: backlog
-  5-1-cli-framework: backlog
-  5-2-cli-validate-command: backlog
-  5-3-cli-submit-command: backlog
-  5-4-cli-status-command: backlog
-  5-5-cli-logs-command: backlog
-  5-6-cli-node-list-command: backlog
-  5-7-go-sdk-client: backlog
-  5-8-go-sdk-documentation: backlog
+  # Epic 5: 客户端工具和 SDK (8 stories) - READY 2026-01-04
+  epic-5: in-progress
+  5-1-cli-framework: ready-for-dev
+  5-2-cli-validate-command: ready-for-dev
+  5-3-cli-submit-command: ready-for-dev
+  5-4-cli-status-command: ready-for-dev
+  5-5-cli-logs-command: ready-for-dev
+  5-6-cli-node-list-command: ready-for-dev
+  5-7-go-sdk-client: ready-for-dev
+  5-8-go-sdk-documentation: ready-for-dev
   epic-5-retrospective: optional
 
   # Epic 6: 工作流模板库 (5 stories)

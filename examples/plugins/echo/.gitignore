@@ -1,0 +1,11 @@
+# 编译产物
+*.so
+echo.so
+
+# 测试产物
+coverage.out
+coverage.html
+
+# Go 编译缓存
+*.test
+*.out

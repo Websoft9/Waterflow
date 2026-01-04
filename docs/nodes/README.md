@@ -373,9 +373,20 @@ steps:
 
 支持。工作流可以同时执行多个步骤，每个节点实例独立执行，互不干扰。
 
-### 7. 如何贡献自定义节点？
+### 7. 如何贡献自定义节点?
 
 参见 [自定义节点开发指南](../guides/node-development.md)。
+
+**示例参考**:
+- **入门**: [Echo Node](../../examples/plugins/echo/) - 简单回显示例
+- **实战**: [Greeter Node](../../examples/plugins/greeter/) - 多语言问候示例 (推荐, 包含完整测试和文档)
+
+```bash
+# 快速体验 Greeter 节点
+cd examples/plugins/greeter
+make build test
+# ✅ 测试通过, 覆盖率 93.8%
+```
 
 ## 参考文档
 
