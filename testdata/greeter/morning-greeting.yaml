@@ -1,0 +1,35 @@
+name: Morning Greeting Workflow
+on: push
+
+jobs:
+  greet:
+    runs-on: linux-amd64
+    steps:
+      # 测试中文问候
+      - name: Greet in Chinese
+        uses: custom/greeter@v1
+        with:
+          name: 小明
+          language: zh
+          time_of_day: morning
+      
+      # 测试英文问候
+      - name: Greet in English
+        uses: custom/greeter@v1
+        with:
+          name: Alice
+          language: en
+          time_of_day: afternoon
+      
+      # 测试自动检测时间
+      - name: Greet with Auto Time
+        uses: custom/greeter@v1
+        with:
+          name: Bob
+          time_of_day: auto
+      
+      # 打印结果
+      - name: Print Greeting
+        uses: exec/script@v1
+        with:
+          command: echo "${{ steps['Greet in Chinese'].outputs.greeting }}"

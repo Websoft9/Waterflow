@@ -1,0 +1,15 @@
+# 编译产物
+*.so
+greeter.so
+
+# 测试产物
+coverage.out
+coverage.html
+
+# Go 编译缓存
+*.test
+*.out
+
+# IDE 文件
+.idea/
+.vscode/
