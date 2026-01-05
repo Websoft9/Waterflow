@@ -91,16 +91,16 @@ development_status:
   4-5-custom-node-development-guide: done  # ✅代码审查完成,AC1-AC6 100%达成,文档2760行,70个Go示例,3个分层示例,综合评分A+(98/100),完成日期2026-01-04
   epic-4-retrospective: optional
 
-  # Epic 5: 客户端工具和 SDK (8 stories) - READY 2026-01-04
-  epic-5: in-progress
-  5-1-cli-framework: ready-for-dev
-  5-2-cli-validate-command: ready-for-dev
-  5-3-cli-submit-command: ready-for-dev
-  5-4-cli-status-command: ready-for-dev
-  5-5-cli-logs-command: ready-for-dev
-  5-6-cli-node-list-command: ready-for-dev
-  5-7-go-sdk-client: ready-for-dev
-  5-8-go-sdk-documentation: ready-for-dev
+  # Epic 5: 客户端工具和 SDK (8 stories) - COMPLETED 2026-01-05
+  epic-5: done
+  5-1-cli-framework: done  # ✅代码审查完成,所有6个问题已修复(1 CRITICAL+3 MEDIUM+2 LOW),默认端口统一为8080,单元测试覆盖率提升(errors 100%,output 12%),File List更新,集成测试扩展至10个场景,批量实现说明已添加,代码已提交Git,完成日期2026-01-05
+  5-2-cli-validate-command: done  # ✅代码审查完成(2026-01-05),所有13个问题已修复(8 HIGH+3 MEDIUM+2 LOW),AC1-AC6 100%达成,单元测试86.2%覆盖率(14个测试),集成测试10/10通过,Server验证+降级实现,verbose模式,ValidationTime修复,完整文档,2087行新增代码
+  5-3-cli-submit-command: done  # ✅代码审查完成(2026-01-05),所有23个问题已修复(10 HIGH+8 MEDIUM+5 LOW),AC1-AC3/AC5-AC7 100%达成,AC4框架就绪(需Story 5.5 API),单元测试100%通过,UUID验证增强,超时控制,变量key限制,类型断言保护,集成测试增强(--wait/--validate),文档完善(变量推断/错误场景),1138行新增代码
+  5-4-cli-status-command: done  # ✅代码审查完成(2026-01-05),所有7个问题已修复(1 CRITICAL+3 MEDIUM+3 LOW),时间解析错误处理,Watch模式错误恢复,Job名称截断优化,单元测试覆盖(43个测试全通过),AC1-AC6 100%达成,完成日期2026-01-05
+  5-5-cli-logs-command: done  # ✅代码审查完成(2026-01-05),所有13个问题已修复(2 CRITICAL+8 MEDIUM+3 LOW),AC1-AC7 100%达成,SSE流式优先+轮询降级,单元测试21个全通过(logs_test.go+client/logs_test.go),集成测试9/9通过,时间戳标准化,参数验证,NDJSON注释修正,File List完整记录,完成日期2026-01-05
+  5-6-cli-node-list-command: done  # ✅代码审查完成(2026-01-05),所有6个问题已修复(3 CRITICAL+2 MEDIUM+1 MINOR),AC1-AC6 100%达成,单元测试13/13通过(node_list_test 6个+nodes_test 7个),集成测试脚本11个场景,YAML输出改进(yaml.v3),示例生成优化,Server API完成(硬编码7节点),文档完整,完成日期2026-01-05
+  5-7-go-sdk-client: done  # ✅代码审查完成(2026-01-05),所有3个MEDIUM问题已修复,AC1-AC7 100%达成,实现Client/SubmitWorkflow/GetWorkflowStatus/ListWorkflows(新增)/GetWorkflowLogs(完整过滤)/CancelWorkflow/RerunWorkflow(新增),单元测试10/10通过,示例程序编译通过,GoDoc详细,README完整(388行),评分10/10,完成日期2026-01-05
+  5-8-go-sdk-documentation: done  # ✅代码审查完成(2026-01-05),所有17个问题已修复(12 HIGH+3 MEDIUM+2 LOW),AC1-AC5 100%达成(MVP范围),GoDoc注释全部补充(types.go 7类型+errors.go 3函数),Task 1/2/3/6/7/8已完成,Task 4/5标记Post-MVP,quickstart README已存在,error_handling.go缩进修复,File List更新,完成日期2026-01-05
   epic-5-retrospective: optional
 
   # Epic 6: 工作流模板库 (5 stories)

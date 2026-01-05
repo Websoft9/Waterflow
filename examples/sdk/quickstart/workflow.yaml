@@ -1,0 +1,15 @@
+name: quickstart-example
+
+jobs:
+  greet:
+    runs-on: default
+    steps:
+      - name: Say hello
+        uses: exec/shell@v1
+        with:
+          command: echo "Hello from Waterflow Go SDK!"
+      
+      - name: Show date
+        uses: exec/shell@v1
+        with:
+          command: date

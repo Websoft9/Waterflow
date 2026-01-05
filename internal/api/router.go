@@ -94,6 +94,11 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 		router.HandleFunc("/v1/workflows/{id}/rerun", wh.RerunWorkflow).Methods(http.MethodPost)
 	}
 
+	// Node management endpoints (Story 5.6)
+	nh := NewNodeHandlers(logger)
+	router.HandleFunc("/v1/nodes", nh.ListNodes).Methods(http.MethodGet)
+	router.HandleFunc("/v1/nodes/{name}", nh.GetNode).Methods(http.MethodGet)
+
 	// Custom error handlers
 	router.NotFoundHandler = http.HandlerFunc(h.NotFound)
 	router.MethodNotAllowedHandler = http.HandlerFunc(h.MethodNotAllowed)

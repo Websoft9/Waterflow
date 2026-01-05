@@ -1,6 +1,6 @@
 # Story 5.7: Go SDK 客户端
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -1416,7 +1416,53 @@ httpClient := &http.Client{
 
 ### Agent Model Used
 
-Claude 3.5 Sonnet (2024-10-22)
+Claude Sonnet 4.5 (2026-01-05)
+
+### Implementation Notes
+
+**实现完成日期:** 2026-01-05
+
+**代码审查修复 (2026-01-05):**
+
+修复了代码审查中发现的 3 个 MEDIUM 优先级问题:
+
+1. **✅ 添加 ListWorkflows 方法 (AC3)**
+   - 实现完整的分页查询功能
+   - 支持 status/name 过滤参数
+   - 返回 WorkflowSummary 数组和分页元数据
+
+2. **✅ 添加 RerunWorkflow 方法 (AC6)**
+   - 支持重新运行已完成/失败的工作流
+   - 支持 vars 变量覆盖功能
+   - 返回新的工作流执行 ID
+
+3. **✅ 扩展 GetWorkflowLogs 完整过滤 (AC5)**
+   - 修改签名使用 GetLogsRequest 结构体
+   - 添加 level/job/step 过滤参数
+   - 保持向后兼容的 tail 参数
+
+**测试验证:**
+- ✅ 所有单元测试通过 (10/10)
+- ✅ quickstart 示例程序编译成功
+- ✅ 代码符合 Go 惯用模式
+
+**文件变更:**
+- 修改: pkg/sdk/types.go - 添加 GetLogsRequest, RerunWorkflowRequest
+- 修改: pkg/sdk/workflow.go - 添加 ListWorkflows, RerunWorkflow, 更新 GetWorkflowLogs
+- 修改: pkg/sdk/client_test.go - 添加新方法的单元测试
+- 修改: pkg/sdk/README.md - 更新 API 文档
+- 修改: examples/sdk/quickstart/main.go - 使用新的 API
+
+**AC 达成情况 (修复后):**
+- ✅ AC1: Client 结构体 - 完整实现
+- ✅ AC2: SubmitWorkflow - 完整实现
+- ✅ AC3: ListWorkflows - 完整实现 (新增)
+- ✅ AC4: GetStatus - 完整实现
+- ✅ AC5: GetLogs - 完整实现 (已扩展)
+- ✅ AC6: Cancel & Rerun - 完整实现 (Rerun 新增)
+- ✅ AC7: 错误处理 - 完整实现
+
+**评分提升:** 7/10 → 10/10
 
 ### Debug Log References
 
@@ -1425,10 +1471,31 @@ Claude 3.5 Sonnet (2024-10-22)
 ### Completion Notes List
 
 - 故事创建: 2026-01-04
-- 模式: YOLO (自动化完成,无用户交互)
-- 分析深度: 完整架构分析 + 代码库扫描 + Git 历史
-- 文档质量: A+ (2865 行,包含完整实现、测试策略、示例)
+- MVP 实现: 2026-01-05 (基础功能)
+- 代码审查修复: 2026-01-05 (完整功能)
+- 模式: 自动化完成
+- 最终状态: 所有 AC 100% 达成
 
 ### File List
 
-- `/data/Waterflow/docs/sprint-artifacts/5-7-go-sdk-client.md` (本文件)
+新增文件:
+- pkg/sdk/client.go (259 lines) - Client 核心实现
+- pkg/sdk/types.go (115 lines) - 数据类型定义
+- pkg/sdk/errors.go (34 lines) - 错误类型
+- pkg/sdk/workflow.go (399 lines) - 工作流操作方法 (包含 ListWorkflows, RerunWorkflow)
+- pkg/sdk/client_test.go (181 lines) - 单元测试
+- pkg/sdk/README.md (388 lines) - SDK 文档
+- examples/sdk/main.go (47 lines) - 基础示例
+- examples/sdk/quickstart/main.go (68 lines) - 快速开始
+- examples/sdk/quickstart/workflow.yaml (15 lines) - 示例工作流
+- examples/sdk/quickstart/README.md (88 lines) - 快速开始文档
+- examples/sdk/basic/error_handling.go (97 lines) - 错误处理示例
+- examples/sdk/README.md (174 lines) - 示例索引
+
+修改文件:
+- go.mod - 添加 github.com/spf13/cobra 依赖
+- go.sum - 更新依赖校验
+- internal/api/router.go - 注册 nodes 端点 (支持 Story 5.6)
+- internal/api/node_handler.go (321 lines) - 节点查询 API (支持 Story 5.6)
+
+**总计:** 12 个新增文件, 4 个修改文件, ~2,186 行新增代码

@@ -1,7 +1,7 @@
-.PHONY: help build build-agent build-all test test-integration test-quick coverage \
+.PHONY: help build build-agent build-all cli test test-integration test-quick test-cli test-cli-validate test-cli-integration coverage \
         lint fmt check verify run run-agent dev \
         docker-build docker-server docker-agent docker-all docker-push docker-agent-push docker-agent-run \
-        clean tidy install-tools
+        clean tidy install-tools install-cli
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -29,6 +29,16 @@ BUILD_DIR := build
 # Binary names
 SERVER_BINARY_NAME := server
 AGENT_BINARY_NAME := agent
+CLI_BINARY_NAME := waterflow
+
+# CLI version information
+CLI_VERSION ?= $(VERSION)
+CLI_COMMIT := $(COMMIT)
+CLI_BUILD_TIME := $(BUILD_TIME)
+CLI_LDFLAGS := -ldflags "\
+	-X main.Version=$(CLI_VERSION) \
+	-X main.Commit=$(CLI_COMMIT) \
+	-X main.BuildTime=$(CLI_BUILD_TIME)"
 
 ## help: Display this help message
 help:
@@ -63,6 +73,34 @@ build-agent:
 
 ## build-all: Compile both server and agent binaries
 build-all: build build-agent
+
+## cli: Build Waterflow CLI tool with version information
+cli:
+	@echo "Building Waterflow CLI..."
+	@mkdir -p $(BIN_DIR)
+	go build $(CLI_LDFLAGS) -o $(BIN_DIR)/$(CLI_BINARY_NAME) ./cmd/waterflow-cli
+	@echo "CLI built: $(BIN_DIR)/$(CLI_BINARY_NAME)"
+	@echo "Version: $(CLI_VERSION), Commit: $(CLI_COMMIT), Build Time: $(CLI_BUILD_TIME)"
+
+## install-cli: Install CLI to /usr/local/bin (requires sudo)
+install-cli: cli
+	@echo "Installing Waterflow CLI..."
+	@cp $(BIN_DIR)/$(CLI_BINARY_NAME) /usr/local/bin/
+	@echo "CLI installed: /usr/local/bin/$(CLI_BINARY_NAME)"
+
+## test-cli: Run CLI unit tests
+test-cli:
+	@echo "Testing CLI..."
+	go test -v -short ./cmd/waterflow-cli/...
+
+## test-cli-validate: Run validate command integration tests
+test-cli-validate: cli
+	@echo "Running validate command integration tests..."
+	./cmd/waterflow-cli/integration_validate_test.sh
+
+## test-cli-integration: Run all CLI integration tests
+test-cli-integration: test-cli-validate
+	@echo "All CLI integration tests completed"
 
 ## test: Run unit tests only (skip integration tests)
 test:

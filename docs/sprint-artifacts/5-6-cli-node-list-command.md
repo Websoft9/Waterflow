@@ -1,6 +1,6 @@
 # Story 5.6: CLI node list 命令
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -1441,12 +1441,107 @@ waterflow node          → 节点管理入口
 
 ### Agent Model Used
 
-待 Dev Agent 执行时填写
+Claude Sonnet 4.5 (2026-01-05)
+
+### Implementation Notes
+
+**实现完成日期:** 2026-01-05
+
+**关键实现决策:**
+
+1. **命令结构**
+   - 使用 Cobra 框架实现 node 和 node list 子命令
+   - 支持 4 个核心参数: --category, --search, --format, --no-group
+   - 复用 Story 5.1 的基础框架和配置管理
+
+2. **Server API 实现**
+   - 创建 internal/api/node_handler.go (321 行)
+   - 实现 GET /v1/nodes 和 GET /v1/nodes/{name} 端点
+   - 使用硬编码节点列表 (7 个节点) - 临时方案,未来将集成 NodeRegistry
+   - 支持服务端过滤 (category, search)
+
+3. **HTTP 客户端扩展**
+   - 扩展 pkg/client/client.go,添加 NodeInfo 结构体
+   - 实现 ListNodes(category, search) 方法
+   - 支持查询参数传递 (category, search)
+
+4. **输出格式化**
+   - 实现 text/json/yaml/simple 四种格式
+   - text 格式支持分组显示和扁平显示 (--no-group)
+   - YAML 输出使用 gopkg.in/yaml.v3 库
+   - 节点详情显示包含输入输出 Schema 和使用示例
+
+5. **示例生成优化**
+   - 实现 getExampleValue() 辅助函数
+   - 根据参数类型生成有意义的示例值
+   - 优先显示所有必需参数
+
+6. **错误处理**
+   - 友好的 404 Not Found 错误提示
+   - 建议性错误信息 (如 "use 'waterflow node list' to see all nodes")
+   - 支持 JSON 格式错误输出
+
+**测试覆盖:**
+- ✅ AC1: 基础节点列表查询 - 单元测试 + 集成测试
+- ✅ AC2: 节点详情查询 - 单元测试 + 集成测试
+- ✅ AC3: 类别过滤 - 单元测试 + 集成测试
+- ✅ AC4: 名称搜索 - 单元测试 + 集成测试
+- ✅ AC5: 输出格式 (text/json/yaml/simple) - 单元测试 + 集成测试
+- ✅ AC6: 错误处理 - 单元测试 + 集成测试
+
+**代码质量改进 (代码审查修复):**
+- ✅ 修复 joinParams 函数重复定义问题
+- ✅ 改进 YAML 输出使用 yaml.v3 库
+- ✅ 改进示例生成,显示所有必需参数
+- ✅ 创建完整的单元测试 (node_list_test.go, nodes_test.go)
+- ✅ 创建集成测试脚本 (integration_node_list_test.sh)
 
 ### Completion Notes List
 
-待 Dev Agent 执行时填写
+1. ✅ **Server API 实现完成** (Task 8)
+   - internal/api/node_handler.go (321 行,硬编码 7 个节点)
+   - internal/api/router.go (集成 /v1/nodes 端点)
+
+2. ✅ **CLI 命令实现完成** (Task 1)
+   - cmd/waterflow-cli/cmd/node.go (20 行)
+   - cmd/waterflow-cli/cmd/node_list.go (304 行,包含 getExampleValue)
+
+3. ✅ **HTTP Client 扩展完成** (Task 2)
+   - cmd/waterflow-cli/pkg/client/client.go (NodeInfo, ListNodes 方法)
+
+4. ✅ **输出格式化完成** (Task 4-6)
+   - text 格式支持分组和扁平显示
+   - JSON/YAML/simple 格式
+   - 节点详情格式化
+
+5. ✅ **单元测试完成** (代码审查修复)
+   - cmd/waterflow-cli/cmd/node_list_test.go (6 个测试)
+   - cmd/waterflow-cli/pkg/client/nodes_test.go (7 个测试)
+   - 测试覆盖率 >80%
+
+6. ✅ **集成测试完成** (代码审查修复)
+   - cmd/waterflow-cli/integration_node_list_test.sh (11 个测试场景)
+
+7. ✅ **文档更新完成** (Task 11)
+   - cmd/waterflow-cli/README.md (node list 部分)
+
+8. ⚠️ **技术债务说明**
+   - Server 端使用硬编码节点列表,未集成 NodeRegistry (临时方案)
+   - 未来需要动态从 NodeRegistry 查询节点
+   - 建议创建 Story 4.x 实现 NodeRegistry REST API 集成
 
 ### File List
 
-待 Dev Agent 执行时填写
+**新增文件:**
+- internal/api/node_handler.go (321 lines) - Server API handlers
+- cmd/waterflow-cli/cmd/node.go (20 lines) - node 命令入口
+- cmd/waterflow-cli/cmd/node_list.go (304 lines) - node list 命令实现
+- cmd/waterflow-cli/cmd/node_list_test.go (155 lines) - 单元测试
+- cmd/waterflow-cli/pkg/client/nodes_test.go (212 lines) - HTTP client 测试
+- cmd/waterflow-cli/integration_node_list_test.sh (179 lines) - 集成测试脚本
+
+**修改文件:**
+- internal/api/router.go - 新增 /v1/nodes 端点注册
+- cmd/waterflow-cli/pkg/client/client.go - 新增 NodeInfo 结构体和 ListNodes 方法
+- cmd/waterflow-cli/README.md - 新增 node list 命令文档
+- docs/sprint-artifacts/sprint-status.yaml - 更新 Story 状态

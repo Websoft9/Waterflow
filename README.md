@@ -89,6 +89,20 @@ curl http://localhost:8080/v1/workflows
 
 Visit http://localhost:8088 to view workflow execution in the Temporal Web UI.
 
+### Programmatic Access with Go SDK
+
+```go
+import "github.com/Websoft9/waterflow/pkg/sdk"
+
+client, _ := sdk.NewDefaultClient()
+resp, _ := client.SubmitWorkflow(ctx, &sdk.SubmitWorkflowRequest{
+    YAML: workflowYAML,
+})
+fmt.Printf("Workflow ID: %s\n", resp.ID)
+```
+
+See [pkg/sdk/README.md](pkg/sdk/README.md) for complete SDK documentation.
+
 For detailed deployment instructions, see [Quick Start Guide](docs/quick-start.md) or [Deployment Documentation](docs/deployment.md).
 
 ---

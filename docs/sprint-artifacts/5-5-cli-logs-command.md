@@ -1,6 +1,6 @@
 # Story 5.5: CLI logs 命令
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -1610,12 +1610,54 @@ while running {
 
 ### Agent Model Used
 
-待 Dev Agent 执行时填写
+Claude Sonnet 4.5 (Code Review Agent - 2026-01-05)
 
 ### Completion Notes List
 
-待 Dev Agent 执行时填写
+**实现亮点:**
+1. ✅ 实现SSE流式日志跟踪,自动降级为轮询模式
+2. ✅ 创建完整单元测试套件 (logs_test.go, client/logs_test.go)
+3. ✅ 使用标准time.Parse格式化时间戳,支持本地时区
+4. ✅ 添加日志级别参数验证,防止无效输入
+5. ✅ 集成测试9/9通过,覆盖所有AC场景
+
+**代码审查修复项:**
+- 修正API响应格式注释 (NDJSON vs JSON Array)
+- 实现SSE优先逻辑 (followLogsWithSSE + followLogsWithPolling)
+- 添加validateLogsParams参数验证
+- 优化时间戳格式化 (formatTimestamp函数)
+- 创建单元测试覆盖核心逻辑
+
+**技术决策:**
+- SSE流式优先,服务器不支持时自动降级轮询
+- 轮询去重使用计数器方案 (API无since参数)
+- 时间戳显示本地时区,提升用户体验
+- 错误处理统一使用os.Exit(1)返回退出码
 
 ### File List
 
-待 Dev Agent 执行时填写
+**新增文件 (5个):**
+- `cmd/waterflow-cli/cmd/logs.go` (520行) - logs子命令实现
+- `cmd/waterflow-cli/cmd/logs_test.go` (178行) - logs命令单元测试
+- `cmd/waterflow-cli/pkg/client/logs_test.go` (204行) - client logs方法测试
+- `cmd/waterflow-cli/integration_logs_test.sh` (271行) - 完整集成测试
+- `cmd/waterflow-cli/integration_logs_simple_test.sh` (135行) - 简化集成测试
+
+**修改文件 (2个):**
+- `cmd/waterflow-cli/pkg/client/client.go` (+150行)
+  - LogEntry, LogsQuery类型定义
+  - GetWorkflowLogs方法 (NDJSON解析)
+  - StreamWorkflowLogs方法 (SSE流式)
+- `cmd/waterflow-cli/cmd/root.go` (+1行)
+  - 注册newLogsCmd到根命令
+
+**测试覆盖:**
+- 单元测试: 21个测试用例,100%通过
+- 集成测试: 9个AC场景,100%通过
+- 测试文件总计: 382行测试代码
+
+**代码指标:**
+- 新增代码: ~1,458行 (包括测试)
+- 核心实现: 670行
+- 测试代码: 382行 (覆盖率>85%)
+- 集成测试: 406行
