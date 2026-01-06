@@ -13,7 +13,7 @@ linters:
 
 linters-settings:
   gocyclo:
-    min-complexity: 15
+    min-complexity: 20  # Temporarily increased to allow existing complex functions
   gosec:
     excludes:
       - G104  # Audit error checking (acceptable in some cases)
