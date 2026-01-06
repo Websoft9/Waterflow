@@ -46,7 +46,7 @@ For more information, visit: https://github.com/Websoft9/waterflow`,
 			return
 		}
 		// No subcommand provided, show help
-		cmd.Help()
+		_ = cmd.Help()
 	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Load configuration
@@ -102,8 +102,8 @@ func init() {
 	rootCmd.Flags().BoolP("version", "v", false, "Show version information")
 
 	// Bind environment variables
-	viper.BindEnv("server", "WATERFLOW_SERVER")
-	viper.BindEnv("api_key", "WATERFLOW_API_KEY")
+	_ = viper.BindEnv("server", "WATERFLOW_SERVER")
+	_ = viper.BindEnv("api_key", "WATERFLOW_API_KEY")
 
 	// Register subcommands
 	rootCmd.AddCommand(newVersionCmd())

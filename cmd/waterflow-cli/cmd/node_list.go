@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/Websoft9/waterflow/cmd/waterflow-cli/pkg/client"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 )
 
@@ -138,7 +139,7 @@ func displayNodeListGrouped(nodes []client.NodeInfo) {
 	for _, cat := range catNames {
 		title := categoryTitles[cat]
 		if title == "" {
-			title = strings.Title(cat)
+			title = cases.Title(language.English).String(cat)
 		}
 
 		fmt.Printf("%s:\n", title)

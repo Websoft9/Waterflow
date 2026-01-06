@@ -109,6 +109,7 @@ func runSubmit(cmd *cobra.Command, args []string) error {
 	}
 
 	// 2. Read file
+	// #nosec G304 - filepath is validated above
 	content, err := os.ReadFile(filepath)
 	if err != nil {
 		if os.IsNotExist(err) {

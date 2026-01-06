@@ -67,7 +67,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	} else {
 		logger = zap.NewNop()
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	// Collect files
 	files, err := collectValidationFiles(args, validateRecursive)
@@ -346,7 +346,7 @@ func printValidationJSON(results *validator.ValidationResults) error {
 
 func printValidationYAML(results *validator.ValidationResults) error {
 	enc := yaml.NewEncoder(os.Stdout)
-	defer enc.Close()
+	defer func() { _ = enc.Close() }()
 
 	if results.Total == 1 {
 		return enc.Encode(results.Files[0])
