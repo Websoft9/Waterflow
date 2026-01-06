@@ -79,7 +79,7 @@ func TestFormatTimestamp(t *testing.T) {
 		want  string
 	}{
 		{"valid RFC3339", "2026-01-05T10:30:45Z", "2026-01-05 10:30:45"},
-		{"with timezone", "2026-01-05T10:30:45+08:00", "2026-01-05 10:30:45"},
+		{"with timezone", "2026-01-05T10:30:45+08:00", "2026-01-05 02:30:45"},
 		{"invalid format", "invalid", "invalid"},
 		{"short string", "2026-01-05", "2026-01-05"},
 	}
@@ -87,12 +87,8 @@ func TestFormatTimestamp(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := formatTimestamp(tt.input)
-			// For timezone tests, just check the date part
-			if tt.name == "with timezone" {
-				if len(got) < 10 || got[:10] != "2026-01-05" {
-					t.Errorf("formatTimestamp() = %v, want date starting with %v", got, "2026-01-05")
-				}
-			} else if got != tt.want {
+			// Check the date and time parts (format is always UTC now)
+			if got != tt.want {
 				t.Errorf("formatTimestamp() = %v, want %v", got, tt.want)
 			}
 		})

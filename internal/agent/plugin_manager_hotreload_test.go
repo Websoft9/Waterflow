@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestPluginManager_WatchPlugins_DetectNewFile(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Setup mock loader
-	loadCount := 0
+	var loadCount atomic.Int32
 	testNode := &mockNode{name: "test/hotreload", version: "v1"}
 	mockLoader := &mockPluginLoader{
 		openFunc: func(path string) (*plugin.Plugin, error) {
@@ -29,7 +30,7 @@ func TestPluginManager_WatchPlugins_DetectNewFile(t *testing.T) {
 		},
 		lookupFunc: func(p *plugin.Plugin, symbol string) (plugin.Symbol, error) {
 			registerFunc := func() node.Node {
-				loadCount++
+				loadCount.Add(1)
 				return testNode
 			}
 			return plugin.Symbol(registerFunc), nil
@@ -61,8 +62,8 @@ func TestPluginManager_WatchPlugins_DetectNewFile(t *testing.T) {
 	time.Sleep(800 * time.Millisecond)
 
 	// Verify plugin was loaded
-	if loadCount < 1 {
-		t.Errorf("Expected plugin to be loaded at least once, got %d loads", loadCount)
+	if loadCount.Load() < 1 {
+		t.Errorf("Expected plugin to be loaded at least once, got %d loads", loadCount.Load())
 	}
 
 	// Verify node is registered
@@ -88,7 +89,7 @@ func TestPluginManager_WatchPlugins_DetectFileUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	loadCount := 0
+	var loadCount atomic.Int32
 	testNode := &mockNode{name: "test/update", version: "v1"}
 	mockLoader := &mockPluginLoader{
 		openFunc: func(path string) (*plugin.Plugin, error) {
@@ -96,7 +97,7 @@ func TestPluginManager_WatchPlugins_DetectFileUpdate(t *testing.T) {
 		},
 		lookupFunc: func(p *plugin.Plugin, symbol string) (plugin.Symbol, error) {
 			registerFunc := func() node.Node {
-				loadCount++
+				loadCount.Add(1)
 				return testNode
 			}
 			return plugin.Symbol(registerFunc), nil
@@ -124,8 +125,8 @@ func TestPluginManager_WatchPlugins_DetectFileUpdate(t *testing.T) {
 	time.Sleep(800 * time.Millisecond)
 
 	// Should have been loaded at least once
-	if loadCount < 1 {
-		t.Errorf("Expected plugin to be reloaded, got %d loads", loadCount)
+	if loadCount.Load() < 1 {
+		t.Errorf("Expected plugin to be reloaded, got %d loads", loadCount.Load())
 	}
 }
 

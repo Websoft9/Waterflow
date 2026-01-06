@@ -561,6 +561,6 @@ func formatTimestamp(ts string) string {
 		return strings.Replace(ts, "T", " ", 1)
 	}
 
-	// 格式: 2006-01-02 15:04:05
-	return t.Local().Format("2006-01-02 15:04:05")
+	// 格式: 2006-01-02 15:04:05 (使用UTC时间)
+	return t.UTC().Format("2006-01-02 15:04:05")
 }

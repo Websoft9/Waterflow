@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/dsl/node"
@@ -19,10 +20,11 @@ import (
 // Story 3.1: Uses unified pkg/dsl/node.Node interface
 // Story 4.1: Full plugin loading with dynamic registration
 type PluginManager struct {
-	pluginDir string
-	registry  *node.Registry
-	loader    node.PluginLoader
-	logger    *zap.Logger
+	pluginDir   string
+	registry    *node.Registry
+	loader      node.PluginLoader
+	logger      *zap.Logger
+	timersMutex sync.Mutex // Protects debounceTimers map
 }
 
 // NewPluginManager creates a new plugin manager with real plugin loader.
@@ -221,6 +223,7 @@ func (pm *PluginManager) WatchPlugins(ctx context.Context) error {
 				event.Op&fsnotify.Write == fsnotify.Write {
 
 				// Cancel previous debounce timer if exists
+				pm.timersMutex.Lock()
 				if timer, exists := debounceTimers[event.Name]; exists {
 					timer.Stop()
 				}
@@ -240,8 +243,11 @@ func (pm *PluginManager) WatchPlugins(ctx context.Context) error {
 							zap.String("file", filepath.Base(event.Name)))
 					}
 
+					pm.timersMutex.Lock()
 					delete(debounceTimers, event.Name)
+					pm.timersMutex.Unlock()
 				})
+				pm.timersMutex.Unlock()
 			}
 
 		case err := <-watcher.Errors:
