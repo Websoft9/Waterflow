@@ -400,7 +400,7 @@ func (c *Client) StreamWorkflowLogs(workflowID string, query LogsQuery) (<-chan 
 
 	// Check if SSE is supported (server returns 200 with text/event-stream)
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		// If server doesn't support SSE, return error to trigger polling fallback
 		if resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusMethodNotAllowed {
 			return nil, nil, fmt.Errorf("SSE not supported by server")
@@ -410,7 +410,7 @@ func (c *Client) StreamWorkflowLogs(workflowID string, query LogsQuery) (<-chan 
 
 	contentType := resp.Header.Get("Content-Type")
 	if contentType != "text/event-stream" && contentType != "application/x-ndjson" {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, fmt.Errorf("SSE not supported: unexpected content-type %s", contentType)
 	}
 
@@ -419,7 +419,7 @@ func (c *Client) StreamWorkflowLogs(workflowID string, query LogsQuery) (<-chan 
 
 	// Start goroutine to read SSE stream
 	go func() {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		defer close(logChan)
 		defer close(errChan)
 

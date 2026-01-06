@@ -96,7 +96,7 @@ func TestGetWorkflowLogs(t *testing.T) {
 				// Return response
 				w.Header().Set("Content-Type", "application/x-ndjson")
 				w.WriteHeader(tt.serverStatus)
-				w.Write([]byte(tt.serverBody))
+				_, _ = w.Write([]byte(tt.serverBody))
 			}))
 			defer server.Close()
 
