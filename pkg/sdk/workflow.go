@@ -202,7 +202,7 @@ func (c *Client) GetWorkflowLogs(ctx context.Context, req *GetLogsRequest) ([]Lo
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, parseErrorResponse(resp)

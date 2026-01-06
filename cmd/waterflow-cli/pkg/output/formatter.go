@@ -53,7 +53,7 @@ func (f *Formatter) Print(data interface{}) error {
 		return enc.Encode(data)
 	case FormatYAML:
 		enc := yaml.NewEncoder(os.Stdout)
-		defer enc.Close()
+		defer func() { _ = enc.Close() }()
 		return enc.Encode(data)
 	case FormatText:
 		fallthrough

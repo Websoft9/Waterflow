@@ -81,12 +81,12 @@ func TestFormatter_Print_JSON(t *testing.T) {
 	}
 
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	// Read captured output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Verify it's valid JSON
@@ -127,12 +127,12 @@ func TestFormatter_Print_YAML(t *testing.T) {
 	}
 
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	// Read captured output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Verify it's valid YAML
@@ -171,12 +171,12 @@ func TestFormatter_Print_Text(t *testing.T) {
 	}
 
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	// Read captured output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Text format just uses %+v, verify it contains the data
@@ -197,12 +197,12 @@ func TestFormatter_PrintString(t *testing.T) {
 	f.PrintString(message)
 
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	// Read captured output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	if !contains(output, message) {

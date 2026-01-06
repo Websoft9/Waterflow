@@ -242,7 +242,7 @@ func (f *Formatter) printStatusJSON(status *client.WorkflowStatus) error {
 func (f *Formatter) printStatusYAML(status *client.WorkflowStatus) error {
 	enc := yaml.NewEncoder(os.Stdout)
 	enc.SetIndent(2)
-	defer enc.Close()
+	defer func() { _ = enc.Close() }()
 	return enc.Encode(status)
 }
 
