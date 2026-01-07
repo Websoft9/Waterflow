@@ -1,0 +1,116 @@
+# Test Configuration for Single Server Deployment Template
+# This file demonstrates how to use the template with a local test application
+
+name: Test Single Server Deployment
+on: push
+
+vars:
+  # Use local test app
+  repo_url: "file:///data/Waterflow/testdata/deployment-test-app"
+  app_name: "test-deploy-app"
+  app_port: "18080"  # Use non-standard port to avoid conflicts
+  branch: "main"
+  deploy_path: "/tmp/test-deploy-app"
+  health_check_url: "http://localhost:18080/health"
+
+jobs:
+  deploy:
+    runs-on: waterflow-server  # Or your test agent
+    
+    steps:
+      # Clone or pull repository
+      - name: Clone or pull repository
+        uses: exec/shell@v1
+        with:
+          command: |
+            if [ -d "${{ vars.deploy_path }}" ]; then
+              echo "Repository exists, pulling latest changes..."
+              cd ${{ vars.deploy_path }} && git pull origin ${{ vars.branch }}
+            else
+              echo "Repository not found, cloning..."
+              git clone --depth 1 -b ${{ vars.branch }} ${{ vars.repo_url }} ${{ vars.deploy_path }}
+            fi
+        timeout-minutes: 5
+      
+      # Build Docker image
+      - name: Build Docker image
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Building Docker image..."
+            docker build -t ${{ vars.app_name }}:${{ vars.branch }} ${{ vars.deploy_path }}
+        timeout-minutes: 10
+      
+      # Backup old version
+      - name: Backup old version container ID
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Backing up old version container ID..."
+            docker ps --filter "name=${{ vars.app_name }}" --format "{{.ID}}" > /tmp/old_${{ vars.app_name }}.txt || echo "none" > /tmp/old_${{ vars.app_name }}.txt
+            OLD_ID=$(cat /tmp/old_${{ vars.app_name }}.txt)
+            echo "Old container ID: $OLD_ID"
+      
+      # Stop old version
+      - name: Stop old version container
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Stopping old version container..."
+            docker stop ${{ vars.app_name }} || echo "No container to stop"
+      
+      # Start new version
+      - name: Start new version container
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Starting new version container..."
+            docker run -d --name ${{ vars.app_name }} \
+              -p ${{ vars.app_port }}:80 \
+              ${{ vars.app_name }}:${{ vars.branch }}
+      
+      # Health check
+      - name: Health check new version
+        uses: http/request@v1
+        with:
+          url: ${{ vars.health_check_url }}
+          method: GET
+        timeout-minutes: 1
+        retry-strategy:
+          max-attempts: 5
+          initial-interval: 10s
+          backoff-coefficient: 1.0
+          max-interval: 10s
+        continue-on-error: true
+      
+      # Rollback on failure
+      - name: Rollback on health check failure
+        if: ${{ failure() }}
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Health check failed! Rolling back..."
+            
+            if [ ! -f /tmp/old_${{ vars.app_name }}.txt ]; then
+              echo "No backup file, cleaning up..."
+              docker stop ${{ vars.app_name }} || true
+              docker rm ${{ vars.app_name }} || true
+              exit 1
+            fi
+            
+            OLD_ID=$(cat /tmp/old_${{ vars.app_name }}.txt)
+            
+            if [ "$OLD_ID" == "none" ]; then
+              echo "First deployment failed, cleaning up..."
+              docker stop ${{ vars.app_name }} || true
+              docker rm ${{ vars.app_name }} || true
+              exit 1
+            fi
+            
+            echo "Rolling back to old version..."
+            docker stop ${{ vars.app_name }} || true
+            docker rm ${{ vars.app_name }} || true
+            docker start $OLD_ID
+            docker rename $OLD_ID ${{ vars.app_name }} || true
+            echo "Rollback completed"
+            exit 1
