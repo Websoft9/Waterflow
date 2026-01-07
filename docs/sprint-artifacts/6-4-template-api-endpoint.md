@@ -1,6 +1,6 @@
 # Story 6.4: 模板 API 端点
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
