@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    image: ${APP_IMAGE:-myapp/backend}:${APP_VERSION:-latest}
+    container_name: ${APP_CONTAINER_NAME:-myapp}
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: ${DEPLOY_ENVIRONMENT:-dev}
+      DATABASE_URL: postgres://${DB_USER:-appuser}:${DB_PASSWORD:-changeme}@${DB_SERVER:-db-server}:${DB_PORT:-5432}/${DB_NAME:-myapp}
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  db:
+    image: ${DB_VERSION:-postgres:14}
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-myapp}
+      POSTGRES_USER: ${DB_USER:-appuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-appuser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

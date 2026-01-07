@@ -1,0 +1,420 @@
+# Distributed Stack Deployment Workflow Template
+# ===============================================
+#
+# Purpose:
+#   - Deploy multi-tier applications with dependencies (Database + Application)
+#   - Orchestrate deployment order using job dependencies
+#   - Ensure services are healthy before proceeding
+#   - Support rollback on failure
+#
+# Architecture:
+#   Step 1: Deploy Database (PostgreSQL) on db-server
+#          ├─ Start PostgreSQL container
+#          ├─ Wait for database ready (pg_isready)
+#          └─ Initialize schema (optional)
+#   Step 2: Deploy Application on app-server (depends on Step 1)
+#          ├─ Test network connectivity to database
+#          ├─ Pull application image
+#          ├─ Configure database connection
+#          ├─ Start application container
+#          └─ Health check API endpoint
+#   Step 3: Rollback (if enabled and previous steps failed)
+#          ├─ Stop application container
+#          └─ Stop database container
+#
+# Use Cases:
+#   - Web application with database backend
+#   - Microservices deployment with dependencies
+#   - Multi-tier architecture (Frontend + Backend + Database)
+#   - Service orchestration with health verification
+#
+# Prerequisites:
+#   - Waterflow Agents deployed on db-server and app-server
+#   - Docker installed on both servers
+#   - PostgreSQL client tools (psql, pg_isready) available on db-server
+#   - Network connectivity between app-server and db-server (port 5432)
+#   - (Optional) Docker Compose for database deployment
+#   - (Optional) Database initialization SQL script
+#
+# Parameters:
+#   Database Configuration:
+#   - db_server: Database server name (Task Queue name, default: db-server)
+#   - db_version: PostgreSQL version (default: postgres:14)
+#   - db_port: PostgreSQL port (default: 5432)
+#   - db_name: Database name (default: myapp)
+#   - db_user: Database username (default: appuser)
+#   - db_password: Database password (WARNING: use Secret in production!)
+#   - db_init_script: Path to SQL initialization script (optional)
+#   - db_data_volume: Database data volume name (default: postgres_data)
+#
+#   Application Configuration:
+#   - app_server: Application server name (Task Queue name, default: app-server)
+#   - app_image: Application Docker image (default: myapp/backend)
+#   - app_version: Application version/tag (default: latest)
+#   - app_port: Application HTTP port (default: 3000)
+#   - app_container_name: Application container name (default: myapp)
+#   - app_health_endpoint: Health check endpoint (default: /health)
+#
+#   Deployment Configuration:
+#   - deploy_environment: Environment identifier (dev/staging/prod, default: dev)
+#   - deploy_timeout: Maximum deployment time in seconds (default: 300)
+#   - health_check_retries: Number of health check retries (default: 10)
+#   - health_check_delay: Delay between health check retries (default: 5s)
+#   - rollback_on_failure: Rollback database on failure (default: false)
+#
+# Example Usage:
+#   1. Configure variables (copy and modify vars section below)
+#   2. Submit workflow:
+#      waterflow submit examples/workflows/distributed-stack-deployment.yaml
+#   3. Check status:
+#      waterflow status <workflow-id>
+#   4. View logs:
+#      waterflow logs <workflow-id>
+#
+# Example 1: Node.js Express + PostgreSQL
+#   vars:
+#     db_server: "prod-db-1"
+#     db_name: "expressapp"
+#     app_server: "prod-web-1"
+#     app_image: "myorg/express-api"
+#     app_version: "v1.2.3"
+#
+# Example 2: Python Flask + PostgreSQL with initialization
+#   vars:
+#     db_server: "dev-db"
+#     db_init_script: "/opt/schema/init.sql"
+#     app_server: "dev-app"
+#     app_image: "myorg/flask-api"
+#     app_health_endpoint: "/api/health"
+#
+# Example 3: Production deployment with rollback enabled
+#   vars:
+#     deploy_environment: "prod"
+#     db_server: "prod-db-primary"
+#     app_server: "prod-app-1"
+#     rollback_on_failure: true
+#     health_check_retries: 20
+#
+# Troubleshooting:
+#   - Database not ready: Increase health_check_retries or check PostgreSQL logs
+#   - Network connection failed: Verify firewall allows app_server → db_server:5432
+#   - Application health check failed: Check app logs, verify DATABASE_URL format
+#   - Rollback not triggered: Ensure rollback_on_failure=true, check failure detection
+#   - Init script failed: Verify SQL syntax, check database permissions
+#
+# Related Templates:
+#   - examples/workflows/single-server-deployment.yaml - Single-server Docker deployment
+#   - examples/workflows/multi-server-health-check.yaml - Multi-server monitoring
+#
+# Notes:
+#   - Database password should use Secret Provider in production
+#   - Consider using Docker Compose for complex multi-container setups
+#   - Network configuration may vary (Docker networks, host networking, etc.)
+#   - Database data persists in named volume (postgres_data) across restarts
+#   - Rollback only stops containers, does not delete data volumes
+
+name: Distributed Stack Deployment
+on: workflow_dispatch
+
+vars:
+  # Database Configuration
+  db_server: "db-server"                   # Task Queue name for database server
+  db_version: "postgres:14"                 # PostgreSQL version
+  db_port: 5432                             # PostgreSQL port
+  db_name: "myapp"                          # Database name
+  db_user: "appuser"                        # Database username
+  db_password: "changeme"                   # Database password (use Secret in production!)
+  db_init_script: ""                        # Optional: path to SQL init script (e.g., /opt/init.sql)
+  db_data_volume: "postgres_data"           # Named volume for database data
+  
+  # Application Configuration
+  app_server: "app-server"                  # Task Queue name for application server
+  app_image: "myapp/backend"                # Application Docker image
+  app_version: "latest"                     # Application version/tag
+  app_port: 3000                            # Application HTTP port
+  app_container_name: "myapp"               # Application container name
+  app_health_endpoint: "/health"            # Health check endpoint
+  
+  # Deployment Configuration
+  deploy_environment: "dev"                 # Environment: dev/staging/prod
+  deploy_timeout: 300                       # Maximum deployment time (seconds)
+  health_check_retries: 10                  # Number of health check retries
+  health_check_delay: "5s"                  # Delay between retries
+  rollback_on_failure: false                # Whether to rollback database on failure
+
+jobs:
+  # ============================================================================
+  # Job 1: Deploy Database
+  # ============================================================================
+  deploy-database:
+    runs-on: ${{ vars.db_server }}
+    
+    steps:
+      - name: Pull PostgreSQL image
+        id: pull-db-image
+        uses: docker/exec@v1
+        with:
+          command: pull
+          args: ${{ vars.db_version }}
+      
+      - name: Stop existing PostgreSQL container
+        id: stop-old-db
+        uses: exec/shell@v1
+        with:
+          command: docker stop postgres 2>/dev/null || echo "No existing container"
+        continue-on-error: true
+      
+      - name: Remove existing PostgreSQL container
+        id: remove-old-db
+        uses: exec/shell@v1
+        with:
+          command: docker rm postgres 2>/dev/null || echo "No existing container"
+        continue-on-error: true
+      
+      - name: Start PostgreSQL container
+        id: start-db
+        uses: docker/exec@v1
+        with:
+          command: run
+          args: >-
+            -d
+            --name postgres
+            --restart unless-stopped
+            -p ${{ vars.db_port }}:5432
+            -e POSTGRES_DB=${{ vars.db_name }}
+            -e POSTGRES_USER=${{ vars.db_user }}
+            -e POSTGRES_PASSWORD=${{ vars.db_password }}
+            -v ${{ vars.db_data_volume }}:/var/lib/postgresql/data
+            ${{ vars.db_version }}
+      
+      - name: Wait for PostgreSQL to be ready
+        id: wait-db-ready
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Waiting for PostgreSQL to become ready..."
+            for i in $(seq 1 30); do
+              if pg_isready -h localhost -p ${{ vars.db_port }} -U ${{ vars.db_user }} >/dev/null 2>&1; then
+                echo "✓ PostgreSQL is ready! (attempt $i/30)"
+                exit 0
+              fi
+              echo "Attempt $i/30: PostgreSQL not ready yet, waiting 5 seconds..."
+              sleep 5
+            done
+            echo "✗ ERROR: PostgreSQL failed to become ready after 30 attempts (150 seconds)"
+            exit 1
+      
+      - name: Initialize database schema
+        id: init-db-schema
+        if: ${{ vars.db_init_script != "" }}
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Running database initialization script: ${{ vars.db_init_script }}"
+            if [ ! -f "${{ vars.db_init_script }}" ]; then
+              echo "✗ ERROR: Init script not found: ${{ vars.db_init_script }}"
+              exit 1
+            fi
+            PGPASSWORD=${{ vars.db_password }} psql \
+              -h localhost \
+              -p ${{ vars.db_port }} \
+              -U ${{ vars.db_user }} \
+              -d ${{ vars.db_name }} \
+              -f ${{ vars.db_init_script }}
+            if [ $? -eq 0 ]; then
+              echo "✓ Database initialization completed successfully"
+            else
+              echo "✗ ERROR: Database initialization failed"
+              exit 1
+            fi
+        continue-on-error: false
+      
+      - name: Verify database connection
+        id: verify-db-connection
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Verifying database connection..."
+            PGPASSWORD=${{ vars.db_password }} psql \
+              -h localhost \
+              -p ${{ vars.db_port }} \
+              -U ${{ vars.db_user }} \
+              -d ${{ vars.db_name }} \
+              -c "SELECT version();" \
+              -t
+            echo "✓ Database connection verified"
+  
+  # ============================================================================
+  # Job 2: Deploy Application (depends on database)
+  # ============================================================================
+  deploy-app:
+    needs: [deploy-database]
+    runs-on: ${{ vars.app_server }}
+    
+    steps:
+      - name: Test network connectivity to database
+        id: test-db-network
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Testing network connectivity to database server..."
+            echo "Target: ${{ vars.db_server }}:${{ vars.db_port }}"
+            
+            # Try netcat first
+            if command -v nc >/dev/null 2>&1; then
+              if nc -z -w 5 ${{ vars.db_server }} ${{ vars.db_port }} 2>/dev/null; then
+                echo "✓ Database server is reachable (tested with nc)"
+                exit 0
+              fi
+            fi
+            
+            # Try telnet as fallback
+            if command -v telnet >/dev/null 2>&1; then
+              if timeout 5 telnet ${{ vars.db_server }} ${{ vars.db_port }} </dev/null 2>/dev/null | grep -q Connected; then
+                echo "✓ Database server is reachable (tested with telnet)"
+                exit 0
+              fi
+            fi
+            
+            # Try timeout + bash tcp test as last resort
+            if timeout 5 bash -c "cat < /dev/null > /dev/tcp/${{ vars.db_server }}/${{ vars.db_port }}" 2>/dev/null; then
+              echo "✓ Database server is reachable (tested with bash TCP)"
+              exit 0
+            fi
+            
+            echo "✗ ERROR: Cannot reach database server ${{ vars.db_server }}:${{ vars.db_port }}"
+            echo "Please check:"
+            echo "  - Firewall rules allow app-server → db-server:${{ vars.db_port }}"
+            echo "  - Database server hostname resolves correctly"
+            echo "  - Database container is running on db-server"
+            exit 1
+      
+      - name: Pull application image
+        id: pull-app-image
+        uses: docker/exec@v1
+        with:
+          command: pull
+          args: ${{ vars.app_image }}:${{ vars.app_version }}
+      
+      - name: Stop existing application container
+        id: stop-old-app
+        uses: exec/shell@v1
+        with:
+          command: docker stop ${{ vars.app_container_name }} 2>/dev/null || echo "No existing container"
+        continue-on-error: true
+      
+      - name: Remove existing application container
+        id: remove-old-app
+        uses: exec/shell@v1
+        with:
+          command: docker rm ${{ vars.app_container_name }} 2>/dev/null || echo "No existing container"
+        continue-on-error: true
+      
+      - name: Start application container
+        id: start-app
+        uses: docker/exec@v1
+        with:
+          command: run
+          args: >-
+            -d
+            --name ${{ vars.app_container_name }}
+            --restart unless-stopped
+            -p ${{ vars.app_port }}:3000
+            -e NODE_ENV=${{ vars.deploy_environment }}
+            -e DATABASE_URL=postgres://${{ vars.db_user }}:${{ vars.db_password }}@${{ vars.db_server }}:${{ vars.db_port }}/${{ vars.db_name }}
+            ${{ vars.app_image }}:${{ vars.app_version }}
+      
+      - name: Wait for application to be ready
+        id: wait-app-ready
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Waiting for application to become ready..."
+            for i in $(seq 1 ${{ vars.health_check_retries }}); do
+              sleep ${{ vars.health_check_delay }}
+              if curl -sf http://localhost:${{ vars.app_port }}${{ vars.app_health_endpoint }} >/dev/null 2>&1; then
+                echo "✓ Application is ready! (attempt $i/${{ vars.health_check_retries }})"
+                exit 0
+              fi
+              echo "Attempt $i/${{ vars.health_check_retries }}: Application not ready yet..."
+            done
+            echo "✗ ERROR: Application failed to become ready after ${{ vars.health_check_retries }} attempts"
+            echo "Check application logs: docker logs ${{ vars.app_container_name }}"
+            exit 1
+      
+      - name: Health check application endpoint
+        id: health-check-app
+        uses: http/request@v1
+        with:
+          url: http://localhost:${{ vars.app_port }}${{ vars.app_health_endpoint }}
+          method: GET
+          timeout: "3s"
+          expected_status: 200
+      
+      - name: Display deployment summary
+        id: deployment-summary
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "================================================"
+            echo "  Deployment Successful!"
+            echo "================================================"
+            echo "Environment:    ${{ vars.deploy_environment }}"
+            echo "Database:       ${{ vars.db_server }}:${{ vars.db_port }} (${{ vars.db_version }})"
+            echo "Application:    ${{ vars.app_server }}:${{ vars.app_port }} (${{ vars.app_image }}:${{ vars.app_version }})"
+            echo "Health Check:   http://localhost:${{ vars.app_port }}${{ vars.app_health_endpoint }}"
+            echo "================================================"
+            echo ""
+            echo "To view application logs:"
+            echo "  docker logs -f ${{ vars.app_container_name }}"
+            echo ""
+            echo "To view database logs:"
+            echo "  docker logs -f postgres"
+  
+  # ============================================================================
+  # Job 3: Rollback on Failure (optional)
+  # ============================================================================
+  rollback-on-failure:
+    needs: [deploy-app]
+    if: ${{ failure() && vars.rollback_on_failure == true }}
+    runs-on: ${{ vars.app_server }}
+    
+    steps:
+      - name: Stop application container
+        id: rollback-stop-app
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Rolling back: Stopping application container..."
+            docker stop ${{ vars.app_container_name }} 2>/dev/null || echo "Container already stopped"
+            docker rm ${{ vars.app_container_name }} 2>/dev/null || echo "Container already removed"
+            echo "✓ Application container stopped and removed"
+        continue-on-error: true
+      
+      - name: Stop database container
+        id: rollback-stop-db
+        runs-on: ${{ vars.db_server }}
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Rolling back: Stopping database container..."
+            docker stop postgres 2>/dev/null || echo "Container already stopped"
+            docker rm postgres 2>/dev/null || echo "Container already removed"
+            echo "✓ Database container stopped and removed"
+            echo ""
+            echo "NOTE: Database data volume '${{ vars.db_data_volume }}' is preserved"
+            echo "To remove data: docker volume rm ${{ vars.db_data_volume }}"
+        continue-on-error: true
+      
+      - name: Rollback summary
+        id: rollback-summary
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "================================================"
+            echo "  Rollback Completed"
+            echo "================================================"
+            echo "Application container: REMOVED"
+            echo "Database container:    REMOVED"
+            echo "Database data volume:  PRESERVED"
+            echo "================================================"

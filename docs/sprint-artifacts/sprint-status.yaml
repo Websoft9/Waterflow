@@ -107,7 +107,7 @@ development_status:
   epic-6: in-progress
   6-1-single-server-deployment-template: review
   6-2-multi-server-health-check-template: review  # ✅实施完成(2026-01-06),Matrix并行+SSH远程+Python报告,440行模板,文档完整,等待审查
-  6-3-distributed-stack-deployment-template: ready-for-dev
+  6-3-distributed-stack-deployment-template: review  # ✅实施完成(2026-01-06),Job依赖编排+跨服务器部署+健康检查+回滚,420行模板,3个配置文件,文档完整
   6-4-template-api-endpoint: ready-for-dev
   6-5-template-documentation-and-examples: ready-for-dev
   epic-6-retrospective: optional
