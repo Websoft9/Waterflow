@@ -1,6 +1,6 @@
 # Story 6.4: 模板 API 端点
 
-Status: review
+Status: Done
 
 ## Story
 
@@ -1080,4 +1080,13 @@ ok      github.com/Websoft9/waterflow/internal/api      1.135s (无race conditio
   - 单元测试全部通过 (41个测试用例, go test -race 通过)
   - 创建集成测试脚本 (scripts/test-template-api.sh)
   - 更新 API 文档 (api/README.md)
+- 2026-01-07: 代码审查完成,状态: Done
+  - 修复5个代码审查问题 (3 MEDIUM, 2 LOW)
+  - M1: 更新servers参数描述为vars.servers
+  - M2: 添加db_container_name参数,修复health_check_delay类型
+  - L1: 完善错误响应文档(RFC 7807示例)
+  - L2: 改进测试注释
+  - Git commit: 65cbe52
+  - 所有验收标准 AC1-AC4 已验证通过
+  - 元数据已与3个模板实现完全同步
 
