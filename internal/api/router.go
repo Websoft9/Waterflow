@@ -99,6 +99,11 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 	router.HandleFunc("/v1/nodes", nh.ListNodes).Methods(http.MethodGet)
 	router.HandleFunc("/v1/nodes/{name}", nh.GetNode).Methods(http.MethodGet)
 
+	// Template management endpoints (Story 6.4)
+	th := NewTemplateHandlers(logger)
+	router.HandleFunc("/v1/templates", th.ListTemplates).Methods(http.MethodGet)
+	router.HandleFunc("/v1/templates/{name}", th.GetTemplate).Methods(http.MethodGet)
+
 	// Custom error handlers
 	router.NotFoundHandler = http.HandlerFunc(h.NotFound)
 	router.MethodNotAllowedHandler = http.HandlerFunc(h.MethodNotAllowed)

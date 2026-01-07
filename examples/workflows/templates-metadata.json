@@ -1,0 +1,361 @@
+{
+  "templates": [
+    {
+      "name": "single-server-deployment",
+      "display_name": "Single Server Deployment",
+      "description": "Deploy application to a single server with build, health check, and rollback support",
+      "category": "deployment",
+      "version": "1.0.0",
+      "author": "Waterflow Team",
+      "parameters": [
+        {
+          "name": "repo_url",
+          "type": "string",
+          "required": true,
+          "description": "Git repository URL",
+          "example": "https://github.com/user/myapp.git"
+        },
+        {
+          "name": "app_name",
+          "type": "string",
+          "required": true,
+          "description": "Application name for container/process naming",
+          "example": "my-app"
+        },
+        {
+          "name": "app_port",
+          "type": "string",
+          "required": false,
+          "default": "3000",
+          "description": "Application listening port",
+          "example": "3000"
+        },
+        {
+          "name": "branch",
+          "type": "string",
+          "required": false,
+          "default": "main",
+          "description": "Git branch to deploy",
+          "example": "main"
+        },
+        {
+          "name": "deploy_path",
+          "type": "string",
+          "required": false,
+          "default": "/opt/${{ vars.app_name }}",
+          "description": "Deployment directory path",
+          "example": "/opt/my-app"
+        },
+        {
+          "name": "health_check_url",
+          "type": "string",
+          "required": false,
+          "default": "http://localhost:${{ vars.app_port }}/health",
+          "description": "Health check endpoint URL",
+          "example": "http://localhost:3000/health"
+        },
+        {
+          "name": "health_check_retries",
+          "type": "integer",
+          "required": false,
+          "default": "5",
+          "description": "Number of health check retries",
+          "example": 5
+        },
+        {
+          "name": "health_check_delay",
+          "type": "integer",
+          "required": false,
+          "default": "10",
+          "description": "Delay between health check retries in seconds",
+          "example": 10
+        }
+      ],
+      "examples": [
+        {
+          "name": "Node.js Express Application",
+          "description": "Deploy a Node.js Express application",
+          "vars": {
+            "repo_url": "https://github.com/expressjs/express.git",
+            "app_name": "express-app",
+            "app_port": "3000"
+          }
+        },
+        {
+          "name": "Python Flask Application",
+          "description": "Deploy a Python Flask application",
+          "vars": {
+            "repo_url": "https://github.com/pallets/flask.git",
+            "app_name": "flask-app",
+            "app_port": "5000",
+            "health_check_url": "http://localhost:5000/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "multi-server-health-check",
+      "display_name": "Multi-Server Health Check",
+      "description": "Parallel health check across multiple servers with metric collection and reporting",
+      "category": "monitoring",
+      "version": "1.0.0",
+      "author": "Waterflow Team",
+      "parameters": [
+        {
+          "name": "servers",
+          "type": "array",
+          "items": "string",
+          "required": true,
+          "description": "List of server names/IPs to check (defined in jobs.health-check.strategy.matrix.server)",
+          "example": ["web-1", "web-2", "db-1"]
+        },
+        {
+          "name": "ssh_user",
+          "type": "string",
+          "required": false,
+          "default": "root",
+          "description": "SSH username for remote connections",
+          "example": "root"
+        },
+        {
+          "name": "cpu_threshold",
+          "type": "integer",
+          "required": false,
+          "default": "80",
+          "description": "CPU usage warning threshold in percentage",
+          "example": 80
+        },
+        {
+          "name": "memory_threshold",
+          "type": "integer",
+          "required": false,
+          "default": "85",
+          "description": "Memory usage warning threshold in percentage",
+          "example": 85
+        },
+        {
+          "name": "disk_threshold",
+          "type": "integer",
+          "required": false,
+          "default": "90",
+          "description": "Disk usage critical threshold in percentage",
+          "example": 90
+        },
+        {
+          "name": "report_path",
+          "type": "string",
+          "required": false,
+          "default": "/tmp/health_report.md",
+          "description": "Path to save the health check report",
+          "example": "/tmp/health_report.md"
+        }
+      ],
+      "examples": [
+        {
+          "name": "Web Server Cluster Health Check",
+          "description": "Check health of 3 web servers",
+          "vars": {
+            "servers": ["web-1.example.com", "web-2.example.com", "web-3.example.com"],
+            "ssh_user": "ubuntu"
+          }
+        },
+        {
+          "name": "Production Monitoring",
+          "description": "Production environment with strict thresholds",
+          "vars": {
+            "servers": ["prod-web-1", "prod-web-2", "prod-db-1", "prod-cache-1"],
+            "cpu_threshold": 75,
+            "memory_threshold": 80,
+            "disk_threshold": 85
+          }
+        }
+      ]
+    },
+    {
+      "name": "distributed-stack-deployment",
+      "display_name": "Distributed Stack Deployment",
+      "description": "Deploy multi-tier application stack with dependency management (Database + Application)",
+      "category": "deployment",
+      "version": "1.0.0",
+      "author": "Waterflow Team",
+      "parameters": [
+        {
+          "name": "db_server",
+          "type": "string",
+          "required": false,
+          "default": "db-server",
+          "description": "Task Queue name for database server",
+          "example": "db-server"
+        },
+        {
+          "name": "db_version",
+          "type": "string",
+          "required": false,
+          "default": "postgres:14",
+          "description": "PostgreSQL Docker image version",
+          "example": "postgres:14"
+        },
+        {
+          "name": "db_port",
+          "type": "integer",
+          "required": false,
+          "default": "5432",
+          "description": "PostgreSQL port",
+          "example": 5432
+        },
+        {
+          "name": "db_name",
+          "type": "string",
+          "required": false,
+          "default": "myapp",
+          "description": "Database name",
+          "example": "myapp"
+        },
+        {
+          "name": "db_user",
+          "type": "string",
+          "required": false,
+          "default": "appuser",
+          "description": "Database username",
+          "example": "appuser"
+        },
+        {
+          "name": "db_password",
+          "type": "string",
+          "required": false,
+          "default": "changeme",
+          "description": "Database password (use Secret Provider in production)",
+          "example": "changeme"
+        },
+        {
+          "name": "db_init_script",
+          "type": "string",
+          "required": false,
+          "default": "",
+          "description": "Optional path to SQL initialization script",
+          "example": "/opt/init.sql"
+        },
+        {
+          "name": "db_data_volume",
+          "type": "string",
+          "required": false,
+          "default": "postgres_data",
+          "description": "Named volume for database data",
+          "example": "postgres_data"
+        },
+        {
+          "name": "app_server",
+          "type": "string",
+          "required": false,
+          "default": "app-server",
+          "description": "Task Queue name for application server",
+          "example": "app-server"
+        },
+        {
+          "name": "app_image",
+          "type": "string",
+          "required": true,
+          "description": "Application Docker image name",
+          "example": "myapp/backend"
+        },
+        {
+          "name": "app_version",
+          "type": "string",
+          "required": false,
+          "default": "latest",
+          "description": "Application version/tag",
+          "example": "latest"
+        },
+        {
+          "name": "app_port",
+          "type": "integer",
+          "required": false,
+          "default": "3000",
+          "description": "Application HTTP port",
+          "example": 3000
+        },
+        {
+          "name": "app_container_name",
+          "type": "string",
+          "required": false,
+          "default": "myapp",
+          "description": "Application container name",
+          "example": "myapp"
+        },
+        {
+          "name": "app_health_endpoint",
+          "type": "string",
+          "required": false,
+          "default": "/health",
+          "description": "Health check endpoint path",
+          "example": "/health"
+        },
+        {
+          "name": "deploy_environment",
+          "type": "string",
+          "required": false,
+          "default": "dev",
+          "description": "Environment identifier (dev/staging/prod)",
+          "example": "dev"
+        },
+        {
+          "name": "deploy_timeout",
+          "type": "integer",
+          "required": false,
+          "default": "300",
+          "description": "Maximum deployment time in seconds",
+          "example": 300
+        },
+        {
+          "name": "health_check_retries",
+          "type": "integer",
+          "required": false,
+          "default": "10",
+          "description": "Number of health check retries",
+          "example": 10
+        },
+        {
+          "name": "health_check_delay",
+          "type": "string",
+          "required": false,
+          "default": "5s",
+          "description": "Delay between health check retries",
+          "example": "5s"
+        },
+        {
+          "name": "rollback_on_failure",
+          "type": "boolean",
+          "required": false,
+          "default": "false",
+          "description": "Whether to rollback database on failure",
+          "example": false
+        }
+      ],
+      "examples": [
+        {
+          "name": "Node.js + PostgreSQL",
+          "description": "Deploy Node.js Express application with PostgreSQL database",
+          "vars": {
+            "db_server": "prod-db-1",
+            "db_name": "expressapp",
+            "app_server": "prod-web-1",
+            "app_image": "myorg/express-api",
+            "app_version": "v1.2.3"
+          }
+        },
+        {
+          "name": "Production Deployment with Rollback",
+          "description": "Production environment with rollback enabled",
+          "vars": {
+            "deploy_environment": "prod",
+            "db_server": "prod-db-primary",
+            "app_server": "prod-app-1",
+            "app_image": "myorg/production-app",
+            "rollback_on_failure": true,
+            "health_check_retries": 20
+          }
+        }
+      ]
+    }
+  ]
+}
