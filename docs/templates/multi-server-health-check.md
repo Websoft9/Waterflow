@@ -137,14 +137,17 @@ sudo yum install -y sysstat
 
 ### 服务器列表配置
 
-服务器列表定义在 `jobs.health-check.strategy.matrix.server`:
+服务器列表定义在 `vars.servers`，然后通过 Matrix 策略引用：
 
 ```yaml
+vars:
+  servers: ["web-1", "web-2", "db-1"]  # 修改为你的服务器列表
+
 jobs:
   health-check:
     strategy:
       matrix:
-        server: ["web-1", "web-2", "db-1"]  # 修改为你的服务器列表
+        server: ${{ vars.servers }}  # 引用 vars 中的服务器列表
 ```
 
 **支持格式:**
@@ -157,6 +160,7 @@ jobs:
 
 | 参数 | 默认值 | 说明 | 示例 |
 |------|--------|------|------|
+| `servers` | `["web-1", "web-2", "db-1"]` | 服务器列表（数组） | `["server1", "192.168.1.10"]` |
 | `ssh_user` | `root` | SSH 登录用户名 | `ubuntu` |
 | `cpu_threshold` | `80` | CPU 使用率告警阈值 (%) | `75` |
 | `memory_threshold` | `85` | 内存使用率告警阈值 (%) | `80` |
@@ -186,6 +190,10 @@ name: Web Servers Health Check
 on: push
 
 vars:
+  servers:
+    - "web-1.example.com"
+    - "web-2.example.com"
+    - "web-3.example.com"
   ssh_user: "ubuntu"
   cpu_threshold: 80
   memory_threshold: 85
@@ -196,10 +204,7 @@ jobs:
   health-check:
     strategy:
       matrix:
-        server:
-          - "web-1.example.com"
-          - "web-2.example.com"
-          - "web-3.example.com"
+        server: ${{ vars.servers }}
     
     runs-on: localhost
     steps:
@@ -262,6 +267,13 @@ name: Production Environment Health Check
 on: push
 
 vars:
+  servers:
+    - "prod-web-1"
+    - "prod-web-2"
+    - "prod-db-master"
+    - "prod-db-replica"
+    - "prod-redis-1"
+    - "prod-redis-2"
   ssh_user: "prod-admin"
   cpu_threshold: 70     # 生产环境更严格
   memory_threshold: 75
@@ -272,13 +284,7 @@ jobs:
   health-check:
     strategy:
       matrix:
-        server:
-          - "prod-web-1"
-          - "prod-web-2"
-          - "prod-db-master"
-          - "prod-db-replica"
-          - "prod-redis-1"
-          - "prod-redis-2"
+        server: ${{ vars.servers }}
     
     runs-on: bastion-server  # 通过跳板机执行
     steps:

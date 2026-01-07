@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../pkg/dsl/schema/workflow-schema.json
 # ====================================================================================================
 # Multi-Server Health Check Workflow Template
 # ====================================================================================================
@@ -41,7 +42,8 @@
 #      ssh-copy-id root@server3
 #
 #   2. Modify vars.servers to your server list:
-#      servers: ["server1", "server2", "server3"]
+#      vars:
+#        servers: ["server1", "server2", "server3"]
 #
 #   3. Submit workflow:
 #      waterflow submit examples/workflows/multi-server-health-check.yaml
@@ -90,8 +92,8 @@ name: Multi-Server Health Check
 on: push
 
 vars:
-  # ===== Note: Server list is defined in strategy.matrix below =====
-  # For ease of use, modify the server list in jobs.health-check.strategy.matrix.server
+  # ===== Server List (Required) =====
+  servers: ["web-1", "web-2", "db-1"]  # 修改为你的服务器列表
   
   # ===== SSH Configuration =====
   ssh_user: "root"  # SSH 用户名
@@ -102,14 +104,14 @@ vars:
   disk_threshold: 90     # 磁盘使用率严重阈值 (%)
   
   # ===== Report Configuration =====
-  report_path: "/tmp/health_report.md"  # 报告保存路径
+  report_path: "/tmp/health_report.md"  # 报告保存路径（建议使用timestamp避免冲突）
 
 jobs:
   health-check:
     # Matrix strategy: parallel execution for each server
     strategy:
       matrix:
-        server: ["web-1", "web-2", "db-1"]  # 修改为你的服务器列表
+        server: ${{ vars.servers }}  # 从 vars.servers 动态获取服务器列表
     
     # All checks run on localhost, connect to servers via SSH
     runs-on: localhost
@@ -177,7 +179,7 @@ jobs:
         continue-on-error: true
       
       # ========================================
-      # Step 4: Capture Results to Shell Variables and Save to JSON
+      # Step 4: Save Results to JSON (Using Step Outputs)
       # ========================================
       - name: Save health check results
         uses: exec/shell@v1
@@ -186,28 +188,15 @@ jobs:
             # Create results directory if not exists
             mkdir -p /tmp/waterflow-health-check
             
-            # Capture results from SSH commands directly
-            CPU_RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
-              if command -v mpstat > /dev/null 2>&1; then
-                mpstat 1 1 | awk "/Average/ {print 100 - \$NF}"
-              elif command -v top > /dev/null 2>&1; then
-                top -bn1 | grep -i "cpu" | head -1 | sed "s/.*,//; s/id.*//; s/ //g" | awk "{print 100 - \$1}"
-              else
-                grep "cpu " /proc/stat | awk "{usage=(\$2+\$4)*100/(\$2+\$4+\$5)} END {print usage}"
-              fi
-            ' 2>/dev/null || echo "N/A")
+            # Use step outputs instead of re-executing SSH commands
+            CPU_RESULT="${{ steps.cpu.outputs.stdout }}"
+            MEMORY_RESULT="${{ steps.memory.outputs.stdout }}"
+            DISK_RESULT="${{ steps.disk.outputs.stdout }}"
             
-            MEMORY_RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
-              if command -v free > /dev/null 2>&1; then
-                free | awk "/Mem:/ {printf(\"%.2f\", (\$3-\$6)/\$2 * 100.0)}"
-              else
-                awk "/MemTotal/{t=\$2} /MemAvailable/{a=\$2} END{printf(\"%.2f\", (t-a)/t*100)}" /proc/meminfo
-              fi
-            ' 2>/dev/null || echo "N/A")
-            
-            DISK_RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
-              df -P / | tail -1 | awk "{print \$5}" | tr -d "%"
-            ' 2>/dev/null || echo "N/A")
+            # Handle empty outputs (command failed)
+            [ -z "$CPU_RESULT" ] && CPU_RESULT="N/A"
+            [ -z "$MEMORY_RESULT" ] && MEMORY_RESULT="N/A"
+            [ -z "$DISK_RESULT" ] && DISK_RESULT="N/A"
             
             # Save results to JSON file
             cat > /tmp/waterflow-health-check/health_check_${{ matrix.server }}.json <<EOF
@@ -221,7 +210,7 @@ jobs:
             EOF
             
             echo "✅ Results saved for ${{ matrix.server }}: CPU=${CPU_RESULT}%, Memory=${MEMORY_RESULT}%, Disk=${DISK_RESULT}%"
-        timeout-minutes: 5
+        timeout-minutes: 1
   
   generate-report:
     needs: [health-check]
