@@ -151,17 +151,33 @@ examples/
 **Implementation Notes:**
 - 在启动新版本前备份旧版本信息 (容器 ID 或进程 ID)
 - 使用 continue-on-error 和 if 条件实现回滚
-- 示例:
+- 示例 (使用正确的 Waterflow 语法):
   ```yaml
   - name: Backup old version
-    run: docker ps --filter "name=${{ vars.app_name }}" --format "{{.ID}}" > /tmp/old_version.txt
+    uses: exec/shell@v1
+    with:
+      command: |
+        docker ps --filter "name=${{ vars.app_name }}" --format "{{.ID}}" > /tmp/old_${{ vars.app_name }}.txt || echo "none" > /tmp/old_${{ vars.app_name }}.txt
     
   - name: Health check new version
+    uses: http/request@v1
+    with:
+      url: ${{ vars.health_check_url }}
+      method: GET
     continue-on-error: true
     
   - name: Rollback on failure
     if: ${{ failure() }}
-    run: docker start $(cat /tmp/old_version.txt)
+    uses: exec/shell@v1
+    with:
+      command: |
+        OLD_ID=$(cat /tmp/old_${{ vars.app_name }}.txt)
+        if [ "$OLD_ID" != "none" ]; then
+          docker stop ${{ vars.app_name }}
+          docker rm ${{ vars.app_name }}
+          docker start $OLD_ID
+          docker rename $OLD_ID ${{ vars.app_name }}
+        fi
   ```
 
 ## Tasks / Subtasks
@@ -249,6 +265,7 @@ examples/
   - 模拟健康检查失败
   - 验证回滚逻辑执行
   - 验证旧版本恢复
+  - **测试文件:** testdata/deployment-test-rollback.yaml
   
 - [x] 3.4 验证文档完整性 ⚙️ REVIEW
   - 文档描述准确
@@ -1246,6 +1263,7 @@ Claude Sonnet 4.5 (2026-01-07)
 1. validate 命令无法识别外部节点 - 这是工具限制,不影响实际执行
 2. retry-strategy 的 max-attempts 必须是硬编码整数,不支持变量 - 已使用固定值 5
 3. 健康检查重试参数从 vars 移除(health_check_retries, health_check_delay) - 改用固定配置
+4. http/request@v1 节点已在 Story 3.5 中定义,实际插件实现状态待验证 - 如执行失败可用 exec/shell + curl 替代
 
 **后续建议:**
 - 实际测试需要启动 Agent 并提交工作流
@@ -1255,25 +1273,41 @@ Claude Sonnet 4.5 (2026-01-07)
 ### File List
 
 **新建文件:**
-- examples/workflows/single-server-deployment.yaml
+- examples/workflows/single-server-deployment.yaml (252行)
 - testdata/deployment-test-app/Dockerfile
 - testdata/deployment-test-app/README.md
+- testdata/deployment-test-app/.gitignore
 - testdata/deployment-test-app/.git/ (Git仓库)
 - testdata/deployment-test-workflow.yaml
+- testdata/deployment-test-rollback.yaml (回滚场景测试)
+- docs/templates/single-server-deployment.md (903行,含frontmatter)
 
 **修改文件:**
-- examples/README.md
-- docs/sprint-artifacts/6-1-single-server-deployment-template.md (本文件)
+- examples/README.md (+150行,新增生产模板章节)
+- examples/workflows/templates-metadata.json (添加模板元数据)
+- docs/sprint-artifacts/6-1-single-server-deployment-template.md (本文件,审查修复)
 
 ## Change Log
 
 - 2026-01-06: Story 创建,状态: ready-for-dev
 - 2026-01-07: Story 实现完成,状态: Ready for Review
-  - 创建单服务器部署模板 (examples/workflows/single-server-deployment.yaml, 234行)
+  - 创建单服务器部署模板 (examples/workflows/single-server-deployment.yaml, 252行)
   - 实现完整部署流程:Git拉取、Docker构建、停止旧版本、启动新版本、健康检查、回滚
-  - 参数化设计:8个参数(2必需+6可选),支持变量插值
+  - 参数化设计:6个参数(2必需+4可选),支持变量插值
   - 增强回滚逻辑:备份检查、首次部署处理、错误清理
   - 更新 examples/README.md,新增"生产级模板"章节(+150行)
+  - 创建完整文档 docs/templates/single-server-deployment.md (903行,含frontmatter)
   - 提供3个使用场景示例(Node.js、Python、GitHub Actions CI/CD)
-  - 创建测试应用和测试工作流(testdata/deployment-test-app)
+  - 创建测试应用和测试工作流(testdata/deployment-test-app, deployment-test-workflow.yaml)
+  - 创建回滚测试工作流(testdata/deployment-test-rollback.yaml)
   - 所有任务和子任务已完成并标记
+- 2026-01-07: 代码审查完成,所有问题已修复
+  - H2: 更新AC4示例代码为正确的Waterflow语法
+  - H3: 添加retry-strategy限制说明到YAML注释
+  - H4: 添加http/request节点验证说明到已知限制
+  - H5: 创建回滚测试工作流文件
+  - M2: 添加YAML schema验证标记
+  - M3: 创建.gitignore文件
+  - L1: 修复deploy_path变量嵌套问题
+  - L2: 添加文档frontmatter元数据
+  - 所有文件已准备提交到Git

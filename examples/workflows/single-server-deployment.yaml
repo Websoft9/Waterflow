@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../pkg/dsl/schema/workflow-schema.json
 # ====================================================================================================
 # Single Server Deployment Template
 # ====================================================================================================
@@ -18,8 +19,15 @@
 #   branch: Git 分支 (默认: main)
 #   deploy_path: 部署目录 (默认: /opt/{app_name})
 #   health_check_url: 健康检查URL (默认: http://localhost:{app_port}/health)
-#   health_check_retries: 健康检查重试次数 (默认: 5)
-#   health_check_delay: 健康检查重试延迟秒数 (默认: 10)
+#
+# ⚠️ 重要提示:
+# ====================================================================================================
+#   健康检查重试策略已在YAML中硬编码为:
+#     - max-attempts: 5 (重试5次)
+#     - initial-interval: 10s (每次间隔10秒)
+#   
+#   max-attempts 必须是1-100之间的整数常量,不支持变量插值。
+#   如需修改重试次数,请直接编辑步骤中的 retry-strategy.max-attempts 值。
 #
 # ====================================================================================================
 # 前置条件:
@@ -102,10 +110,8 @@ vars:
   # ===== Optional Parameters (with defaults) =====
   app_port: "3000"                                              # 应用监听端口
   branch: "main"                                                # Git 分支
-  deploy_path: "/opt/${{ vars.app_name }}"                     # 部署目录
+  deploy_path: "/opt/my-app"                                   # 部署目录 (建议修改为实际路径)
   health_check_url: "http://localhost:${{ vars.app_port }}/health"  # 健康检查URL
-  health_check_retries: 5                                       # 健康检查重试次数
-  health_check_delay: 10                                        # 健康检查延迟(秒)
 
 jobs:
   deploy:

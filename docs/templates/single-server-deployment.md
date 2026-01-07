@@ -1,3 +1,13 @@
+---
+template: single-server-deployment
+version: 1.0.0
+waterflow_version: ">= 0.1.0"
+last_updated: 2026-01-07
+author: Waterflow Team
+category: deployment
+difficulty: beginner
+---
+
 # 单服务器部署模板 (Single Server Deployment)
 
 ## 概述

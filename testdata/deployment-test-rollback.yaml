@@ -1,0 +1,142 @@
+# Test Workflow: Deployment Rollback Scenario
+# Purpose: Verify rollback logic when health check fails
+# Expected: Workflow should fail but old version should be restored
+
+name: Test Deployment Rollback
+on: push
+
+vars:
+  # Test with local repository
+  repo_url: "file:///data/Waterflow/testdata/deployment-test-app"
+  app_name: "test-app-rollback"
+  app_port: "8080"
+  
+  # INTENTIONAL ERROR: Invalid health check URL to trigger rollback
+  health_check_url: "http://localhost:8080/invalid-nonexistent-endpoint"
+  
+  deploy_path: "/tmp/test-app-rollback"
+
+jobs:
+  deploy:
+    runs-on: default
+    
+    steps:
+      # Step 1: Clone repository
+      - name: Clone or pull repository
+        uses: exec/shell@v1
+        with:
+          command: |
+            if [ -d "${{ vars.deploy_path }}" ]; then
+              echo "Repository exists, pulling latest changes..."
+              cd ${{ vars.deploy_path }} && git pull origin main
+            else
+              echo "Repository not found, cloning..."
+              git clone --depth 1 -b main ${{ vars.repo_url }} ${{ vars.deploy_path }}
+            fi
+        timeout-minutes: 5
+      
+      # Step 2: Build Docker image
+      - name: Build Docker image
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Building Docker image..."
+            docker build -t ${{ vars.app_name }}:main ${{ vars.deploy_path }}
+        timeout-minutes: 10
+      
+      # Step 3: Backup old version
+      - name: Backup old version container ID
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Backing up old version container ID..."
+            docker ps --filter "name=${{ vars.app_name }}" --format "{{.ID}}" > /tmp/old_${{ vars.app_name }}.txt || echo "none" > /tmp/old_${{ vars.app_name }}.txt
+            OLD_ID=$(cat /tmp/old_${{ vars.app_name }}.txt)
+            echo "Old container ID: $OLD_ID"
+      
+      # Step 4: Stop old version
+      - name: Stop old version container
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Stopping old version container..."
+            docker stop ${{ vars.app_name }} || echo "No container to stop (first deployment or already stopped)"
+      
+      # Step 5: Start new version
+      - name: Start new version container
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "Starting new version container..."
+            docker run -d --name ${{ vars.app_name }} \
+              -p ${{ vars.app_port }}:80 \
+              ${{ vars.app_name }}:main
+      
+      # Step 6: Health check (WILL FAIL - intentional)
+      - name: Health check new version (will fail)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.health_check_url }}
+          method: GET
+        timeout-minutes: 1
+        retry-strategy:
+          max-attempts: 3
+          initial-interval: 5s
+          backoff-coefficient: 1.0
+          max-interval: 5s
+        continue-on-error: true
+      
+      # Step 7: Rollback on failure
+      - name: Rollback on health check failure
+        if: ${{ failure() }}
+        uses: exec/shell@v1
+        with:
+          command: |
+            echo "========================================"
+            echo "Health check failed! Rolling back..."
+            echo "========================================"
+            
+            # Check if backup file exists
+            if [ ! -f /tmp/old_${{ vars.app_name }}.txt ]; then
+              echo "ERROR: No backup file found, cannot rollback"
+              echo "Cleaning up failed deployment..."
+              docker stop ${{ vars.app_name }} || true
+              docker rm ${{ vars.app_name }} || true
+              exit 1
+            fi
+            
+            OLD_ID=$(cat /tmp/old_${{ vars.app_name }}.txt)
+            echo "Old container ID from backup: $OLD_ID"
+            
+            # Check if first deployment (no old version)
+            if [ "$OLD_ID" == "none" ]; then
+              echo "First deployment failed, no old version to rollback to"
+              echo "Cleaning up failed deployment..."
+              docker stop ${{ vars.app_name }} || true
+              docker rm ${{ vars.app_name }} || true
+              exit 1
+            fi
+            
+            # Rollback to old version
+            echo "Rolling back to old version..."
+            
+            # Stop and remove failed new version
+            docker stop ${{ vars.app_name }} || true
+            docker rm ${{ vars.app_name }} || true
+            
+            # Restart old version
+            docker start $OLD_ID
+            
+            # Rename old container back to app name
+            docker rename $OLD_ID ${{ vars.app_name }} || true
+            
+            echo "========================================"
+            echo "Rollback completed successfully"
+            echo "Old version is now running"
+            echo "========================================"
+            
+            # Verify old version is running
+            docker ps | grep ${{ vars.app_name }}
+            
+            # Exit with error to mark workflow as failed
+            exit 1
