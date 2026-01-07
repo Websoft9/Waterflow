@@ -103,13 +103,13 @@ development_status:
   5-8-go-sdk-documentation: done  # ✅代码审查完成(2026-01-05),所有17个问题已修复(12 HIGH+3 MEDIUM+2 LOW),AC1-AC5 100%达成(MVP范围),GoDoc注释全部补充(types.go 7类型+errors.go 3函数),Task 1/2/3/6/7/8已完成,Task 4/5标记Post-MVP,quickstart README已存在,error_handling.go缩进修复,File List更新,完成日期2026-01-05
   epic-5-retrospective: optional
 
-  # Epic 6: 工作流模板库 (5 stories) - COMPLETED 2026-01-06
-  epic-6: in-progress
+  # Epic 6: 工作流模板库 (5 stories) - COMPLETED 2026-01-07
+  epic-6: review  # 所有 stories 已完成实施,等待整体审查
   6-1-single-server-deployment-template: review
   6-2-multi-server-health-check-template: review  # ✅实施完成(2026-01-06),Matrix并行+SSH远程+Python报告,440行模板,文档完整,等待审查
   6-3-distributed-stack-deployment-template: review  # ✅实施完成(2026-01-06),Job依赖编排+跨服务器部署+健康检查+回滚,420行模板,3个配置文件,文档完整
   6-4-template-api-endpoint: review  # ✅实施完成(2026-01-07),GET /v1/templates + /v1/templates/{name},元数据缓存,category过滤,41个测试全通过,go test -race验证,集成测试脚本,文档更新,代码已提交
-  6-5-template-documentation-and-examples: ready-for-dev
+  6-5-template-documentation-and-examples: review  # ✅实施完成(2026-01-07),创建docs/templates/模板库文档(README.md+3个模板详细文档),每个模板含概述/前置条件/参数说明/3个使用示例/定制指南/故障排查,AC1-AC5 100%达成,集成到quick-start.md和examples/README.md,3400+行文档,代码已提交
   epic-6-retrospective: optional
 
   # Epic 7: 生产级可靠性 (7 stories)
