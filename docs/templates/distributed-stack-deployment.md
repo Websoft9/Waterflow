@@ -153,6 +153,7 @@ app.get('/health', async (req, res) => {
 | `db_password` | `changeme` | 数据库密码 (⚠️ 生产环境使用 Secret!) | - |
 | `db_init_script` | `""` | 初始化 SQL 脚本路径 (可选) | `/opt/schema/init.sql` |
 | `db_data_volume` | `postgres_data` | 数据持久化 Volume 名称 | `myapp_db_data` |
+| `db_container_name` | `postgres` | 数据库容器名称 | `myapp-postgres` |
 
 ### 应用配置参数
 
@@ -172,7 +173,7 @@ app.get('/health', async (req, res) => {
 | `deploy_environment` | `dev` | 环境标识 (dev/staging/prod) | `production` |
 | `deploy_timeout` | `300` | 部署最大超时时间 (秒) | `600` |
 | `health_check_retries` | `10` | 健康检查最大重试次数 | `20` |
-| `health_check_delay` | `5s` | 健康检查重试延迟 | `10s` |
+| `health_check_delay` | `5` | 健康检查重试延迟 (秒) | `10` |
 | `rollback_on_failure` | `false` | 失败时是否回滚数据库 | `true` |
 
 ---

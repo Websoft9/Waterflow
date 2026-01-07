@@ -68,7 +68,7 @@ ssh-copy-id user@server2
 
 # 2. 修改服务器列表
 cp examples/workflows/multi-server-health-check.yaml my-health-check.yaml
-# 编辑 jobs.health-check.strategy.matrix.server
+# 编辑 vars.servers
 
 # 3. 提交工作流
 waterflow submit my-health-check.yaml
