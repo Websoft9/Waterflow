@@ -1,6 +1,6 @@
 # Story 6.5: 模板文档和示例
 
-Status: review
+Status: Done
 
 ## Story
 
@@ -1106,3 +1106,11 @@ Story 6.5 成功完成,为 Waterflow 工作流模板库创建了完整的文档�
   - 所有 AC (AC1-AC5) 100% 达成
   - 代码提交: 4959a06, 5464c1e
   - Epic 6 所有 stories 完成实施
+- 2026-01-07: 代码审查完成,状态: Done
+  - 修复3个代码审查问题 (2 MEDIUM, 1 LOW)
+  - M1: 更新README快速开始指令为vars.servers
+  - M2: 修复health_check_delay参数默认值为整数5
+  - L1: 添加db_container_name参数文档
+  - Git commit: c4a2f78
+  - 所有验收标准 AC1-AC5 已验证通过
+  - 文档已与3个模板实现完全同步
