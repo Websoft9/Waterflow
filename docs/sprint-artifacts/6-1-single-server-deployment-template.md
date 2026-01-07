@@ -1,6 +1,6 @@
 # Story 6.1: 单服务器部署模板
 
-Status: Ready for Review
+Status: done
 
 ## Story
 
