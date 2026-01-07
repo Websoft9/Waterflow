@@ -168,7 +168,7 @@ func TestGetTemplate(t *testing.T) {
 			name:           "Invalid template name with slash",
 			templateName:   "../etc/passwd",
 			query:          "",
-			expectedStatus: http.StatusBadRequest, // gorilla/mux may return 301 (redirect) for paths with ../
+			expectedStatus: http.StatusBadRequest, // Note: gorilla/mux may return 301 for paths with ../, so we handle both cases below
 			checkContent:   false,
 		},
 		{

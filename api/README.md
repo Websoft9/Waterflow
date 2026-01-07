@@ -100,6 +100,21 @@ curl http://localhost:8080/v1/templates/single-server-deployment?content=false
 - `404 Not Found`: 模板不存在
 - `400 Bad Request`: 无效的模板名称
 - `413 Payload Too Large`: 模板文件超过1MB
+- `500 Internal Server Error`: 服务器内部错误
+
+所有错误响应遵循 RFC 7807 Problem Details 格式:
+
+```json
+{
+  "type": "https://waterflow.io/errors/template-not-found",
+  "title": "Template Not Found",
+  "status": 404,
+  "detail": "Template 'invalid-template' does not exist",
+  "instance": "/v1/templates/invalid-template"
+}
+```
+- `400 Bad Request`: 无效的模板名称
+- `413 Payload Too Large`: 模板文件超过1MB
 
 ## 未来计划
 

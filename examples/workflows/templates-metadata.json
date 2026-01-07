@@ -106,7 +106,7 @@
                     "type": "array",
                     "items": "string",
                     "required": true,
-                    "description": "List of server names/IPs to check (defined in jobs.health-check.strategy.matrix.server)",
+                    "description": "List of server names/IPs to check (defined in vars.servers)",
                     "example": [
                         "web-1",
                         "web-2",
@@ -257,6 +257,14 @@
                     "example": "postgres_data"
                 },
                 {
+                    "name": "db_container_name",
+                    "type": "string",
+                    "required": false,
+                    "default": "postgres",
+                    "description": "Database container name",
+                    "example": "postgres"
+                },
+                {
                     "name": "app_server",
                     "type": "string",
                     "required": false,
@@ -329,11 +337,11 @@
                 },
                 {
                     "name": "health_check_delay",
-                    "type": "string",
+                    "type": "integer",
                     "required": false,
-                    "default": "5s",
-                    "description": "Delay between health check retries",
-                    "example": "5s"
+                    "default": "5",
+                    "description": "Delay between health check retries in seconds",
+                    "example": 5
                 },
                 {
                     "name": "rollback_on_failure",
