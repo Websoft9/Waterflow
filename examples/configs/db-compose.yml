@@ -1,3 +1,21 @@
+# PostgreSQL Docker Compose Configuration
+# =========================================
+# This file is an OPTIONAL alternative to the docker/exec approach
+# used in distributed-stack-deployment.yaml template.
+#
+# Usage: Copy this file to your deployment server and modify vars.db_compose_file
+# to point to this file, then change the deploy step to use docker/compose node.
+#
+# Example:
+#   vars:
+#     db_compose_file: "/opt/configs/db-compose.yml"
+#   steps:
+#     - uses: docker/compose@v1
+#       with:
+#         file: ${{ vars.db_compose_file }}
+#         action: up
+#         args: "-d"
+
 version: '3.8'
 
 services:

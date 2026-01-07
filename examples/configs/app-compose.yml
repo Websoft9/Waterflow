@@ -1,3 +1,18 @@
+# Application + Database Stack Docker Compose Configuration
+# ==========================================================
+# This file is an OPTIONAL alternative showing how to deploy
+# both app and database together using Docker Compose.
+#
+# Note: The distributed-stack-deployment.yaml template deploys
+# database and application to DIFFERENT servers, so this single-file
+# approach is mainly useful for:
+#   - Local development/testing
+#   - Single-server deployments
+#   - Reference for environment variable structure
+#
+# For multi-server deployment, refer to the workflow template which
+# uses docker/exec to deploy services individually.
+
 version: '3.8'
 
 services:

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../pkg/dsl/schema/workflow-schema.json
 # Distributed Stack Deployment Workflow Template
 # ===============================================
 #
@@ -123,9 +124,10 @@ vars:
   db_port: 5432                             # PostgreSQL port
   db_name: "myapp"                          # Database name
   db_user: "appuser"                        # Database username
-  db_password: "changeme"                   # Database password (use Secret in production!)
+  db_password: "changeme"                   # ⚠️ SECURITY WARNING: Change this! Use Secret Provider in production!
   db_init_script: ""                        # Optional: path to SQL init script (e.g., /opt/init.sql)
   db_data_volume: "postgres_data"           # Named volume for database data
+  db_container_name: "postgres"             # Database container name
   
   # Application Configuration
   app_server: "app-server"                  # Task Queue name for application server
@@ -139,7 +141,7 @@ vars:
   deploy_environment: "dev"                 # Environment: dev/staging/prod
   deploy_timeout: 300                       # Maximum deployment time (seconds)
   health_check_retries: 10                  # Number of health check retries
-  health_check_delay: "5s"                  # Delay between retries
+  health_check_delay: 5                     # Delay between retries (seconds)
   rollback_on_failure: false                # Whether to rollback database on failure
 
 jobs:
@@ -161,14 +163,14 @@ jobs:
         id: stop-old-db
         uses: exec/shell@v1
         with:
-          command: docker stop postgres 2>/dev/null || echo "No existing container"
+          command: docker stop ${{ vars.db_container_name }} 2>/dev/null || echo "No existing container"
         continue-on-error: true
       
       - name: Remove existing PostgreSQL container
         id: remove-old-db
         uses: exec/shell@v1
         with:
-          command: docker rm postgres 2>/dev/null || echo "No existing container"
+          command: docker rm ${{ vars.db_container_name }} 2>/dev/null || echo "No existing container"
         continue-on-error: true
       
       - name: Start PostgreSQL container
@@ -178,7 +180,7 @@ jobs:
           command: run
           args: >-
             -d
-            --name postgres
+            --name ${{ vars.db_container_name }}
             --restart unless-stopped
             -p ${{ vars.db_port }}:5432
             -e POSTGRES_DB=${{ vars.db_name }}
@@ -215,12 +217,12 @@ jobs:
               echo "✗ ERROR: Init script not found: ${{ vars.db_init_script }}"
               exit 1
             fi
-            PGPASSWORD=${{ vars.db_password }} psql \
+            PGPASSWORD="${{ vars.db_password }}" psql \
               -h localhost \
-              -p ${{ vars.db_port }} \
-              -U ${{ vars.db_user }} \
-              -d ${{ vars.db_name }} \
-              -f ${{ vars.db_init_script }}
+              -p "${{ vars.db_port }}" \
+              -U "${{ vars.db_user }}" \
+              -d "${{ vars.db_name }}" \
+              -f "${{ vars.db_init_script }}"
             if [ $? -eq 0 ]; then
               echo "✓ Database initialization completed successfully"
             else
@@ -235,11 +237,11 @@ jobs:
         with:
           command: |
             echo "Verifying database connection..."
-            PGPASSWORD=${{ vars.db_password }} psql \
+            PGPASSWORD="${{ vars.db_password }}" psql \
               -h localhost \
-              -p ${{ vars.db_port }} \
-              -U ${{ vars.db_user }} \
-              -d ${{ vars.db_name }} \
+              -p "${{ vars.db_port }}" \
+              -U "${{ vars.db_user }}" \
+              -d "${{ vars.db_name }}" \
               -c "SELECT version();" \
               -t
             echo "✓ Database connection verified"
@@ -374,6 +376,10 @@ jobs:
   # ============================================================================
   # Job 3: Rollback on Failure (optional)
   # ============================================================================
+  # NOTE: Current limitation - this job only runs on app_server.
+  # To rollback database on db_server, you would need a separate job or
+  # manual cleanup. In production, consider using orchestration tools like
+  # Docker Swarm or Kubernetes for multi-server rollback.
   rollback-on-failure:
     needs: [deploy-app]
     if: ${{ failure() && vars.rollback_on_failure == true }}
@@ -391,20 +397,20 @@ jobs:
             echo "✓ Application container stopped and removed"
         continue-on-error: true
       
-      - name: Stop database container
-        id: rollback-stop-db
-        runs-on: ${{ vars.db_server }}
+      - name: Rollback summary
+        id: rollback-summary-app
         uses: exec/shell@v1
         with:
           command: |
-            echo "Rolling back: Stopping database container..."
-            docker stop postgres 2>/dev/null || echo "Container already stopped"
-            docker rm postgres 2>/dev/null || echo "Container already removed"
-            echo "✓ Database container stopped and removed"
+            echo "================================================"
+            echo "  Rollback Completed (Application Server)"
+            echo "================================================"
+            echo "Application container: REMOVED"
             echo ""
-            echo "NOTE: Database data volume '${{ vars.db_data_volume }}' is preserved"
-            echo "To remove data: docker volume rm ${{ vars.db_data_volume }}"
-        continue-on-error: true
+            echo "NOTE: Database rollback requires manual cleanup:"
+            echo "  ssh ${{ vars.db_server }} 'docker stop postgres && docker rm postgres'"
+            echo "  Database data volume is preserved: ${{ vars.db_data_volume }}"
+            echo "================================================"
       
       - name: Rollback summary
         id: rollback-summary
