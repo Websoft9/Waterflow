@@ -2,6 +2,45 @@
 
 本目录包含 Waterflow 的示例工作流和配置文件。
 
+## 🎨 工作流模板库 (推荐)
+
+**访问完整模板库:** [工作流模板库文档](../docs/templates/README.md)
+
+Waterflow 提供生产就绪的工作流模板,包含详细文档、使用示例和故障排查指南:
+
+| 模板 | 说明 | 完整文档 |
+|------|------|----------|
+| **单服务器部署** | 将应用部署到单台服务器,含构建、健康检查、回滚 | [查看文档](../docs/templates/single-server-deployment.md) |
+| **多服务器健康检查** | 并行检查多台服务器 CPU、内存、磁盘状态 | [查看文档](../docs/templates/multi-server-health-check.md) |
+| **分布式栈部署** | 部署多层应用栈,支持服务依赖管理 | [查看文档](../docs/templates/distributed-stack-deployment.md) |
+
+**快速使用模板:**
+
+```bash
+# 1. 浏览可用模板
+ls examples/workflows/*.yaml
+
+# 2. 复制模板
+cp examples/workflows/single-server-deployment.yaml my-deployment.yaml
+
+# 3. 修改配置
+vim my-deployment.yaml  # 编辑 vars 部分
+
+# 4. 提交工作流
+waterflow submit my-deployment.yaml
+```
+
+**完整模板文档,包含:**
+- ✅ 详细的参数说明和配置选项
+- ✅ 至少 2 个真实使用示例
+- ✅ 定制指南和扩展方法
+- ✅ 常见问题故障排查
+- ✅ 最佳实践建议
+
+📖 **[访问工作流模板库 →](../docs/templates/README.md)**
+
+---
+
 ## 📁 目录结构
 
 ```
@@ -11,7 +50,10 @@ examples/
 │   ├── config.agent.example.yaml    # Agent 配置模板
 │   └── server-groups.example.yaml   # Server Groups 配置模板
 ├── workflows/                  # 工作流模板
+│   ├── templates-metadata.json        # 模板元数据 (API 数据源)
 │   ├── single-server-deployment.yaml  # 单服务器部署模板 (生产级)
+│   ├── multi-server-health-check.yaml # 多服务器健康检查模板
+│   ├── distributed-stack-deployment.yaml # 分布式栈部署模板
 │   ├── shell-examples.yaml            # Shell 节点示例
 │   ├── script-examples.yaml           # Script 节点示例
 │   ├── docker-exec-examples.yaml      # Docker 节点示例
@@ -87,86 +129,118 @@ EOF
 
 ### workflows/ 目录 - 生产就绪的工作流模板
 
-`workflows/` 文件夹包含可直接用于生产的、参数化的工作流模板。这些模板展示了 Waterflow 的最佳实践，并包含完整的错误处理和回滚逻辑。
+`workflows/` 文件夹包含可直接用于生产的、参数化的工作流模板。这些模板展示了 Waterflow 的最佳实践,并包含完整的错误处理和回滚逻辑。
 
-#### 1. single-server-deployment.yaml - 单服务器应用部署
+**📖 完整模板文档:** [工作流模板库](../docs/templates/README.md)
 
-**适用场景：**
-- 小型 Web 应用
-- 内部工具
-- MVP 产品
-- 开发/测试环境
+每个模板都有详细的独立文档页面,包含:
+- 详细参数说明
+- 多个真实使用示例
+- 定制指南
+- 故障排查
+- 最佳实践
 
-**功能特性：**
-- ✅ 基于 Git 的代码拉取
+### 可用模板概览
+
+#### 1. 单服务器部署 (single-server-deployment.yaml)
+
+**适用场景:** 小型 Web 应用、MVP 产品、开发/测试环境
+
+**功能特性:**
+- ✅ Git 代码拉取/更新
 - ✅ Docker 镜像构建
 - ✅ 优雅停止旧版本
 - ✅ 启动新版本
 - ✅ HTTP 健康检查（带重试）
 - ✅ 失败自动回滚
 
-**快速开始：**
+**📖 完整文档:** [单服务器部署模板](../docs/templates/single-server-deployment.md)
+
+**快速使用:**
 ```bash
-# 1. 复制模板
-cp examples/workflows/single-server-deployment.yaml my-app-deployment.yaml
-
-# 2. 编辑配置（修改 vars 部分）
-vim my-app-deployment.yaml
-# 必需修改:
-#   repo_url: "https://github.com/your-org/your-app.git"
-#   app_name: "your-app"
-
-# 3. 提交工作流
-waterflow submit my-app-deployment.yaml
-
-# 或使用 API:
-curl -X POST http://localhost:8080/v1/workflows \
-  -H "Content-Type: application/json" \
-  -d @my-app-deployment.yaml
-
-# 4. 查看部署状态
-waterflow status <workflow-id>
+cp examples/workflows/single-server-deployment.yaml my-app.yaml
+# 编辑 vars.repo_url 和 vars.app_name
+waterflow submit my-app.yaml
 ```
 
-**参数说明：**
+---
 
-| 参数 | 必需 | 默认值 | 说明 |
-|------|------|--------|------|
-| `repo_url` | ✅ | - | Git 仓库地址 |
-| `app_name` | ✅ | - | 应用名称（用于容器命名） |
-| `app_port` | ⚙️ | 3000 | 应用监听端口 |
-| `branch` | ⚙️ | main | Git 分支 |
-| `deploy_path` | ⚙️ | /opt/{app_name} | 部署目录 |
-| `health_check_url` | ⚙️ | http://localhost:{app_port}/health | 健康检查 URL |
-| `health_check_retries` | ⚙️ | 5 | 健康检查重试次数 |
-| `health_check_delay` | ⚙️ | 10 | 健康检查延迟（秒） |
+#### 2. 多服务器健康检查 (multi-server-health-check.yaml)
 
-**使用示例：**
+**适用场景:** 服务器巡检、部署前验证、容量规划
 
-```yaml
-# 示例 1: 部署 Node.js Express 应用
-vars:
-  repo_url: "https://github.com/expressjs/express.git"
-  app_name: "express-app"
-  app_port: "3000"
-  health_check_url: "http://localhost:3000/health"
+**功能特性:**
+- ✅ SSH 远程执行,无需 Agent
+- ✅ Matrix 策略并行检查
+- ✅ 收集 CPU、内存、磁盘指标
+- ✅ Python 生成 Markdown 报告
+- ✅ 跨平台兼容 (Ubuntu、CentOS 等)
 
-# 示例 2: 部署 Python Flask 应用
-vars:
-  repo_url: "https://github.com/pallets/flask.git"
-  app_name: "flask-app"
-  app_port: "5000"
-  health_check_url: "http://localhost:5000/health"
+**📖 完整文档:** [多服务器健康检查模板](../docs/templates/multi-server-health-check.md)
 
-# 示例 3: 部署到特定分支
-vars:
-  repo_url: "https://github.com/user/app.git"
-  app_name: "my-app"
-  branch: "develop"
-  deploy_path: "/opt/my-app-dev"
+**快速使用:**
+```bash
+# 配置 SSH 免密登录
+ssh-copy-id user@server1
+
+cp examples/workflows/multi-server-health-check.yaml health-check.yaml
+# 编辑 jobs.health-check.strategy.matrix.server
+waterflow submit health-check.yaml
 ```
 
-**与 CI/CD 集成（GitHub Actions）：**
+---
+
+#### 3. 分布式栈部署 (distributed-stack-deployment.yaml)
+
+**适用场景:** Web 应用 + 数据库、微服务架构、多层应用
+
+**功能特性:**
+- ✅ Job 依赖管理 (数据库先启动)
+- ✅ 跨服务器部署编排
+- ✅ 数据库初始化和健康检查
+- ✅ 应用与数据库连接验证
+- ✅ 失败回滚选项
+
+**📖 完整文档:** [分布式栈部署模板](../docs/templates/distributed-stack-deployment.md)
+
+**快速使用:**
+```bash
+cp examples/workflows/distributed-stack-deployment.yaml my-stack.yaml
+# 编辑数据库和应用配置
+waterflow submit my-stack.yaml
+```
+
+---
+
+### 模板选择指南
+
+| 需求 | 推荐模板 |
+|------|----------|
+| 部署单个应用到一台服务器 | 单服务器部署 |
+| 检查多台服务器健康状态 | 多服务器健康检查 |
+| 部署应用和数据库 | 分布式栈部署 |
+| 部署微服务到多台服务器 | 分布式栈部署 + 定制 |
+| 定期监控服务器 | 多服务器健康检查 + Cron |
+
+### 通过 API 获取模板
+
+```bash
+# 列出所有可用模板
+curl http://localhost:8080/v1/templates
+
+# 获取特定模板详情
+curl http://localhost:8080/v1/templates/single-server-deployment
+
+# 仅获取元数据 (不含 YAML 内容)
+curl http://localhost:8080/v1/templates/single-server-deployment?content=false
+
+# 按类别过滤
+curl http://localhost:8080/v1/templates?category=deployment
+```
+
+### 与 CI/CD 集成示例
+
+**GitHub Actions:**
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -182,7 +256,7 @@ jobs:
     steps:
       - name: Submit deployment to Waterflow
         run: |
-          WORKFLOW_ID=$(curl -X POST http://waterflow-server:8080/v1/workflows \
+          curl -X POST http://waterflow-server:8080/v1/workflows \
             -H "Content-Type: application/json" \
             -d '{
               "workflow_file": "single-server-deployment",
@@ -191,20 +265,23 @@ jobs:
                 "app_name": "my-app",
                 "branch": "${{ github.ref_name }}"
               }
-            }' | jq -r '.id')
-          echo "Deployment workflow ID: $WORKFLOW_ID"
-      
-      - name: Wait for deployment
-        run: waterflow status $WORKFLOW_ID --wait
+            }'
 ```
 
-**前置条件：**
-- Waterflow Agent 已安装并运行
-- Agent 服务器已安装 Git 和 Docker
-- 应用仓库可访问（公开仓库或已配置凭证）
-- 目标端口未被占用
+**GitLab CI:**
 
-**详细文档：** 查看模板文件顶部注释获取完整参数说明和故障排查指南。
+```yaml
+# .gitlab-ci.yml
+deploy:
+  stage: deploy
+  script:
+    - |
+      curl -X POST http://waterflow-server:8080/v1/workflows \
+        -H "Content-Type: application/json" \
+        -d @deployment-config.json
+  only:
+    - main
+```
 
 ---
 

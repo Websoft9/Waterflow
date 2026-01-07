@@ -114,9 +114,44 @@ echo "WATERFLOW_LOG_LEVEL=debug" >> .env
 docker compose up -d
 ```
 
+## 🎨 使用工作流模板
+
+Waterflow 提供生产就绪的工作流模板,快速实现常见部署和运维场景:
+
+### 浏览模板库
+
+访问 **[工作流模板库](./templates/README.md)** 查看所有可用模板。
+
+### 可用模板
+
+| 模板 | 说明 | 适用场景 |
+|------|------|----------|
+| **[单服务器部署](./templates/single-server-deployment.md)** | 将应用部署到单台服务器 | Web 应用、MVP 产品 |
+| **[多服务器健康检查](./templates/multi-server-health-check.md)** | 并行检查多台服务器状态 | 服务器巡检、监控 |
+| **[分布式栈部署](./templates/distributed-stack-deployment.md)** | 部署多层应用栈(数据库+应用) | 生产环境、微服务 |
+
+### 快速使用模板
+
+```bash
+# 1. 选择模板
+cp examples/workflows/single-server-deployment.yaml my-app.yaml
+
+# 2. 修改配置
+vim my-app.yaml
+# 编辑 vars.repo_url 和 vars.app_name
+
+# 3. 提交工作流
+curl -X POST http://localhost:8080/v1/workflows \
+  -H "Content-Type: application/json" \
+  -d "{\"yaml\": \"$(cat my-app.yaml)\"}"
+```
+
+**完整模板文档:** [工作流模板库](./templates/README.md)
+
 ## 📚 下一步
 
 - 📖 [完整部署文档](deployment.md) - 详细配置和故障排查
+- 🎨 **[工作流模板库](./templates/README.md) - 生产就绪的模板** ⭐
 - 🔍 [示例工作流](../examples/README.md) - 更多 YAML 示例
 - 🏗️ [架构文档](architecture.md) - 系统架构设计
 - 💻 [开发指南](development.md) - 本地开发环境
