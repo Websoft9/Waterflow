@@ -106,7 +106,7 @@ development_status:
   # Epic 6: 工作流模板库 (5 stories) - COMPLETED 2026-01-07
   epic-6: review  # 所有 stories 已完成实施,等待整体审查
   6-1-single-server-deployment-template: done  # ✅代码审查完成(2026-01-07),所有11个问题已修复(5 HIGH+4 MEDIUM+2 LOW),AC1-AC4 100%达成,252行模板YAML(含schema标记/retry限制说明),903行文档(含frontmatter),正常流程测试工作流,回滚场景测试工作流,Git已提交,完成日期2026-01-07
-  6-2-multi-server-health-check-template: review  # ✅实施完成(2026-01-06),Matrix并行+SSH远程+Python报告,440行模板,文档完整,等待审查
+  6-2-multi-server-health-check-template: done  # ✅代码审查完成(2026-01-07),所有9个问题已修复(3 HIGH+4 MEDIUM+2 LOW),AC1-AC5 100%达成,step outputs机制恢复,vars.servers定义规范,文档同步更新,Git提交73ed564,完成日期2026-01-07
   6-3-distributed-stack-deployment-template: review  # ✅实施完成(2026-01-06),Job依赖编排+跨服务器部署+健康检查+回滚,420行模板,3个配置文件,文档完整
   6-4-template-api-endpoint: review  # ✅实施完成(2026-01-07),GET /v1/templates + /v1/templates/{name},元数据缓存,category过滤,41个测试全通过,go test -race验证,集成测试脚本,文档更新,代码已提交
   6-5-template-documentation-and-examples: review  # ✅实施完成(2026-01-07),创建docs/templates/模板库文档(README.md+3个模板详细文档),每个模板含概述/前置条件/参数说明/3个使用示例/定制指南/故障排查,AC1-AC5 100%达成,集成到quick-start.md和examples/README.md,3400+行文档,代码已提交
