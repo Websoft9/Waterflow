@@ -208,8 +208,140 @@ jobs:
 
 #### 其他模板（即将推出）
 
-- **multi-server-health-check.yaml** - 多服务器健康检查模板
+- **multi-server-health-check.yaml** - 多服务器健康检查模板 ✅
 - **distributed-stack-deployment.yaml** - 分布式应用栈部署模板
+
+---
+
+#### 2. multi-server-health-check.yaml - 多服务器健康检查
+
+**适用场景:**
+- 定期服务器巡检和监控
+- 批量健康状态检查
+- 资源使用监控
+- 问题服务器快速定位
+
+**功能特性:**
+- ✅ Matrix 并行执行 (同时检查多台服务器)
+- ✅ SSH 远程执行 (无需在每台服务器部署 Agent)
+- ✅ CPU/内存/磁盘使用率检查
+- ✅ 跨平台命令兼容 (带回退方案)
+- ✅ 异常自动识别和告警
+- ✅ 统一 Markdown 报告生成
+
+**快速开始:**
+```bash
+# 1. 配置 SSH 免密登录
+ssh-copy-id root@server1
+ssh-copy-id root@server2
+ssh-copy-id root@server3
+
+# 2. 复制模板
+cp examples/workflows/multi-server-health-check.yaml my-health-check.yaml
+
+# 3. 编辑配置（修改 vars 部分）
+vim my-health-check.yaml
+# 必需修改:
+#   servers: ["server1", "server2", "server3"]
+
+# 4. 提交工作流
+waterflow submit my-health-check.yaml
+
+# 5. 查看报告
+cat /tmp/health_report.md
+```
+
+**参数说明:**
+
+| 参数 | 必需 | 默认值 | 说明 |
+|------|------|--------|------|
+| `servers` | ✅ | - | 服务器列表 (主机名或IP) |
+| `ssh_user` | ⚙️ | root | SSH 用户名 |
+| `cpu_threshold` | ⚙️ | 80 | CPU 使用率告警阈值 (%) |
+| `memory_threshold` | ⚙️ | 85 | 内存使用率告警阈值 (%) |
+| `disk_threshold` | ⚙️ | 90 | 磁盘使用率严重阈值 (%) |
+| `report_path` | ⚙️ | /tmp/health_report.md | 报告保存路径 |
+
+**使用示例:**
+
+```yaml
+# 示例 1: 检查 3 台 Web 服务器
+vars:
+  servers: ["web-1.example.com", "web-2.example.com", "web-3.example.com"]
+  ssh_user: "ubuntu"
+
+# 示例 2: 检查混合环境 (Web + DB + Cache)
+vars:
+  servers: ["web-1", "db-1", "cache-1"]
+  cpu_threshold: 70
+  memory_threshold: 80
+  disk_threshold: 85
+
+# 示例 3: 生产环境监控
+vars:
+  servers: ["prod-web-1", "prod-web-2", "prod-db-1"]
+  cpu_threshold: 75
+  memory_threshold: 80
+  report_path: "/var/waterflow/reports/health_report.md"
+```
+
+**报告示例:**
+
+```markdown
+# 🏥 Multi-Server Health Check Report
+
+**Generated:** 2026-01-07 10:30:45
+**Total Servers:** 3
+
+## ⚙️ Configured Thresholds
+
+- CPU Warning: > 80%
+- Memory Warning: > 85%
+- Disk Critical: > 90%
+
+## 📊 Server Health Status
+
+| Server | CPU (%) | Memory (%) | Disk (%) | Status |
+|--------|---------|------------|----------|--------|
+| web-1  | 45.2    | 62.1       | 75.3     | ✅ OK     |
+| web-2  | 88.3    | 78.5       | 45.2     | ⚠️ WARN  |
+| db-1   | 38.5    | 55.3       | 92.1     | 🚨 CRITICAL |
+
+## 📈 Summary
+
+- **Total Servers:** 3
+- ✅ **Healthy:** 1
+- ⚠️ **Warnings:** 1
+- 🚨 **Critical:** 1
+- ❌ **Failed:** 0
+- 📊 **Health Score:** 33.3%
+
+## ⚠️ Issues Detected
+
+- **web-2**: CPU usage high (88.3%, threshold: 80%)
+- **db-1**: ⚠️ **CRITICAL** - Disk usage high (92.1%, threshold: 90%)
+```
+
+**定时健康检查 (Cron 集成):**
+
+```bash
+# 添加到 crontab - 每小时执行一次
+0 * * * * /usr/local/bin/waterflow submit /etc/waterflow/workflows/multi-server-health-check.yaml >> /var/log/waterflow-health.log 2>&1
+
+# 每天凌晨 2 点执行
+0 2 * * * /usr/local/bin/waterflow submit /etc/waterflow/workflows/multi-server-health-check.yaml
+
+# 每 15 分钟执行一次
+*/15 * * * * /usr/local/bin/waterflow submit /etc/waterflow/workflows/multi-server-health-check.yaml
+```
+
+**前置条件:**
+- SSH 免密登录配置完成
+- Python 3 已安装 (用于报告生成)
+- 目标服务器为 Linux 系统
+- Waterflow Server 和 Agent 正在运行
+
+**详细文档:** 查看模板文件顶部注释获取完整参数说明、架构设计和故障排查指南。
 
 
 

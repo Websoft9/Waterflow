@@ -1,0 +1,438 @@
+# ====================================================================================================
+# Multi-Server Health Check Workflow Template
+# ====================================================================================================
+#
+# Purpose:
+#   - Perform parallel health checks across multiple servers via SSH
+#   - Collect CPU, memory, and disk usage metrics
+#   - Generate unified health report with warnings
+#
+# Use Cases:
+#   - Regular server monitoring and health checks
+#   - Pre-deployment infrastructure verification
+#   - Problem server identification and troubleshooting
+#   - Capacity planning and resource monitoring
+#
+# ====================================================================================================
+# Prerequisites:
+# ====================================================================================================
+#   - SSH access configured to all target servers (passwordless SSH key recommended)
+#     Setup: ssh-copy-id user@server1
+#   - Python 3 installed on localhost (for report generation)
+#   - Target servers must be Linux-based
+#   - Waterflow Server and at least one Agent running
+#
+# ====================================================================================================
+# Parameters:
+# ====================================================================================================
+#   servers: List of server hostnames or IPs (required)
+#   ssh_user: SSH username for remote connections (default: root)
+#   cpu_threshold: CPU usage warning threshold % (default: 80)
+#   memory_threshold: Memory usage warning threshold % (default: 85)
+#   disk_threshold: Disk usage critical threshold % (default: 90)
+#   report_path: Path to save the health report (default: /tmp/health_report_<timestamp>.md)
+#
+# ====================================================================================================
+# Quick Start:
+# ====================================================================================================
+#   1. Configure SSH access:
+#      ssh-copy-id root@server1
+#      ssh-copy-id root@server2
+#      ssh-copy-id root@server3
+#
+#   2. Modify vars.servers to your server list:
+#      servers: ["server1", "server2", "server3"]
+#
+#   3. Submit workflow:
+#      waterflow submit examples/workflows/multi-server-health-check.yaml
+#
+#   4. View report:
+#      cat /tmp/health_report_*.md
+#
+# ====================================================================================================
+# Usage Examples:
+# ====================================================================================================
+#
+# Example 1: Check 3 web servers
+# -------------------------------
+# vars:
+#   servers: ["web-1.example.com", "web-2.example.com", "web-3.example.com"]
+#   ssh_user: "ubuntu"
+#
+# Example 2: Check mixed environment with custom thresholds
+# ----------------------------------------------------------
+# vars:
+#   servers: ["web-1", "db-1", "cache-1"]
+#   cpu_threshold: 70
+#   memory_threshold: 80
+#   disk_threshold: 85
+#
+# Example 3: Production monitoring with strict thresholds
+# --------------------------------------------------------
+# vars:
+#   servers: ["prod-web-1", "prod-web-2", "prod-db-1", "prod-cache-1"]
+#   cpu_threshold: 75
+#   memory_threshold: 80
+#   disk_threshold: 85
+#   report_path: "/var/waterflow/reports/health_report.md"
+#
+# ====================================================================================================
+# Architecture Design:
+# ====================================================================================================
+#   - Matrix Strategy: Expands servers list into parallel jobs
+#   - SSH Remote Execution: All jobs run on localhost, connect to servers via SSH
+#   - Result Collection: Each job saves results to /tmp/health_check_<server>.json
+#   - Report Aggregation: Final job reads all JSON files and generates Markdown report
+#
+# ====================================================================================================
+
+name: Multi-Server Health Check
+on: push
+
+vars:
+  # ===== Note: Server list is defined in strategy.matrix below =====
+  # For ease of use, modify the server list in jobs.health-check.strategy.matrix.server
+  
+  # ===== SSH Configuration =====
+  ssh_user: "root"  # SSH 用户名
+  
+  # ===== Thresholds =====
+  cpu_threshold: 80      # CPU 使用率告警阈值 (%)
+  memory_threshold: 85   # 内存使用率告警阈值 (%)
+  disk_threshold: 90     # 磁盘使用率严重阈值 (%)
+  
+  # ===== Report Configuration =====
+  report_path: "/tmp/health_report.md"  # 报告保存路径
+
+jobs:
+  health-check:
+    # Matrix strategy: parallel execution for each server
+    strategy:
+      matrix:
+        server: ["web-1", "web-2", "db-1"]  # 修改为你的服务器列表
+    
+    # All checks run on localhost, connect to servers via SSH
+    runs-on: localhost
+    
+    steps:
+      # ========================================
+      # Step 1: Check CPU Usage
+      # ========================================
+      - name: Check CPU usage via SSH
+        id: cpu
+        uses: exec/shell@v1
+        with:
+          command: |
+            # Cross-platform compatible CPU check with fallback
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
+              if command -v mpstat > /dev/null 2>&1; then
+                # Option 1: Use mpstat (most accurate, requires sysstat package)
+                mpstat 1 1 | awk "/Average/ {print 100 - \$NF}"
+              elif command -v top > /dev/null 2>&1; then
+                # Option 2: Use top (widely available)
+                top -bn1 | grep -i "cpu" | head -1 | sed "s/.*,//; s/id.*//; s/ //g" | awk "{print 100 - \$1}"
+              else
+                # Fallback: Read from /proc/stat
+                grep "cpu " /proc/stat | awk "{usage=(\$2+\$4)*100/(\$2+\$4+\$5)} END {print usage}"
+              fi
+            ' 2>/dev/null || echo "N/A"
+        timeout-minutes: 2
+        continue-on-error: true
+      
+      # ========================================
+      # Step 2: Check Memory Usage
+      # ========================================
+      - name: Check memory usage via SSH
+        id: memory
+        uses: exec/shell@v1
+        with:
+          command: |
+            # Memory check (excluding cache/buffers for accuracy)
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
+              if command -v free > /dev/null 2>&1; then
+                # Use free command (available buffer/cache)
+                free | awk "/Mem:/ {printf(\"%.2f\", (\$3-\$6)/\$2 * 100.0)}"
+              else
+                # Fallback: Read from /proc/meminfo
+                awk "/MemTotal/{t=\$2} /MemAvailable/{a=\$2} END{printf(\"%.2f\", (t-a)/t*100)}" /proc/meminfo
+              fi
+            ' 2>/dev/null || echo "N/A"
+        timeout-minutes: 2
+        continue-on-error: true
+      
+      # ========================================
+      # Step 3: Check Disk Usage
+      # ========================================
+      - name: Check disk usage via SSH
+        id: disk
+        uses: exec/shell@v1
+        with:
+          command: |
+            # Disk usage check for root partition
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
+              # Use POSIX format for consistent output across distributions
+              df -P / | tail -1 | awk "{print \$5}" | tr -d "%"
+            ' 2>/dev/null || echo "N/A"
+        timeout-minutes: 2
+        continue-on-error: true
+      
+      # ========================================
+      # Step 4: Capture Results to Shell Variables and Save to JSON
+      # ========================================
+      - name: Save health check results
+        uses: exec/shell@v1
+        with:
+          command: |
+            # Create results directory if not exists
+            mkdir -p /tmp/waterflow-health-check
+            
+            # Capture results from SSH commands directly
+            CPU_RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
+              if command -v mpstat > /dev/null 2>&1; then
+                mpstat 1 1 | awk "/Average/ {print 100 - \$NF}"
+              elif command -v top > /dev/null 2>&1; then
+                top -bn1 | grep -i "cpu" | head -1 | sed "s/.*,//; s/id.*//; s/ //g" | awk "{print 100 - \$1}"
+              else
+                grep "cpu " /proc/stat | awk "{usage=(\$2+\$4)*100/(\$2+\$4+\$5)} END {print usage}"
+              fi
+            ' 2>/dev/null || echo "N/A")
+            
+            MEMORY_RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
+              if command -v free > /dev/null 2>&1; then
+                free | awk "/Mem:/ {printf(\"%.2f\", (\$3-\$6)/\$2 * 100.0)}"
+              else
+                awk "/MemTotal/{t=\$2} /MemAvailable/{a=\$2} END{printf(\"%.2f\", (t-a)/t*100)}" /proc/meminfo
+              fi
+            ' 2>/dev/null || echo "N/A")
+            
+            DISK_RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ vars.ssh_user }}@${{ matrix.server }} '
+              df -P / | tail -1 | awk "{print \$5}" | tr -d "%"
+            ' 2>/dev/null || echo "N/A")
+            
+            # Save results to JSON file
+            cat > /tmp/waterflow-health-check/health_check_${{ matrix.server }}.json <<EOF
+            {
+              "server": "${{ matrix.server }}",
+              "cpu": "${CPU_RESULT}",
+              "memory": "${MEMORY_RESULT}",
+              "disk": "${DISK_RESULT}",
+              "timestamp": "$(date -Iseconds)"
+            }
+            EOF
+            
+            echo "✅ Results saved for ${{ matrix.server }}: CPU=${CPU_RESULT}%, Memory=${MEMORY_RESULT}%, Disk=${DISK_RESULT}%"
+        timeout-minutes: 5
+  
+  generate-report:
+    needs: [health-check]
+    runs-on: localhost
+    
+    steps:
+      # ========================================
+      # Generate Health Report using Python
+      # ========================================
+      - name: Generate health report
+        uses: exec/shell@v1
+        with:
+          command: |
+            python3 <<'PYTHON_SCRIPT'
+            import json
+            import glob
+            import os
+            from datetime import datetime
+            
+            # Configuration
+            cpu_threshold = float("${{ vars.cpu_threshold }}")
+            memory_threshold = float("${{ vars.memory_threshold }}")
+            disk_threshold = float("${{ vars.disk_threshold }}")
+            report_path = "${{ vars.report_path }}"
+            
+            # Read all JSON result files
+            results = []
+            json_pattern = "/tmp/waterflow-health-check/health_check_*.json"
+            
+            for json_file in sorted(glob.glob(json_pattern)):
+                try:
+                    with open(json_file) as f:
+                        data = json.load(f)
+                        results.append(data)
+                except Exception as e:
+                    print(f"Warning: Failed to read {json_file}: {e}")
+            
+            if not results:
+                print("Error: No health check results found!")
+                exit(1)
+            
+            # Sort by server name
+            results.sort(key=lambda x: x.get('server', ''))
+            
+            # Generate Markdown report
+            report = []
+            report.append("# 🏥 Multi-Server Health Check Report\\n")
+            report.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\\n")
+            report.append(f"**Total Servers:** {len(results)}\\n\\n")
+            
+            # Thresholds
+            report.append("## ⚙️ Configured Thresholds\\n\\n")
+            report.append(f"- CPU Warning: > {cpu_threshold}%\\n")
+            report.append(f"- Memory Warning: > {memory_threshold}%\\n")
+            report.append(f"- Disk Critical: > {disk_threshold}%\\n\\n")
+            
+            # Server Health Table
+            report.append("## 📊 Server Health Status\\n\\n")
+            report.append("| Server | CPU (%) | Memory (%) | Disk (%) | Status |\\n")
+            report.append("|--------|---------|------------|----------|--------|\\n")
+            
+            # Process each server
+            issues = []
+            healthy_count = 0
+            warning_count = 0
+            critical_count = 0
+            failed_count = 0
+            
+            for r in results:
+                server = r.get('server', 'unknown')
+                cpu_str = str(r.get('cpu', 'N/A'))
+                memory_str = str(r.get('memory', 'N/A'))
+                disk_str = str(r.get('disk', 'N/A'))
+                
+                # Check for failed checks
+                if cpu_str == "N/A" or memory_str == "N/A" or disk_str == "N/A":
+                    status = "❌ CHECK FAILED"
+                    failed_count += 1
+                    issues.append(f"**{server}**: Health check failed (SSH connection or command error)")
+                else:
+                    try:
+                        # Convert to float for comparison
+                        cpu_val = float(cpu_str)
+                        memory_val = float(memory_str)
+                        disk_val = float(disk_str)
+                        
+                        # Determine status
+                        status = "✅ OK"
+                        is_warning = False
+                        is_critical = False
+                        
+                        # Check CPU
+                        if cpu_val > cpu_threshold:
+                            is_warning = True
+                            issues.append(f"**{server}**: CPU usage high ({cpu_str}%, threshold: {cpu_threshold}%)")
+                        
+                        # Check Memory
+                        if memory_val > memory_threshold:
+                            is_warning = True
+                            issues.append(f"**{server}**: Memory usage high ({memory_str}%, threshold: {memory_threshold}%)")
+                        
+                        # Check Disk (Critical)
+                        if disk_val > disk_threshold:
+                            is_critical = True
+                            issues.append(f"**{server}**: ⚠️ **CRITICAL** - Disk usage high ({disk_str}%, threshold: {disk_threshold}%)")
+                        
+                        # Set final status
+                        if is_critical:
+                            status = "🚨 CRITICAL"
+                            critical_count += 1
+                        elif is_warning:
+                            status = "⚠️ WARN"
+                            warning_count += 1
+                        else:
+                            healthy_count += 1
+                    
+                    except ValueError:
+                        status = "❓ INVALID DATA"
+                        failed_count += 1
+                        issues.append(f"**{server}**: Invalid metric data received")
+                
+                # Add table row
+                report.append(f"| {server} | {cpu_str} | {memory_str} | {disk_str} | {status} |\\n")
+            
+            # Summary Section
+            report.append("\\n## 📈 Summary\\n\\n")
+            total = healthy_count + warning_count + critical_count + failed_count
+            report.append(f"- **Total Servers:** {total}\\n")
+            report.append(f"- ✅ **Healthy:** {healthy_count}\\n")
+            report.append(f"- ⚠️ **Warnings:** {warning_count}\\n")
+            report.append(f"- 🚨 **Critical:** {critical_count}\\n")
+            report.append(f"- ❌ **Failed:** {failed_count}\\n")
+            
+            # Calculate health percentage
+            if total > 0:
+                health_percent = (healthy_count / total) * 100
+                report.append(f"- 📊 **Health Score:** {health_percent:.1f}%\\n")
+            
+            # Issues Section
+            if issues:
+                report.append("\\n## ⚠️ Issues Detected\\n\\n")
+                for issue in issues:
+                    report.append(f"- {issue}\\n")
+            else:
+                report.append("\\n## ✅ All Systems Healthy\\n\\n")
+                report.append("No issues detected. All servers are operating within normal parameters.\\n")
+            
+            # Recommendations (if any issues)
+            if critical_count > 0 or warning_count > 0 or failed_count > 0:
+                report.append("\\n## 💡 Recommended Actions\\n\\n")
+                
+                if critical_count > 0:
+                    report.append("- **URGENT**: Investigate and resolve CRITICAL disk space issues immediately\\n")
+                
+                if warning_count > 0:
+                    report.append("- Review servers with WARNING status and consider optimization or scaling\\n")
+                
+                if failed_count > 0:
+                    report.append("- Verify SSH connectivity and permissions for servers with failed checks\\n")
+            
+            # Footer
+            report.append("\\n---\\n")
+            report.append(f"*Report generated by Waterflow Multi-Server Health Check*\\n")
+            
+            # Write report to file
+            os.makedirs(os.path.dirname(report_path) if os.path.dirname(report_path) else '.', exist_ok=True)
+            with open(report_path, 'w') as f:
+                f.write(''.join(report))
+            
+            # Print summary to console
+            print(f"\\n{'='*60}")
+            print("Health Check Report Generated")
+            print(f"{'='*60}")
+            print(f"Report Location: {report_path}")
+            print(f"Total Servers: {total}")
+            print(f"  Healthy: {healthy_count}")
+            print(f"  Warnings: {warning_count}")
+            print(f"  Critical: {critical_count}")
+            print(f"  Failed: {failed_count}")
+            print(f"{'='*60}\\n")
+            
+            # Exit with error if critical issues found
+            if critical_count > 0:
+                print("WARNING: Critical issues detected!")
+                exit(1)
+            elif failed_count > 0:
+                print("WARNING: Some health checks failed!")
+                exit(1)
+            
+            PYTHON_SCRIPT
+        timeout-minutes: 5
+      
+      # ========================================
+      # Cleanup Temporary Files (Optional)
+      # ========================================
+      - name: Cleanup and archive
+        uses: exec/shell@v1
+        with:
+          command: |
+            # Archive report if needed
+            ARCHIVE_DIR="/var/waterflow/reports/health-check/archive"
+            if [ -d "/var/waterflow/reports" ]; then
+              mkdir -p "$ARCHIVE_DIR"
+              cp "${{ vars.report_path }}" "$ARCHIVE_DIR/health_report_$(date +%Y%m%d_%H%M%S).md" 2>/dev/null || true
+            fi
+            
+            # Clean up temporary JSON files
+            rm -rf /tmp/waterflow-health-check/*.json 2>/dev/null || true
+            
+            # Keep only last 30 days of archived reports
+            find /var/waterflow/reports/health-check/archive -name "*.md" -mtime +30 -delete 2>/dev/null || true
+            
+            echo "Cleanup completed"
+        continue-on-error: true
