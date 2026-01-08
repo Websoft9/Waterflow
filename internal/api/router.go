@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/internal/api/handlers"
+	"github.com/Websoft9/waterflow/pkg/events"
 	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/gorilla/mux"
@@ -13,7 +14,7 @@ import (
 )
 
 // NewRouter creates and configures HTTP router with all endpoints
-func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, commit, buildTime string) http.Handler {
+func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, version, commit, buildTime string) http.Handler {
 	router := mux.NewRouter()
 
 	// Apply global middleware (AC7 - Request ID and Server Version headers)
@@ -74,7 +75,7 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 
 	// Workflow management endpoints (Story 1.9 - AC1-AC6)
 	if temporalClient != nil {
-		wh := NewWorkflowHandlers(logger, temporalClient)
+		wh := NewWorkflowHandlers(logger, temporalClient, eventDispatcher)
 
 		// AC1: Submit workflow
 		router.HandleFunc("/v1/workflows", wh.SubmitWorkflow).Methods(http.MethodPost)

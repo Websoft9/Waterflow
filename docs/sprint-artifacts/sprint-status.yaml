@@ -117,10 +117,10 @@ development_status:
   7-1-typed-error-handling: done  # ✅代码审查完成并修复(2026-01-08),AC1-AC7 100%达成,覆盖率94.1%,66个测试全通过(60单元+6集成),RFC 7807集成到REST API,向后兼容别名,敏感字段脱敏,堆栈跟踪可配置,11个审查问题全部修复(3 CRITICAL+5 MEDIUM+3 LOW),完成日期2026-01-08
   7-2-structured-logging-system: done  # ✅代码审查完成并修复(2026-01-08),AC1-AC7 100%达成,核心功能完整(敏感信息脱敏/上下文日志/动态级别/标准字段/Admin端点+认证/审计日志/ISO 8601/性能优化),19个测试全通过,文档完善(best-practices指南),删除冗余代码,完成日期2026-01-08
   7-3-performance-benchmarking: in-progress  # 🔧代码审查完成(2026-01-08),MVP部分完成:AC2 100%达成(DSL解析16ms<100ms,内存2.9MB<10MB),AC1/AC3框架就绪(需Server环境验证),Post-MVP待办:AC4-AC9(Agent/Temporal/基线/CI),13个问题已修复(8 MEDIUM+5 LOW)
-  7-4-stress-testing-fault-tolerance: review  # ✅测试框架MVP实现,bash测试套件(并发/崩溃恢复/资源泄漏/超时重试),Go测试框架,资源监控,测试报告,完成日期2026-01-08,需要运行环境验证
-  7-5-prometheus-metrics-export: review  # ✅MVP完成,12个业务指标,WorkflowTracker/AgentTracker/NodeTracker,Grafana Dashboard,Prometheus+Grafana Docker Compose,完整文档,测试全通过,完成日期2026-01-08
-  7-6-eventhandler-interface: review  # ✅EventHandler接口MVP完成,3个处理器(NoOp/Webhook/Dispatcher),配置集成,文档完成,开始2026-01-08,完成2026-01-08
-  7-7-loghandler-interface: review  # ✅LogHandler接口MVP完成,StdoutHandler/FileHandler,批量缓冲,文件轮转,测试通过,文档完成,开始2026-01-08,完成2026-01-08
+  7-4-stress-testing-fault-tolerance: in-progress  # 🔧代码审查修复完成(2026-01-08) - 新增6个测试文件(Event Sourcing/Agent重连/Temporal重连/混合故障/内存分析),pprof配置(Server:6060,Agent:6061),CI/CD集成,完整文档,9/9 Tasks完成,8/8 AC覆盖,等待环境验证
+  7-5-prometheus-metrics-export: done  # ✅代码审查完成(2026-01-08),所有9个问题已修复(3 CRITICAL+4 MEDIUM+2 LOW),AC1-AC6 100%达成,8个文件创建/修复(AgentMonitor/TaskQueue API/Tracker集成/Dashboard补全),12个业务指标,编译通过,MVP完成度100%,完成日期2026-01-08
+  7-6-eventhandler-interface: done  # ✅代码审查完成(2026-01-08),所有9个问题已修复(3 CRITICAL+4 MEDIUM+2 LOW),AC1-AC6 100%达成,19个单元测试全通过,WorkflowMonitor集成,事件异步分发,完成日期2026-01-08
+  7-7-loghandler-interface: in-progress  # ⚠️代码审查完成(2026-01-08),12个问题待修复(5 CRITICAL+5 MEDIUM+2 LOW),接口层完成:LogHandler/StdoutHandler/FileHandler/测试66.7%/文档,缺失:Server集成/Workflow集成/BufferedLogHandler/LogDispatcher/示例代码,开始2026-01-08
   epic-7-retrospective: optional
 
   # Epic 8: 部署和运维 (5 stories)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
 	"github.com/Websoft9/waterflow/pkg/dsl/node"
+	"github.com/Websoft9/waterflow/pkg/metrics"
 	"go.temporal.io/sdk/activity"
 	temporal "go.temporal.io/sdk/temporal"
 	"go.uber.org/zap"
@@ -17,6 +18,7 @@ import (
 type Activities struct {
 	logger       *zap.Logger
 	nodeRegistry *node.Registry
+	nodeTracker  *metrics.NodeTracker
 }
 
 // NewActivities creates a new Activities instance.
@@ -24,6 +26,7 @@ func NewActivities(logger *zap.Logger, nodeRegistry *node.Registry) *Activities 
 	return &Activities{
 		logger:       logger,
 		nodeRegistry: nodeRegistry,
+		nodeTracker:  metrics.NewNodeTracker(),
 	}
 }
 
@@ -128,7 +131,11 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 		logger.Info("Parameter validation passed", "step", input.Step.Name, "uses", renderedStep.Uses)
 
 		// 3. Execute node (Story 4.3 - 真正执行节点)
+		// Track node execution start
+		done := a.nodeTracker.TrackNodeStart(renderedStep.Uses)
 		nodeResult, err := nodeInstance.Execute(ctx, renderedStep.With)
+		// Track completion
+		done(err == nil)
 
 		if err != nil {
 			// 检查是否为 NonRetryableError (Story 4.3)

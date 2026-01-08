@@ -82,7 +82,7 @@ var (
 			Name: "waterflow_agent_tasks_total",
 			Help: "Total number of tasks executed by agents",
 		},
-		[]string{"agent_id", "status"}, // completed, failed
+		[]string{"task_queue", "status"}, // task_queue: linux-amd64, windows-amd64; status: completed, failed
 	)
 
 	// === Node Execution Metrics ===

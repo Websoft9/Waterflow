@@ -1,0 +1,32 @@
+name: multi-step-workflow
+description: Multi-step workflow for testing agent reconnection
+
+jobs:
+  test:
+    runs-on: linux-amd64
+    timeout: 5m
+    steps:
+      - name: Step 1
+        uses: exec/shell
+        with:
+          command: echo "Step 1 executing"
+          
+      - name: Step 2
+        uses: flow/sleep
+        with:
+          duration: 5s
+          
+      - name: Step 3
+        uses: exec/shell
+        with:
+          command: echo "Step 3 executing"
+          
+      - name: Step 4
+        uses: flow/sleep
+        with:
+          duration: 5s
+          
+      - name: Step 5
+        uses: exec/shell
+        with:
+          command: echo "Step 5 complete"

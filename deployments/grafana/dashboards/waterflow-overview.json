@@ -322,7 +322,7 @@
                 "targets": [
                     {
                         "expr": "rate(waterflow_agent_tasks_total[5m])",
-                        "legendFormat": "{{agent_id}} ({{status}})"
+                        "legendFormat": "{{task_queue}} ({{status}})"
                     }
                 ],
                 "yaxes": [
@@ -336,13 +336,46 @@
                 ]
             },
             {
+                "title": "API Latency (P50/P95/P99)",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 32
+                },
+                "targets": [
+                    {
+                        "expr": "histogram_quantile(0.50, rate(waterflow_http_request_duration_seconds_bucket{path=\"/v1/workflows\"}[5m]))",
+                        "legendFormat": "P50"
+                    },
+                    {
+                        "expr": "histogram_quantile(0.95, rate(waterflow_http_request_duration_seconds_bucket{path=\"/v1/workflows\"}[5m]))",
+                        "legendFormat": "P95"
+                    },
+                    {
+                        "expr": "histogram_quantile(0.99, rate(waterflow_http_request_duration_seconds_bucket{path=\"/v1/workflows\"}[5m]))",
+                        "legendFormat": "P99"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "s",
+                        "label": "Duration"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
                 "title": "Go Goroutines",
                 "type": "graph",
                 "gridPos": {
                     "h": 8,
                     "w": 12,
                     "x": 0,
-                    "y": 32
+                    "y": 40
                 },
                 "targets": [
                     {
@@ -367,7 +400,7 @@
                     "h": 8,
                     "w": 12,
                     "x": 12,
-                    "y": 32
+                    "y": 40
                 },
                 "targets": [
                     {

@@ -111,7 +111,7 @@ func (h *NodeHandlers) writeErrorLegacy(w http.ResponseWriter, r *http.Request, 
 	default:
 		err = &errors.BaseError{Type: code, Message: message, Retryable: false}
 	}
-	if details != nil && len(details) > 0 {
+	if len(details) > 0 {
 		if baseErr, ok := err.(*errors.BaseError); ok {
 			baseErr.Context = details
 		}

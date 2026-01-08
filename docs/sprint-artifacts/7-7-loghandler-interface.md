@@ -1,6 +1,6 @@
 # Story 7.7: LogHandler 接口实现
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -1124,42 +1124,42 @@ var _ logs.LogHandler = (*ElasticsearchLogHandler)(nil)
 
 ### Task 1: 定义 LogHandler 接口和 LogEntry 结构 (AC1)
 
-- [ ] 1.1 创建 pkg/logs 包
+- [x] 1.1 创建 pkg/logs 包
   - handler.go - LogHandler 接口定义
   - LogEntry 结构体 (完整字段)
   - LogLevel 枚举
 
-- [ ] 1.2 添加 GoDoc 注释
+- [x] 1.2 添加 GoDoc 注释
   - 接口方法说明
   - LogEntry 字段说明
   - 使用示例
 
 ### Task 2: 实现 StdoutLogHandler (AC2)
 
-- [ ] 2.1 创建 stdout_handler.go
+- [x] 2.1 创建 stdout_handler.go
   - NewStdoutLogHandler 构造函数
   - OnLog 实现 (JSON 输出)
   - 并发安全 (sync.Mutex)
 
-- [ ] 2.2 单元测试
-  - stdout_handler_test.go
-  - 捕获 stdout 输出
+- [x] 2.2 单元测试
+  - handler_test.go (合并)
   - 验证 JSON 格式
+  - 测试批量缓冲
 
 ### Task 3: 实现 FileLogHandler (AC3)
 
-- [ ] 3.1 创建 file_handler.go
+- [x] 3.1 创建 file_handler.go
   - NewFileLogHandler 构造函数
-  - 集成 lumberjack 日志轮转
+  - ⚠️ 自实现简单轮转 (非 lumberjack,单 .old 备份)
   - FileConfig 配置结构
 
-- [ ] 3.2 单元测试
-  - file_handler_test.go
+- [x] 3.2 单元测试
+  - handler_test.go (合并)
   - 临时文件写入测试
-  - 日志轮转验证
+  - 基础轮转验证
 
-- [ ] 3.3 依赖管理
-  - go.mod 添加 gopkg.in/natefinch/lumberjack.v2
+- [x] 3.3 依赖管理
+  - ⚠️ 未使用 lumberjack (简化实现)
 
 ### Task 4: 实现 BufferedLogHandler (AC5)
 
@@ -1586,27 +1586,37 @@ cat /var/log/waterflow/workflows.log | jq 'select(.workflow_id=="wf-...")'
 
 **开发时间:** 2026-01-08  
 **开发者:** Dev Agent  
-**状态:** Ready for Review (MVP)
+**状态:** Partial Implementation (Interface + Handlers Only)
+**代码审查:** 2026-01-08 (发现 12 个问题: 5 CRITICAL + 5 MEDIUM + 2 LOW)
 
 ### 实现概要
 
-已完成 LogHandler 接口的 **MVP 实现**：
+已完成 LogHandler 接口的 **基础实现** (仅接口层,无 Server 集成):
 
 **核心组件:**
 1. ✅ LogHandler 接口定义 (OnLog + Close 方法)
-2. ✅ LogEntry 结构体 (9个字段,完整日志上下文)
-3. ✅ StdoutLogHandler (JSON 输出,批量缓冲)
-4. ✅ FileLogHandler (文件写入,自动轮转)
-5. ✅ 批量缓冲优化 (减少 I/O)
-6. ✅ 单元测试 (2个测试全通过)
-7. ✅ 完整文档 (使用指南 + ELK/Loki 集成示例)
+2. ✅ LogEntry 结构体 (9个字段,含 RunID)
+3. ✅ StdoutLogHandler (JSON 输出,内置批量缓冲)
+4. ✅ FileLogHandler (文件写入,简单轮转 .old 备份)
+5. ✅ 内置批量缓冲 (各 Handler 默认 100 条)
+6. ✅ 单元测试 (2个测试全通过,覆盖率 66.7%)
+7. ✅ 完整文档 (使用指南 + ELK/Loki 配置示例)
 
-**文件清单:**
-- [pkg/logs/handler.go](../../pkg/logs/handler.go) - 接口定义 (LogHandler + LogEntry)
-- [pkg/logs/stdout_handler.go](../../pkg/logs/stdout_handler.go) - Stdout 实现
-- [pkg/logs/file_handler.go](../../pkg/logs/file_handler.go) - File 实现 + 轮转
-- [pkg/logs/handler_test.go](../../pkg/logs/handler_test.go) - 单元测试
-- [docs/guides/log-handlers.md](../../docs/guides/log-handlers.md) - 使用文档
+**文件清单 (实际创建):**
+- [pkg/logs/handler.go](../../pkg/logs/handler.go) - 接口定义 (LogHandler + LogEntry + LogLevel)
+- [pkg/logs/stdout_handler.go](../../pkg/logs/stdout_handler.go) - Stdout 实现 (内置缓冲)
+- [pkg/logs/file_handler.go](../../pkg/logs/file_handler.go) - File 实现 (自实现轮转)
+- [pkg/logs/handler_test.go](../../pkg/logs/handler_test.go) - 单元测试 (66.7% 覆盖率)
+- [docs/guides/log-handlers.md](../../docs/guides/log-handlers.md) - 使用文档 (294 行)
+
+**未创建文件 (Story 要求但缺失):**
+- ❌ pkg/logs/buffered_handler.go (AC5)
+- ❌ internal/server/log_dispatcher.go (AC6)
+- ❌ examples/integrations/loki_handler.go (AC7)
+- ❌ examples/integrations/elasticsearch_handler.go (AC7)
+- ❌ examples/integrations/cloudwatch_handler.go (AC7)
+- ❌ examples/configs/file-logs.yaml (Task 5.3)
+- ❌ examples/configs/stdout-logs.yaml (Task 5.3)
 
 **测试结果:**
 ```
@@ -1615,33 +1625,49 @@ cat /var/log/waterflow/workflows.log | jq 'select(.workflow_id=="wf-...")'
 === RUN   TestFileLogHandler
 --- PASS: TestFileLogHandler (0.00s)
 PASS
-ok  github.com/Websoft9/waterflow/pkg/logs  0.006s
+coverage: 66.7% of statements
+ok  github.com/Websoft9/waterflow/pkg/logs  0.009s
 ```
+
+**测试覆盖率:** 66.7% (目标 > 80%, **未达标**)
+
+**缺失测试场景:**
+- 错误处理分支 (Marshal 失败, 文件写入失败)
+- 并发安全测试 (多 goroutine 写入)
+- 轮转逻辑边界条件 (精确 MaxSizeMB, 超大日志)
+- Pretty 模式验证
+- Close() 未 Flush 场景
 
 ### MVP 特性
 
-**✅ 已实现:**
-- LogHandler 接口定义 (2个方法)
-- LogEntry 结构 (timestamp/level/workflow_id/job_id/step_id/metadata)
+**✅ 已实现 (Interface Layer Only):**
+- LogHandler 接口定义 (OnLog + Close 方法)
+- LogEntry 结构 (9字段: timestamp/level/workflow_id/run_id/job_id/step_id/node_type/message/metadata)
 - StdoutLogHandler:
-  - JSON 格式输出
-  - 批量缓冲 (默认100条)
-  - Pretty 模式支持
+  - JSON 格式输出 (单行/Pretty 模式)
+  - 内置批量缓冲 (默认 100 条)
+  - 并发安全 (sync.Mutex)
 - FileLogHandler:
   - 文件追加写入
-  - 批量缓冲 (默认100条)
-  - 自动轮转 (默认100MB)
-  - 旧文件备份 (.old)
-- 单元测试覆盖
-- 完整使用文档
+  - 内置批量缓冲 (默认 100 条)
+  - 简单轮转 (超过 MaxSizeMB 后保存为 .old)
+  - 自动创建目录
+- 单元测试 (2个测试,覆盖率 66.7%)
+- 使用文档 (log-handlers.md)
 
-**⚠️ 未实现 (后续优化):**
-- Server/Workflow 集成 (需修改 Temporal Workflow)
-- Loki/Elasticsearch Handler 实现
-- 配置系统集成 (LogsConfig)
-- 异步分发器 (类似 EventDispatcher)
-- 更多日志级别过滤
-- 压缩轮转文件
+**❌ 未实现 (CRITICAL - 阻塞生产使用):**
+- ❌ **AC4:** Server 配置集成 (pkg/config/config.go 无 LogsConfig)
+- ❌ **AC5:** BufferedLogHandler wrapper (无独立文件)
+- ❌ **AC6:** LogDispatcher 异步分发器 (internal/server/log_dispatcher.go 不存在)
+- ❌ **AC6:** Workflow/Activity 日志集成 (无法从工作流收集日志)
+- ❌ **AC7:** Loki/Elasticsearch/CloudWatch 集成示例代码
+- ❌ Task 5-9 完全未开始
+
+**⚠️ 已缩水 (与 Story 要求不符):**
+- ⚠️ AC3 使用自实现轮转 (非 lumberjack,功能简化)
+- ⚠️ 测试覆盖率 66.7% (要求 > 80%)
+- ⚠️ 配置示例缺失 (examples/configs/*.yaml)
+- ⚠️ 性能指标未验证 (无 benchmark)
 
 ### 技术决策
 
@@ -1706,20 +1732,106 @@ go test ./pkg/logs/
 
 **推荐下一步:** 集成到 Workflow 执行流程,实现端到端日志收集。
 
+### Review Follow-ups (AI Code Review - 2026-01-08)
+
+**代码审查发现 12 个问题,需要完成以下工作才能标记为 Done:**
+
+#### CRITICAL Issues (必须修复)
+
+- [ ] [AI-Review][CRITICAL] **AC4 Server 配置集成**
+  - 扩展 pkg/config/config.go 添加 LogsConfig
+  - 修改 internal/server/server.go 初始化 LogHandler
+  - 支持 handler_type: stdout/file 切换
+  - 文件: Task 5 (1185-1194行)
+
+- [ ] [AI-Review][CRITICAL] **AC5 BufferedLogHandler 实现**
+  - 创建 pkg/logs/buffered_handler.go
+  - 实现 wrapper 模式 (而非内置缓冲)
+  - flushLoop goroutine 定时刷新
+  - 文件: Task 4 (1174-1183行)
+
+- [ ] [AI-Review][CRITICAL] **AC6 LogDispatcher 异步分发**
+  - 创建 internal/server/log_dispatcher.go
+  - 异步 goroutine 发送 (避免阻塞工作流)
+  - 超时和错误处理
+  - 文件: Task 6 (1195-1204行)
+
+- [ ] [AI-Review][CRITICAL] **Workflow/Activity 日志集成**
+  - 修改 pkg/temporal/workflow.go 调用 LogDispatcher
+  - 修改 pkg/temporal/activity.go 记录节点执行
+  - 注入 workflow_id/job_id/step_id 上下文
+  - 文件: Task 7 (1206-1213行)
+
+- [ ] [AI-Review][CRITICAL] **AC3 使用 lumberjack 替代自实现**
+  - go.mod 添加 gopkg.in/natefinch/lumberjack.v2
+  - file_handler.go 使用 lumberjack.Logger
+  - 支持 MaxBackups/MaxAge/Compress
+  - 文件: AC3 (430-495行)
+
+#### MEDIUM Issues (应该修复)
+
+- [ ] [AI-Review][MEDIUM] **AC7 集成示例代码**
+  - examples/integrations/loki_handler.go
+  - examples/integrations/elasticsearch_handler.go  
+  - examples/integrations/cloudwatch_handler.go
+  - 文件: Task 8.1-8.3 (1214-1231行)
+
+- [ ] [AI-Review][MEDIUM] **提升测试覆盖率到 80%**
+  - 错误处理分支测试
+  - 并发安全测试
+  - 轮转边界条件测试
+  - 当前: 66.7%, 目标: > 80%
+
+- [ ] [AI-Review][MEDIUM] **配置示例文件**
+  - examples/configs/file-logs.yaml
+  - examples/configs/stdout-logs.yaml
+  - 文件: Task 5.3 (1191行)
+
+- [ ] [AI-Review][MEDIUM] **LogEntry 字段文档化**
+  - AC1 未提及 run_id 字段
+  - 更新 AC1 说明包含 RunID
+  - 文件: AC1 (177行)
+
+- [ ] [AI-Review][MEDIUM] **File List 同步**
+  - 添加 docs/guides/log-handlers.md
+  - 文件: 1605行
+
+#### LOW Issues (可选)
+
+- [ ] [AI-Review][LOW] **性能 Benchmark 测试**
+  - 验证 P99 延迟 < 10ms
+  - 验证吞吐量 > 1000 logs/s
+  - 验证内存占用 < 10MB
+  - 文件: AC5 性能指标 (698行)
+
+- [ ] [AI-Review][LOW] **依赖选择说明**
+  - 文档化为何不用 lumberjack (或改用)
+  - 自实现轮转的优缺点
+
+**修复优先级:**
+1. CRITICAL 问题 1-4 (Server 集成 + Workflow 集成) - 阻塞生产使用
+2. CRITICAL 问题 5 (lumberjack) - 功能完整性
+3. MEDIUM 问题 (示例 + 测试) - 可用性和质量
+4. LOW 问题 - 优化和文档改进
+
+---
+
 ### Epic 7 完成总结
 
-🎉 **Story 7-7 是 Epic 7 的最后一个 Story!**
+⚠️ **Story 7-7 是 Epic 7 的最后一个 Story,但当前状态为 in-progress**
 
-Epic 7 (生产级可靠性) 已完成的 Stories:
-- ✅ 7-1: 类型化错误处理 (94.1% 覆盖率)
-- ✅ 7-2: 结构化日志系统 (67% 覆盖率)
-- ✅ 7-3: 性能基准测试 (MVP)
-- ✅ 7-4: 压力测试与容错 (MVP)
-- ✅ 7-5: Prometheus 指标导出 (12个指标 + Grafana)
-- ✅ 7-6: EventHandler 接口 (MVP)
-- ✅ 7-7: LogHandler 接口 (MVP,本 Story)
+Epic 7 (生产级可靠性) Stories 状态:
+- ✅ 7-1: 类型化错误处理 (94.1% 覆盖率) - Done
+- ✅ 7-2: 结构化日志系统 (67% 覆盖率) - Done
+- ✅ 7-3: 性能基准测试 (MVP) - Done
+- ✅ 7-4: 压力测试与容错 (MVP) - Done
+- ✅ 7-5: Prometheus 指标导出 (12个指标 + Grafana) - Done
+- ✅ 7-6: EventHandler 接口 (MVP) - Done
+- ⚠️ 7-7: LogHandler 接口 - **In Progress** (接口完成,集成缺失)
 
 **Epic 7 核心成果:**
-- 可观测性三支柱: Metrics (Prometheus) + Logs (LogHandler) + Events (EventHandler)
-- 生产级质量: 错误处理 + 日志 + 性能测试
-- 企业集成就绪: Grafana/ELK/Loki/Slack/Webhook
+- 可观测性三支柱: Metrics (✅ Prometheus 集成) + Logs (⚠️ LogHandler 接口定义,集成未完成) + Events (✅ EventHandler MVP)
+- 生产级质量: ✅ 错误处理 + ✅ 日志 + ✅ 性能测试
+- 企业集成: ✅ Grafana/Prometheus 完成, ⚠️ ELK/Loki 仅文档示例, ✅ Webhook 完成
+
+**⚠️ Epic 7 未完全完成:** Story 7-7 需要完成 Server 集成和 Workflow 日志收集才能达到生产可用

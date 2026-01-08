@@ -4,6 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
+
+	_ "net/http/pprof" //nolint:gosec // pprof needed for performance profiling
+
 	"os"
 	"os/signal"
 	"syscall"
@@ -70,6 +74,15 @@ func main() {
 	)
 
 	srv := server.New(cfg, logger.Log, Version, Commit, BuildTime)
+
+	// Start pprof server for profiling (on separate port)
+	go func() {
+		pprofAddr := ":6060"
+		logger.Log.Info("Starting pprof server", zap.String("address", pprofAddr))
+		if err := http.ListenAndServe(pprofAddr, nil); err != nil { //nolint:gosec // pprof server timeout not critical
+			logger.Log.Warn("pprof server failed", zap.Error(err))
+		}
+	}()
 
 	go func() {
 		if err := srv.Start(); err != nil {

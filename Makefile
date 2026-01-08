@@ -243,3 +243,20 @@ install-tools:
 	@echo "Installing development tools..."
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	@echo "Tools installed successfully"
+
+## stress-test: Run all stress tests
+stress-test:
+	@echo "Running stress tests..."
+	@chmod +x test/stress/*.sh
+	./test/stress/run_all_tests.sh
+
+## stress-test-quick: Run quick stress tests (reduced concurrency)
+stress-test-quick:
+	@echo "Running quick stress tests..."
+	@chmod +x test/stress/*.sh
+	CONCURRENT_WORKFLOWS=100 ./test/stress/concurrent_workflows_test.sh
+
+## stress-test-go: Run Go stress tests
+stress-test-go:
+	@echo "Running Go stress tests..."
+	go test -v -timeout 30m ./test/stress/...

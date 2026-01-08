@@ -39,7 +39,7 @@ func TestConcurrentWorkflows(t *testing.T) {
 
 	concurrency := 1000
 	if c := os.Getenv("CONCURRENT_WORKFLOWS"); c != "" {
-		fmt.Sscanf(c, "%d", &concurrency)
+		_, _ = fmt.Sscanf(c, "%d", &concurrency)
 	}
 
 	workflow := []byte(`name: stress-test

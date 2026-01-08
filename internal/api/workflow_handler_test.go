@@ -14,7 +14,7 @@ import (
 
 func TestSubmitWorkflow_InvalidJSON(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	handlers := NewWorkflowHandlers(logger, nil) // nil client for unit test
+	handlers := NewWorkflowHandlers(logger, nil, nil) // nil client for unit test
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/workflows", bytes.NewBufferString("invalid json"))
 	w := httptest.NewRecorder()
@@ -27,7 +27,7 @@ func TestSubmitWorkflow_InvalidJSON(t *testing.T) {
 
 func TestSubmitWorkflow_EmptyYAML(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	reqBody := SubmitWorkflowRequest{
 		YAML: "",
@@ -44,7 +44,7 @@ func TestSubmitWorkflow_EmptyYAML(t *testing.T) {
 
 func TestSubmitWorkflow_InvalidYAML(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	reqBody := SubmitWorkflowRequest{
 		YAML: "invalid: yaml: content:",
@@ -61,7 +61,7 @@ func TestSubmitWorkflow_InvalidYAML(t *testing.T) {
 
 func TestGetWorkflowStatus_MissingID(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/workflows", nil)
 	w := httptest.NewRecorder()

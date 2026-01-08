@@ -9,6 +9,8 @@ import (
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
 	"github.com/Websoft9/waterflow/pkg/errors"
+	"github.com/Websoft9/waterflow/pkg/events"
+	"github.com/Websoft9/waterflow/pkg/metrics"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -22,15 +24,18 @@ import (
 
 // WorkflowHandlers handles workflow execution endpoints
 type WorkflowHandlers struct {
-	logger         *zap.Logger
-	parser         *dsl.Parser
-	validator      *dsl.Validator
-	temporalClient *temporal.Client
-	historyParser  *temporal.HistoryParser
+	logger          *zap.Logger
+	parser          *dsl.Parser
+	validator       *dsl.Validator
+	temporalClient  *temporal.Client
+	historyParser   *temporal.HistoryParser
+	workflowTracker *metrics.WorkflowTracker
+	eventDispatcher *events.EventDispatcher
+	workflowMonitor *events.WorkflowMonitor
 }
 
 // NewWorkflowHandlers creates new WorkflowHandlers instance
-func NewWorkflowHandlers(logger *zap.Logger, temporalClient *temporal.Client) *WorkflowHandlers {
+func NewWorkflowHandlers(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher) *WorkflowHandlers {
 	validator, err := dsl.NewValidator(logger)
 	if err != nil {
 		logger.Error("Failed to create validator", zap.Error(err))
@@ -38,11 +43,14 @@ func NewWorkflowHandlers(logger *zap.Logger, temporalClient *temporal.Client) *W
 	}
 
 	return &WorkflowHandlers{
-		logger:         logger,
-		parser:         dsl.NewParser(logger),
-		validator:      validator,
-		temporalClient: temporalClient,
-		historyParser:  temporal.NewHistoryParser(),
+		logger:          logger,
+		parser:          dsl.NewParser(logger),
+		validator:       validator,
+		temporalClient:  temporalClient,
+		historyParser:   temporal.NewHistoryParser(),
+		workflowTracker: metrics.NewWorkflowTracker(),
+		eventDispatcher: eventDispatcher,
+		workflowMonitor: events.NewWorkflowMonitor(temporalClient, eventDispatcher, logger),
 	}
 }
 
@@ -162,6 +170,8 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 			zap.String("workflow_id", workflowID),
 			zap.Error(err),
 		)
+		// Track submission failure
+		h.workflowTracker.TrackSubmission(workflowID, false)
 		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error", "Failed to start workflow execution", nil)
 		return
 	}
@@ -172,6 +182,29 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 		zap.String("workflow_name", workflow.Name),
 		zap.String("task_queue", taskQueue),
 	)
+
+	// Track workflow submission metrics
+	h.workflowTracker.TrackSubmission(workflowID, true)
+
+	// Dispatch workflow start event (asynchronous, non-blocking)
+	startTime := time.Now()
+	if h.eventDispatcher != nil {
+		h.eventDispatcher.DispatchWorkflowStart(&events.WorkflowStartEvent{
+			EventType:    "workflow.started",
+			WorkflowID:   workflowID,
+			Timestamp:    startTime,
+			WorkflowName: workflow.Name,
+			Metadata: map[string]interface{}{
+				"source":     "api",
+				"task_queue": taskQueue,
+			},
+		})
+	}
+
+	// Start monitoring workflow for completion/failure events
+	if h.workflowMonitor != nil {
+		h.workflowMonitor.MonitorWorkflow(workflowID, startTime)
+	}
 
 	// Return workflow info with AC1 format
 	createdAt := time.Now().UTC().Format(time.RFC3339)

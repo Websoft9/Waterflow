@@ -1,0 +1,12 @@
+name: stress-test-workflow
+description: Stress test workflow for concurrent testing
+
+jobs:
+  test:
+    runs-on: linux-amd64
+    timeout: 1m
+    steps:
+      - name: Execute command
+        uses: exec/shell
+        with:
+          command: echo "Stress test iteration"

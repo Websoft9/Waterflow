@@ -4,6 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
+
+	_ "net/http/pprof" //nolint:gosec // pprof needed for performance profiling
+
 	"os"
 	"os/signal"
 	"strings"
@@ -97,6 +101,15 @@ func main() {
 		logger.Log.Error("Failed to create worker", zap.Error(err))
 		os.Exit(1)
 	}
+
+	// Start pprof server for profiling (on separate port)
+	go func() {
+		pprofAddr := ":6061"
+		logger.Log.Info("Starting pprof server", zap.String("address", pprofAddr))
+		if err := http.ListenAndServe(pprofAddr, nil); err != nil { //nolint:gosec // pprof server timeout not critical
+			logger.Log.Warn("pprof server failed", zap.Error(err))
+		}
+	}()
 
 	// Start worker
 	if err := worker.Start(); err != nil {

@@ -37,7 +37,7 @@ func setupTestRouter(t *testing.T, withTemporal bool) (http.Handler, *temporal.C
 		}
 	}
 
-	router := NewRouter(testLogger, temporalClient, "test", "test", "test")
+	router := NewRouter(testLogger, temporalClient, nil, "test", "test", "test")
 	return router, temporalClient
 }
 
@@ -96,7 +96,7 @@ jobs:
 // TestSubmitWorkflow_MissingYAML tests error when YAML is missing
 func TestSubmitWorkflow_MissingYAMLField(t *testing.T) {
 	logger := zap.NewNop()
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	reqBody := SubmitWorkflowRequest{
 		YAML: "",
@@ -122,7 +122,7 @@ func TestSubmitWorkflow_MissingYAMLField(t *testing.T) {
 // TestSubmitWorkflow_MalformedYAML tests error when YAML is malformed
 func TestSubmitWorkflow_MalformedYAML(t *testing.T) {
 	logger := zap.NewNop()
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	reqBody := SubmitWorkflowRequest{
 		YAML: "invalid: [unclosed",
@@ -148,7 +148,7 @@ func TestSubmitWorkflow_MalformedYAML(t *testing.T) {
 // TestSubmitWorkflow_InvalidJSONFormat tests error when request JSON is invalid
 func TestSubmitWorkflow_InvalidJSONFormat(t *testing.T) {
 	logger := zap.NewNop()
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/workflows", bytes.NewReader([]byte("{invalid json")))
 	req.Header.Set("Content-Type", "application/json")
@@ -190,7 +190,7 @@ func TestGetWorkflowStatus_NotFound(t *testing.T) {
 // TestListWorkflows_Success tests successful list query
 func TestListWorkflows_Success(t *testing.T) {
 	logger := zap.NewNop()
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/workflows?page=1&limit=20", nil)
 
@@ -209,7 +209,7 @@ func TestListWorkflows_Success(t *testing.T) {
 // TestListWorkflows_InvalidParameters tests parameter validation
 func TestListWorkflows_InvalidParameters(t *testing.T) {
 	logger := zap.NewNop()
-	handlers := NewWorkflowHandlers(logger, nil)
+	handlers := NewWorkflowHandlers(logger, nil, nil)
 
 	// Test invalid limit
 	req := httptest.NewRequest(http.MethodGet, "/v1/workflows?limit=500", nil)

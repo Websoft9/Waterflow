@@ -1,0 +1,114 @@
+name: Stress Tests
+
+on:
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of stress test to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - quick
+          - concurrent
+          - crash-recovery
+          - memory-leak
+
+jobs:
+  stress-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    
+    services:
+      temporal:
+        image: temporalio/auto-setup:latest
+        ports:
+          - 7233:7233
+        env:
+          TEMPORAL_CLI_ADDRESS: temporal:7233
+        options: >-
+          --health-cmd "tctl --namespace default namespace describe"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+
+      - name: Build binaries
+        run: |
+          make build build-agent cli
+
+      - name: Run all stress tests
+        if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == ''
+        run: |
+          chmod +x test/stress/*.sh
+          ./test/stress/run_all_tests.sh
+        env:
+          TEMPORAL_HOST: localhost:7233
+
+      - name: Run quick stress tests
+        if: github.event.inputs.test_type == 'quick'
+        run: |
+          chmod +x test/stress/*.sh
+          CONCURRENT_WORKFLOWS=100 ./test/stress/concurrent_workflows_test.sh
+
+      - name: Run concurrent workflows test
+        if: github.event.inputs.test_type == 'concurrent'
+        run: |
+          chmod +x test/stress/concurrent_workflows_test.sh
+          ./test/stress/concurrent_workflows_test.sh
+
+      - name: Run crash recovery test
+        if: github.event.inputs.test_type == 'crash-recovery'
+        run: |
+          chmod +x test/stress/server_crash_recovery_test.sh
+          ./test/stress/server_crash_recovery_test.sh
+
+      - name: Run memory leak test
+        if: github.event.inputs.test_type == 'memory-leak'
+        run: |
+          chmod +x test/stress/resource_leak_test.sh
+          ./test/stress/resource_leak_test.sh
+
+      - name: Run Go stress tests
+        run: |
+          go test -v -timeout 30m ./test/stress/...
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-test-results
+          path: test/stress/results/
+          retention-days: 7
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '❌ Stress Test Failed',
+              body: `Stress test failed on ${context.workflow} run ${context.runId}\n\nSee details: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ['test-failure', 'stress-test']
+            })

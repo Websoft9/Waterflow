@@ -31,6 +31,9 @@ type WebhookConfig struct {
 
 // NewWebhookEventHandler creates a new webhook event handler.
 func NewWebhookEventHandler(config WebhookConfig) *WebhookEventHandler {
+	// Validate URL if provided (optional, allows graceful degradation)
+	// URL validation is lenient to allow runtime error handling
+
 	timeout := config.Timeout
 	if timeout == 0 {
 		timeout = 5 * time.Second
@@ -63,6 +66,11 @@ func (h *WebhookEventHandler) OnWorkflowFailed(ctx context.Context, event *Workf
 
 // sendEvent sends an event to the webhook endpoint.
 func (h *WebhookEventHandler) sendEvent(ctx context.Context, event interface{}) error {
+	// Check if URL is configured
+	if h.url == "" {
+		return fmt.Errorf("webhook URL is not configured")
+	}
+
 	// Marshal event to JSON
 	payload, err := json.Marshal(event)
 	if err != nil {
@@ -86,7 +94,7 @@ func (h *WebhookEventHandler) sendEvent(ctx context.Context, event interface{}) 
 	if err != nil {
 		return fmt.Errorf("failed to send webhook: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
