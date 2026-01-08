@@ -1,6 +1,9 @@
 # Story 7.3: 性能基准测试 (Event Sourcing 架构)
 
-Status: Ready for Review (MVP)
+Status: In Progress
+
+**MVP范围**: AC2完全达成 + AC1/AC3测试框架就绪
+**Post-MVP**: AC4-AC9 (需完整部署环境)
 
 ## Story
 
@@ -1334,7 +1337,7 @@ func TestServerStartupTime(t *testing.T) {
   - test/performance/README.md
   - 使用指南和故障排查
 
-### Task 3: 实现资源监控测试 (AC4, AC5)
+### Task 3: 实现资源监控测试 (AC4, AC5) - **Post-MVP**
 
 - [ ] 3.1 创建 Agent 内存测试
   - test/performance/agent_memory_test.sh
@@ -1348,7 +1351,7 @@ func TestServerStartupTime(t *testing.T) {
   - internal/agent/worker_bench_test.go
   - 验证 Heap < 30MB
 
-### Task 4: 实现 Temporal 性能测试 (AC6)
+### Task 4: 实现 Temporal 性能测试 (AC6) - **Post-MVP**
 
 - [ ] 4.1 创建 Event History 基准测试
   - pkg/temporal/history_bench_test.go
@@ -1359,7 +1362,7 @@ func TestServerStartupTime(t *testing.T) {
   - 读取事件历史
   - 描述工作流执行
 
-### Task 5: 建立性能基线系统 (AC7)
+### Task 5: 建立性能基线系统 (AC7) - **Post-MVP**
 
 - [ ] 5.1 定义基线数据格式
   - JSON schema
@@ -1381,7 +1384,7 @@ func TestServerStartupTime(t *testing.T) {
   - 检测性能回归
   - 阈值验证 (±10%)
 
-### Task 6: 验证无状态架构性能 (AC8)
+### Task 6: 验证无状态架构性能 (AC8) - **Post-MVP**
 
 - [ ] 6.1 创建 Server 重启测试
   - test/performance/server_restart_test.sh
@@ -1393,7 +1396,7 @@ func TestServerStartupTime(t *testing.T) {
   - 完整工作流执行
   - 多步骤性能
 
-### Task 7: 集成到 CI/CD
+### Task 7: 集成到 CI/CD - **Post-MVP**
 
 - [ ] 7.1 添加 Makefile 目标
   - make benchmark
@@ -1409,7 +1412,7 @@ func TestServerStartupTime(t *testing.T) {
   - 自动评论 PR
   - 标记性能退化
 
-### Task 8: 文档和报告
+### Task 8: 文档和报告 - **Post-MVP**
 
 - [ ] 8.1 编写性能测试指南
   - docs/guides/performance-testing.md
@@ -1430,7 +1433,7 @@ func TestServerStartupTime(t *testing.T) {
   - test/performance/dashboard.html
   - 可视化趋势
 
-### Task 9: Server 启动时间测试 (AC9)
+### Task 9: Server 启动时间测试 (AC9) - **Post-MVP**
 
 - [ ] 9.1 创建启动时间测试脚本
   - test/performance/server_startup_test.sh
@@ -1498,34 +1501,37 @@ func TestServerStartupTime(t *testing.T) {
 
 ### Completion Notes
 
-✅ **Story 7.3 MVP完成!**
+✅ **Story 7.3 MVP部分完成!**
 
-**核心成就:**
-- 扩展了Go基准测试框架,验证DSL解析性能远超目标
-- 创建了API负载测试脚本和Go测试框架
-- 实现了吞吐量和延迟测试框架
-- 编写了详细的使用文档
+**核心成就 (MVP):**
+- ✅ 扩展了Go基准测试框架,验证DSL解析性能远超目标
+- ✅ 创建了API负载测试脚本和Go测试框架
+- ✅ 实现了吞吐量和延迟测试框架
+- ✅ 编写了详细的使用文档
 
 **关键性能验证:**
 1. **DSL解析** - 1003行YAML: 16ms < 100ms目标 (✅ 6.25x faster)
 2. **内存使用** - 2.9MB < 10MB目标 (✅ 3.4x better)
 3. **测试框架** - API/吞吐量/延迟测试已就绪
 
-**MVP范围:**
-- ✅ AC2完全达成 - DSL解析性能验证
-- ✅ AC1/AC3框架就绪 - API测试需实际环境验证
-- ⚠️  AC4-AC9留待Post-MVP - 需要完整部署环境
+**AC完成度:**
+- ✅ AC2完全达成 - DSL解析性能验证 (100%)
+- 🟡 AC1框架就绪 - API延迟测试(需Server环境验证) (50%)
+- 🟡 AC3框架就绪 - 吞吐量测试(需Server环境验证) (50%)
+- ❌ AC4-AC9 - 移至Post-MVP (0%)
 
 **Post-MVP待办:**
-- Agent内存和并发测试 (需要实际Agent)
-- Temporal性能测试 (需要Temporal环境)
-- 性能基线系统实现
-- CI/CD集成
-- 完整的端到端验证
+- Task 3: Agent内存和并发测试 (需要实际Agent)
+- Task 4: Temporal性能测试 (需要Temporal环境)
+- Task 5: 性能基线系统实现
+- Task 6: Server无状态架构验证
+- Task 7: CI/CD集成
+- Task 8: 完整文档和报告
+- Task 9: Server启动时间测试
 
 **下一步:**
-- Story 7.4 - 压力测试和容错验证
-- 或在完整环境中验证API性能指标
+- 在完整环境中验证API性能指标(AC1/AC3)
+- 或继续 Story 7.4 - 压力测试和容错验证
 
 ## File List
 
@@ -1555,7 +1561,7 @@ func TestServerStartupTime(t *testing.T) {
 
 ## Status
 
-Status: Ready for Review (MVP)
+Status: In Progress (MVP部分完成，需环境验证AC1/AC3)
 
 ### Architecture Alignment
 

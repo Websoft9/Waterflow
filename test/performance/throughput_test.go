@@ -2,7 +2,6 @@ package performance
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -11,6 +10,9 @@ import (
 
 	"github.com/Websoft9/waterflow/pkg/sdk"
 )
+
+// Note: These tests use relative paths and must be run from the project root or test/performance directory
+// Example: go test -v ./test/performance -run=TestWorkflowThroughput
 
 // TestWorkflowThroughput tests workflow submission throughput
 // AC3: Throughput > 100 workflows/sec
@@ -285,14 +287,4 @@ func calculatePercentiles(latencies []time.Duration) (p50, p95, p99 time.Duratio
 	}
 
 	return sorted[idx50], sorted[idx95], sorted[idx99]
-}
-
-// Example output format helper
-func printResults(t *testing.T, name string, rate float64, errorRate float64, p50, p99 time.Duration) {
-	fmt.Printf("\n=== %s ===\n", name)
-	fmt.Printf("Throughput: %.2f req/sec\n", rate)
-	fmt.Printf("Error Rate: %.2f%%\n", errorRate)
-	fmt.Printf("P50: %v\n", p50)
-	fmt.Printf("P99: %v\n", p99)
-	fmt.Println()
 }

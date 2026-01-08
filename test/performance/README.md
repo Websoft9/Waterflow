@@ -2,6 +2,28 @@
 
 性能基准测试框架,用于验证 Waterflow 系统满足 PRD 性能指标 (NFR2)。
 
+## ⚠️ 前置条件
+
+**无需额外环境:**
+- ✅ Go 基准测试 (pkg/dsl/*_bench_test.go) - 可直接运行
+
+**需要 Server + Temporal 环境:**
+- ⚠️ API 负载测试 (api_benchmark.sh, throughput_test.go)
+- ⚠️ 吞吐量测试 (TestWorkflowThroughput)
+- ⚠️ 延迟测试 (TestAPILatency)
+
+**启动环境:**
+```bash
+# 1. 启动 Temporal (使用 Docker Compose)
+docker-compose -f deployments/docker-compose.yaml up -d temporal
+
+# 2. 启动 Waterflow Server
+./bin/server
+
+# 3. 等待服务就绪
+curl http://localhost:8080/health
+```
+
 ## 性能目标 (PRD NFR2)
 
 ### API 性能
