@@ -1,0 +1,394 @@
+{
+    "dashboard": {
+        "title": "Waterflow Overview",
+        "tags": [
+            "waterflow",
+            "workflows",
+            "monitoring"
+        ],
+        "timezone": "browser",
+        "schemaVersion": 16,
+        "version": 1,
+        "refresh": "30s",
+        "panels": [
+            {
+                "title": "Workflow Success Rate",
+                "type": "stat",
+                "gridPos": {
+                    "h": 8,
+                    "w": 6,
+                    "x": 0,
+                    "y": 0
+                },
+                "targets": [
+                    {
+                        "expr": "rate(waterflow_workflows_total{status=\"completed\"}[5m]) / (rate(waterflow_workflows_total{status=\"completed\"}[5m]) + rate(waterflow_workflows_total{status=\"failed\"}[5m])) * 100",
+                        "legendFormat": "Success Rate"
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "percent",
+                        "thresholds": {
+                            "mode": "absolute",
+                            "steps": [
+                                {
+                                    "color": "red",
+                                    "value": null
+                                },
+                                {
+                                    "color": "yellow",
+                                    "value": 90
+                                },
+                                {
+                                    "color": "green",
+                                    "value": 99
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "title": "Running Workflows",
+                "type": "stat",
+                "gridPos": {
+                    "h": 8,
+                    "w": 6,
+                    "x": 6,
+                    "y": 0
+                },
+                "targets": [
+                    {
+                        "expr": "waterflow_workflows_running",
+                        "legendFormat": "Running"
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "color": {
+                            "mode": "thresholds"
+                        },
+                        "thresholds": {
+                            "mode": "absolute",
+                            "steps": [
+                                {
+                                    "color": "green",
+                                    "value": null
+                                },
+                                {
+                                    "color": "yellow",
+                                    "value": 50
+                                },
+                                {
+                                    "color": "red",
+                                    "value": 100
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "title": "Connected Agents",
+                "type": "stat",
+                "gridPos": {
+                    "h": 8,
+                    "w": 6,
+                    "x": 12,
+                    "y": 0
+                },
+                "targets": [
+                    {
+                        "expr": "waterflow_agents_connected",
+                        "legendFormat": "Connected"
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "color": {
+                            "mode": "thresholds"
+                        },
+                        "thresholds": {
+                            "mode": "absolute",
+                            "steps": [
+                                {
+                                    "color": "red",
+                                    "value": null
+                                },
+                                {
+                                    "color": "yellow",
+                                    "value": 1
+                                },
+                                {
+                                    "color": "green",
+                                    "value": 3
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "title": "Healthy Agents",
+                "type": "stat",
+                "gridPos": {
+                    "h": 8,
+                    "w": 6,
+                    "x": 18,
+                    "y": 0
+                },
+                "targets": [
+                    {
+                        "expr": "waterflow_agents_healthy",
+                        "legendFormat": "Healthy"
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "color": {
+                            "mode": "thresholds"
+                        },
+                        "thresholds": {
+                            "mode": "absolute",
+                            "steps": [
+                                {
+                                    "color": "red",
+                                    "value": null
+                                },
+                                {
+                                    "color": "yellow",
+                                    "value": 1
+                                },
+                                {
+                                    "color": "green",
+                                    "value": 3
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "title": "Workflow Submission Rate",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 0,
+                    "y": 8
+                },
+                "targets": [
+                    {
+                        "expr": "rate(waterflow_workflows_total[5m])",
+                        "legendFormat": "{{status}}"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "ops",
+                        "label": "Workflows/sec"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
+                "title": "API Request Rate",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 12,
+                    "y": 8
+                },
+                "targets": [
+                    {
+                        "expr": "rate(waterflow_http_requests_total[5m])",
+                        "legendFormat": "{{method}} {{path}} ({{status}})"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "reqps",
+                        "label": "Requests/sec"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
+                "title": "Workflow Duration (P50, P95, P99)",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 0,
+                    "y": 16
+                },
+                "targets": [
+                    {
+                        "expr": "histogram_quantile(0.50, rate(waterflow_workflow_duration_seconds_bucket[5m]))",
+                        "legendFormat": "P50"
+                    },
+                    {
+                        "expr": "histogram_quantile(0.95, rate(waterflow_workflow_duration_seconds_bucket[5m]))",
+                        "legendFormat": "P95"
+                    },
+                    {
+                        "expr": "histogram_quantile(0.99, rate(waterflow_workflow_duration_seconds_bucket[5m]))",
+                        "legendFormat": "P99"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "s",
+                        "label": "Duration"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
+                "title": "API Latency (P50, P95, P99)",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 12,
+                    "y": 16
+                },
+                "targets": [
+                    {
+                        "expr": "histogram_quantile(0.50, rate(waterflow_http_request_duration_seconds_bucket[5m]))",
+                        "legendFormat": "P50"
+                    },
+                    {
+                        "expr": "histogram_quantile(0.95, rate(waterflow_http_request_duration_seconds_bucket[5m]))",
+                        "legendFormat": "P95"
+                    },
+                    {
+                        "expr": "histogram_quantile(0.99, rate(waterflow_http_request_duration_seconds_bucket[5m]))",
+                        "legendFormat": "P99"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "ms",
+                        "label": "Latency"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
+                "title": "Node Executions by Type",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 0,
+                    "y": 24
+                },
+                "targets": [
+                    {
+                        "expr": "rate(waterflow_node_executions_total[5m])",
+                        "legendFormat": "{{node_type}} ({{status}})"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "ops",
+                        "label": "Executions/sec"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
+                "title": "Agent Task Distribution",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 12,
+                    "y": 24
+                },
+                "targets": [
+                    {
+                        "expr": "rate(waterflow_agent_tasks_total[5m])",
+                        "legendFormat": "{{agent_id}} ({{status}})"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "ops",
+                        "label": "Tasks/sec"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
+                "title": "Go Goroutines",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 0,
+                    "y": 32
+                },
+                "targets": [
+                    {
+                        "expr": "go_goroutines",
+                        "legendFormat": "Goroutines"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "short",
+                        "label": "Count"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            },
+            {
+                "title": "Memory Usage",
+                "type": "graph",
+                "gridPos": {
+                    "h": 8,
+                    "w": 12,
+                    "x": 12,
+                    "y": 32
+                },
+                "targets": [
+                    {
+                        "expr": "go_memstats_heap_alloc_bytes",
+                        "legendFormat": "Heap Allocated"
+                    },
+                    {
+                        "expr": "go_memstats_alloc_bytes",
+                        "legendFormat": "Allocated"
+                    }
+                ],
+                "yaxes": [
+                    {
+                        "format": "bytes",
+                        "label": "Memory"
+                    },
+                    {
+                        "format": "short"
+                    }
+                ]
+            }
+        ]
+    }
+}

@@ -1,0 +1,18 @@
+# LogHandler 配置示例
+
+## Stdout 配置（容器环境推荐）
+
+logs:
+  handler_type: stdout
+  stdout:
+    buffer_size: 100  # 缓冲100条日志
+    pretty: false     # 单行JSON格式
+
+## File 配置（本地开发）
+
+#logs:
+#  handler_type: file
+#  file:
+#    path: /var/log/waterflow/workflow.jsonl
+#    buffer_size: 100
+#    max_size_mb: 100  # 100MB轮转

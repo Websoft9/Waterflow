@@ -114,13 +114,13 @@ development_status:
 
   # Epic 7: 生产级可靠性 (7 stories)
   epic-7: in-progress
-  7-1-typed-error-handling: ready-for-dev  # ✅故事草稿完成,全面的类型化错误处理系统,RFC 7807集成,错误分类器优化,完成日期2026-01-07
-  7-2-structured-logging-system: ready-for-dev  # ✅故事草稿完成,结构化日志系统,敏感信息脱敏,上下文日志,动态级别配置,完成日期2026-01-07
-  7-3-performance-benchmarking: ready-for-dev  # ✅故事草稿完成,完整性能基准测试框架,API/DSL/Agent性能验证,基线系统,回归检测,完成日期2026-01-07
-  7-4-stress-testing-fault-tolerance: ready-for-dev  # ✅故事草稿完成,压力测试和容错验证,1000+并发,Event Sourcing零状态丢失,故障注入测试,资源泄漏检测,完成日期2026-01-07
-  7-5-prometheus-metrics-export: ready-for-dev  # ✅故事草稿完成,Prometheus指标导出,工作流/Agent/节点指标,Grafana Dashboard,监控系统完善,完成日期2026-01-07
-  7-6-eventhandler-interface: ready-for-dev  # ✅故事草稿完成,EventHandler接口实现,工作流生命周期事件,Webhook/Slack/自定义集成,异步非阻塞,完成日期2026-01-07
-  7-7-loghandler-interface: ready-for-dev  # ✅故事草稿完成,LogHandler接口实现,工作流执行日志收集,Stdout/File/Loki/Elasticsearch集成,批量缓冲优化,完成日期2026-01-07
+  7-1-typed-error-handling: done  # ✅代码审查完成并修复(2026-01-08),AC1-AC7 100%达成,覆盖率94.1%,66个测试全通过(60单元+6集成),RFC 7807集成到REST API,向后兼容别名,敏感字段脱敏,堆栈跟踪可配置,11个审查问题全部修复(3 CRITICAL+5 MEDIUM+3 LOW),完成日期2026-01-08
+  7-2-structured-logging-system: done  # ✅代码审查完成并修复(2026-01-08),AC1-AC7 100%达成,核心功能完整(敏感信息脱敏/上下文日志/动态级别/标准字段/Admin端点+认证/审计日志/ISO 8601/性能优化),19个测试全通过,文档完善(best-practices指南),删除冗余代码,完成日期2026-01-08
+  7-3-performance-benchmarking: review  # ✅MVP完成,DSL解析16ms<100ms,内存2.9MB<10MB,API测试框架就绪,Post-MVP:Agent/Temporal/基线/CI,完成日期2026-01-08
+  7-4-stress-testing-fault-tolerance: review  # ✅测试框架MVP实现,bash测试套件(并发/崩溃恢复/资源泄漏/超时重试),Go测试框架,资源监控,测试报告,完成日期2026-01-08,需要运行环境验证
+  7-5-prometheus-metrics-export: review  # ✅MVP完成,12个业务指标,WorkflowTracker/AgentTracker/NodeTracker,Grafana Dashboard,Prometheus+Grafana Docker Compose,完整文档,测试全通过,完成日期2026-01-08
+  7-6-eventhandler-interface: review  # ✅EventHandler接口MVP完成,3个处理器(NoOp/Webhook/Dispatcher),配置集成,文档完成,开始2026-01-08,完成2026-01-08
+  7-7-loghandler-interface: review  # ✅LogHandler接口MVP完成,StdoutHandler/FileHandler,批量缓冲,文件轮转,测试通过,文档完成,开始2026-01-08,完成2026-01-08
   epic-7-retrospective: optional
 
   # Epic 8: 部署和运维 (5 stories)

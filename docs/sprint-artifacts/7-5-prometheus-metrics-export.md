@@ -1,6 +1,6 @@
 # Story 7.5: Prometheus 指标导出
 
-Status: ready-for-dev
+Status: Ready for Review (MVP)
 
 ## Story
 

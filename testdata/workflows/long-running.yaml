@@ -1,0 +1,48 @@
+name: long-running-workflow
+description: Long-running workflow for crash recovery testing
+
+jobs:
+  setup:
+    runs-on: linux-amd64
+    steps:
+      - name: Initialize
+        uses: run@v1
+        with:
+          command: echo "Starting long-running workflow"
+
+  process:
+    needs: [setup]
+    runs-on: linux-amd64
+    steps:
+      - name: Long processing step 1
+        uses: run@v1
+        with:
+          command: |
+            echo "Processing step 1 started"
+            sleep 15
+            echo "Processing step 1 completed"
+      
+      - name: Long processing step 2
+        uses: run@v1
+        with:
+          command: |
+            echo "Processing step 2 started"
+            sleep 15
+            echo "Processing step 2 completed"
+      
+      - name: Long processing step 3
+        uses: run@v1
+        with:
+          command: |
+            echo "Processing step 3 started"
+            sleep 15
+            echo "Processing step 3 completed"
+
+  finalize:
+    needs: [process]
+    runs-on: linux-amd64
+    steps:
+      - name: Cleanup
+        uses: run@v1
+        with:
+          command: echo "Workflow completed successfully"

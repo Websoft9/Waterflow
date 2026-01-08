@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
+	"github.com/Websoft9/waterflow/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
@@ -111,30 +112,37 @@ func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {
 
 // NotFound handles 404 errors with RFC 7807 format
 func (h *Handlers) NotFound(w http.ResponseWriter, r *http.Request) {
-	h.writeError(w, r, http.StatusNotFound, "Not Found", "The requested resource was not found")
+	h.writeErrorLegacy(w, r, http.StatusNotFound, "Not Found", "The requested resource was not found")
 }
 
 // MethodNotAllowed handles 405 errors with RFC 7807 format
 func (h *Handlers) MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
-	h.writeError(w, r, http.StatusMethodNotAllowed, "Method Not Allowed", "The request method is not allowed for this resource")
+	h.writeErrorLegacy(w, r, http.StatusMethodNotAllowed, "Method Not Allowed", "The request method is not allowed for this resource")
 }
 
-// writeError writes RFC 7807 error response
-func (h *Handlers) writeError(w http.ResponseWriter, r *http.Request, status int, title, detail string) {
-	errResp := ErrorResponse{
-		Type:     "about:blank",
-		Title:    title,
-		Status:   status,
-		Detail:   detail,
-		Instance: r.URL.Path,
-	}
+// writeError writes RFC 7807 error response using pkg/errors
+func (h *Handlers) writeError(w http.ResponseWriter, r *http.Request, err error) {
+	rfc7807 := errors.ToRFC7807(err, r.URL.Path)
 
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
+	w.WriteHeader(rfc7807.Status)
 
-	if err := json.NewEncoder(w).Encode(errResp); err != nil {
-		h.logger.Error("Failed to encode error response", zap.Error(err))
+	if encodeErr := json.NewEncoder(w).Encode(rfc7807); encodeErr != nil {
+		h.logger.Error("Failed to encode error response", zap.Error(encodeErr))
 	}
+}
+
+// writeErrorLegacy provides backward compatibility during migration
+func (h *Handlers) writeErrorLegacy(w http.ResponseWriter, r *http.Request, status int, title, detail string) {
+	var err error
+	if status == http.StatusNotFound {
+		err = &errors.BaseError{Type: "not_found", Message: detail, Retryable: false}
+	} else if status == http.StatusBadRequest {
+		err = &errors.BaseError{Type: "invalid_argument", Message: detail, Retryable: false}
+	} else {
+		err = &errors.BaseError{Type: "internal_error", Message: detail, Retryable: false}
+	}
+	h.writeError(w, r, err)
 }
 
 // ValidateWorkflow handles POST /v1/workflows/validate endpoint
@@ -146,13 +154,13 @@ func (h *Handlers) ValidateWorkflow(w http.ResponseWriter, r *http.Request) {
 	// Read YAML content
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Request body too large or failed to read")
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "Invalid Request", "Request body too large or failed to read")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
 	if len(body) == 0 {
-		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Request body is empty")
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "Invalid Request", "Request body is empty")
 		return
 	}
 
@@ -168,7 +176,7 @@ func (h *Handlers) ValidateWorkflow(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Other error
-		h.writeError(w, r, http.StatusInternalServerError, "Internal Server Error", err.Error())
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "Internal Server Error", err.Error())
 		return
 	}
 
@@ -190,13 +198,13 @@ func (h *Handlers) RenderWorkflow(w http.ResponseWriter, r *http.Request) {
 	// Read YAML content
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Request body too large or failed to read")
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "Invalid Request", "Request body too large or failed to read")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
 	if len(body) == 0 {
-		h.writeError(w, r, http.StatusBadRequest, "Invalid Request", "Request body is empty")
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "Invalid Request", "Request body is empty")
 		return
 	}
 
@@ -204,7 +212,7 @@ func (h *Handlers) RenderWorkflow(w http.ResponseWriter, r *http.Request) {
 	parser := dsl.NewParser(h.logger)
 	workflow, err := parser.Parse(body)
 	if err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "Parse Error", "Failed to parse workflow YAML")
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "Parse Error", "Failed to parse workflow YAML")
 		return
 	}
 
@@ -212,7 +220,7 @@ func (h *Handlers) RenderWorkflow(w http.ResponseWriter, r *http.Request) {
 	renderer := dsl.NewWorkflowRenderer()
 	renderedWorkflow, err := renderer.RenderWorkflow(workflow)
 	if err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "Render Error", err.Error())
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "Render Error", err.Error())
 		return
 	}
 
@@ -229,7 +237,7 @@ func (h *Handlers) GetWorkflowSchema(w http.ResponseWriter, r *http.Request) {
 	// Get embedded schema from validator
 	schemaJSON, err := h.validator.GetSchemaJSON()
 	if err != nil {
-		h.writeError(w, r, http.StatusInternalServerError, "Internal Server Error", "Failed to load schema")
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "Internal Server Error", "Failed to load schema")
 		return
 	}
 

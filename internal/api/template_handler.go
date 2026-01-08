@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	wferrors "github.com/Websoft9/waterflow/pkg/errors"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
 )
@@ -292,46 +293,35 @@ func (h *TemplateHandlers) sendJSON(w http.ResponseWriter, statusCode int, data 
 	}
 }
 
-// sendError sends RFC 7807 error response
+// sendError sends RFC 7807 error response using pkg/errors
 func (h *TemplateHandlers) sendError(w http.ResponseWriter, r *http.Request, statusCode int, detail string, err error) {
-	// Map status code to type and title
-	typeURL := "https://waterflow.io/errors/"
-	title := http.StatusText(statusCode)
-
+	// Create appropriate error type
+	var wfErr error
 	switch statusCode {
 	case http.StatusNotFound:
-		typeURL += "template-not-found"
-		title = "Template Not Found"
+		wfErr = &wferrors.BaseError{Type: "not_found", Message: detail, Retryable: false}
 	case http.StatusBadRequest:
-		typeURL += "invalid-request"
-		title = "Invalid Request"
+		wfErr = &wferrors.BaseError{Type: "invalid_argument", Message: detail, Retryable: false}
 	case http.StatusRequestEntityTooLarge:
-		typeURL += "payload-too-large"
-		title = "Payload Too Large"
-	case http.StatusInternalServerError:
-		typeURL += "internal-error"
-		title = "Internal Server Error"
+		wfErr = &wferrors.BaseError{Type: "payload_too_large", Message: detail, Retryable: false}
+	default:
+		wfErr = &wferrors.BaseError{Type: "internal_error", Message: detail, Retryable: false}
 	}
 
-	// Use the shared ErrorResponse type from handlers.go
-	errorResp := struct {
-		Type     string `json:"type"`
-		Title    string `json:"title"`
-		Status   int    `json:"status"`
-		Detail   string `json:"detail,omitempty"`
-		Instance string `json:"instance,omitempty"`
-	}{
-		Type:     typeURL,
-		Title:    title,
-		Status:   statusCode,
-		Detail:   detail,
-		Instance: r.URL.Path,
+	// Add cause if provided
+	if err != nil {
+		if baseErr, ok := wfErr.(*wferrors.BaseError); ok {
+			baseErr.Cause = err
+		}
 	}
+
+	// Use RFC 7807 formatter
+	rfc7807 := wferrors.ToRFC7807(wfErr, r.URL.Path)
 
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(statusCode)
+	w.WriteHeader(rfc7807.Status)
 
-	if err := json.NewEncoder(w).Encode(errorResp); err != nil {
-		h.logger.Error("Failed to encode error response", zap.Error(err))
+	if encodeErr := json.NewEncoder(w).Encode(rfc7807); encodeErr != nil {
+		h.logger.Error("Failed to encode error response", zap.Error(encodeErr))
 	}
 }

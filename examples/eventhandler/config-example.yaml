@@ -1,0 +1,16 @@
+# EventHandler 接口配置示例
+
+## Webhook 配置示例
+
+events:
+  handler_type: webhook
+  webhook:
+    url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    timeout: 5s
+    headers:
+      X-Custom-Header: waterflow
+
+## NoOp 配置示例（默认）
+
+#events:
+#  handler_type: noop

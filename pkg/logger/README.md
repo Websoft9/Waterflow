@@ -1,27 +1,63 @@
-# pkg/logger
+# Logger Package
 
-基于 zap 的结构化日志系统。
+`pkg/logger` 提供基于 Zap 的结构化日志功能,支持敏感信息脱敏、上下文日志和动态级别配置。
 
-## 功能
+## 特性
 
-- 结构化 JSON 日志输出
-- 可配置的日志级别
-- 高性能 (>1M logs/sec)
-- 上下文字段支持
+- ✅ **结构化日志** - JSON 格式,易于解析和查询
+- ✅ **敏感信息脱敏** - 自动过滤 password, token, api_key 等敏感字段
+- ✅ **上下文日志** - 支持 workflow_id, job_id, step_name 等上下文
+- ✅ **日志级别动态配置** - 运行时调整日志级别
+- ✅ **高性能** - 基于 Zap,支持零分配日志
+- ✅ **标准字段命名** - 统一的字段命名规范
 
-## 使用示例
+## 快速开始
+
+### 初始化
 
 ```go
-import "github.com/Websoft9/waterflow/pkg/logger"
+import "github.com/websoft9/waterflow/pkg/logger"
 
-// 初始化日志
-if err := logger.Init("info", "json"); err != nil {
+// 使用默认配置
+err := logger.Init("info", "json")
+if err != nil {
     panic(err)
 }
+defer logger.Sync()
+```
 
-// 记录日志
-logger.Log.Info("server started",
-    zap.String("component", "server"),
-    zap.Int("port", 8080),
+### 敏感信息脱敏
+
+默认敏感字段: password, token, api_key, secret, private_key, access_token, refresh_token, authorization, cookie
+
+```go
+logger.Log.Info("User authenticated",
+    zap.String("username", "admin"),
+    zap.String("password", "secret123"),  // 输出: ***REDACTED***
 )
 ```
+
+### 上下文日志
+
+```go
+workflowLogger := logger.WithWorkflowContext("wf-123")
+workflowLogger.Info("Workflow started")
+```
+
+### 标准字段
+
+```go
+logger.Log.Info("Step executed",
+    logger.WorkflowID("wf-123"),
+    logger.JobID("build"),
+    logger.StepName("compile"),
+)
+```
+
+### 动态日志级别
+
+```go
+logger.SetLevel("debug")
+```
+
+详细文档请参考 [完整文档](../../docs/guides/logging-best-practices.md)

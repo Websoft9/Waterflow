@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/dsl"
+	"github.com/Websoft9/waterflow/pkg/errors"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -66,7 +67,7 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 	// Read request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Failed to read request body", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Failed to read request body", map[string]interface{}{
 			"error": err.Error(),
 		})
 		return
@@ -76,14 +77,14 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 	// Parse JSON request
 	var req SubmitWorkflowRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Invalid JSON format", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Invalid JSON format", map[string]interface{}{
 			"error": err.Error(),
 		})
 		return
 	}
 
 	if req.YAML == "" {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Request body is required", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Request body is required", map[string]interface{}{
 			"field":  "yaml",
 			"reason": "missing required field",
 		})
@@ -97,7 +98,7 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 		details := map[string]interface{}{
 			"error": err.Error(),
 		}
-		h.writeError(w, r, http.StatusUnprocessableEntity, "validation_error", "YAML parsing failed", details)
+		h.writeErrorLegacy(w, r, http.StatusUnprocessableEntity, "validation_error", "YAML parsing failed", details)
 		return
 	}
 
@@ -107,7 +108,7 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 		if _, err := h.validator.ValidateYAML([]byte(req.YAML)); err != nil {
 			// Validation errors are CRITICAL - reject the request
 			h.logger.Error("Workflow validation failed", zap.Error(err))
-			h.writeError(w, r, http.StatusUnprocessableEntity, "validation_error",
+			h.writeErrorLegacy(w, r, http.StatusUnprocessableEntity, "validation_error",
 				"Workflow validation failed", map[string]interface{}{
 					"error": err.Error(),
 				})
@@ -161,7 +162,7 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 			zap.String("workflow_id", workflowID),
 			zap.Error(err),
 		)
-		h.writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to start workflow execution", nil)
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error", "Failed to start workflow execution", nil)
 		return
 	}
 
@@ -230,7 +231,7 @@ func (h *WorkflowHandlers) GetWorkflowStatus(w http.ResponseWriter, r *http.Requ
 	workflowID := vars["id"]
 
 	if workflowID == "" {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
 		return
 	}
 
@@ -241,7 +242,7 @@ func (h *WorkflowHandlers) GetWorkflowStatus(w http.ResponseWriter, r *http.Requ
 			zap.String("workflow_id", workflowID),
 			zap.Error(err),
 		)
-		h.writeError(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
 			"workflow_id": workflowID,
 		})
 		return
@@ -372,25 +373,40 @@ func mapTemporalStatus(status enums.WorkflowExecutionStatus) string {
 	}
 }
 
-// writeError writes unified error response (AC7 format)
-func (h *WorkflowHandlers) writeError(w http.ResponseWriter, r *http.Request, status int, code string, message string, details interface{}) {
-	errResp := map[string]interface{}{
-		"error": map[string]interface{}{
-			"code":    code,
-			"message": message,
-		},
+// writeError writes RFC 7807 error response using pkg/errors
+func (h *WorkflowHandlers) writeError(w http.ResponseWriter, r *http.Request, err error) {
+	rfc7807 := errors.ToRFC7807(err, r.URL.Path)
+
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(rfc7807.Status)
+
+	if encodeErr := json.NewEncoder(w).Encode(rfc7807); encodeErr != nil {
+		h.logger.Error("Failed to encode error response", zap.Error(encodeErr))
+	}
+}
+
+// writeErrorLegacy writes error response (legacy compatibility during migration)
+func (h *WorkflowHandlers) writeErrorLegacy(w http.ResponseWriter, r *http.Request, status int, code string, message string, details interface{}) {
+	// Create appropriate error type based on code
+	var err error
+	switch code {
+	case "validation_error":
+		err = errors.NewValidationError(message, nil)
+	case "not_found":
+		err = &errors.BaseError{Type: "not_found", Message: message, Retryable: false}
+	case "invalid_request", "invalid_argument", "invalid_parameter":
+		err = &errors.BaseError{Type: "invalid_argument", Message: message, Retryable: false}
+	default:
+		err = &errors.BaseError{Type: code, Message: message, Retryable: false}
 	}
 
 	if details != nil {
-		errResp["error"].(map[string]interface{})["details"] = details
+		if baseErr, ok := err.(*errors.BaseError); ok {
+			baseErr.Context = map[string]interface{}{"details": details}
+		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	if err := json.NewEncoder(w).Encode(errResp); err != nil {
-		h.logger.Error("Failed to encode error response", zap.Error(err))
-	}
+	h.writeError(w, r, err)
 }
 
 // ListWorkflows handles GET /v1/workflows endpoint (AC3)
@@ -402,7 +418,7 @@ func (h *WorkflowHandlers) ListWorkflows(w http.ResponseWriter, r *http.Request)
 
 	// Validate parameters
 	if page < 1 {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_parameter", "Invalid query parameter", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_parameter", "Invalid query parameter", map[string]interface{}{
 			"field":  "page",
 			"value":  page,
 			"reason": "page must be >= 1",
@@ -411,7 +427,7 @@ func (h *WorkflowHandlers) ListWorkflows(w http.ResponseWriter, r *http.Request)
 	}
 
 	if limit < 1 || limit > 100 {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_parameter", "Invalid query parameter", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_parameter", "Invalid query parameter", map[string]interface{}{
 			"field":  "limit",
 			"value":  limit,
 			"reason": "limit must be between 1 and 100",
@@ -499,14 +515,14 @@ func (h *WorkflowHandlers) CancelWorkflow(w http.ResponseWriter, r *http.Request
 	workflowID := vars["id"]
 
 	if workflowID == "" {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
 		return
 	}
 
 	// 1. Check workflow exists and get status
 	desc, err := h.temporalClient.GetClient().DescribeWorkflowExecution(r.Context(), workflowID, "")
 	if err != nil {
-		h.writeError(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
 			"workflow_id": workflowID,
 		})
 		return
@@ -515,7 +531,7 @@ func (h *WorkflowHandlers) CancelWorkflow(w http.ResponseWriter, r *http.Request
 	// 2. Check status (only running workflows can be cancelled)
 	status := mapTemporalStatus(desc.WorkflowExecutionInfo.Status)
 	if status != "running" {
-		h.writeError(w, r, http.StatusConflict, "conflict", "Cannot cancel completed workflow", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusConflict, "conflict", "Cannot cancel completed workflow", map[string]interface{}{
 			"workflow_id":    workflowID,
 			"current_status": status,
 		})
@@ -529,7 +545,7 @@ func (h *WorkflowHandlers) CancelWorkflow(w http.ResponseWriter, r *http.Request
 			zap.String("workflow_id", workflowID),
 			zap.Error(err),
 		)
-		h.writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to cancel workflow", nil)
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error", "Failed to cancel workflow", nil)
 		return
 	}
 
@@ -557,7 +573,7 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 	workflowID := vars["id"]
 
 	if workflowID == "" {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
 		return
 	}
 
@@ -574,7 +590,7 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 	// 1. Get original workflow
 	desc, err := h.temporalClient.GetClient().DescribeWorkflowExecution(r.Context(), workflowID, "")
 	if err != nil {
-		h.writeError(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
 			"workflow_id": workflowID,
 		})
 		return
@@ -583,7 +599,7 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 	// 2. Check status (only completed workflows can be rerun)
 	status := mapTemporalStatus(desc.WorkflowExecutionInfo.Status)
 	if status == "running" {
-		h.writeError(w, r, http.StatusConflict, "conflict", "Cannot rerun running workflow", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusConflict, "conflict", "Cannot rerun running workflow", map[string]interface{}{
 			"workflow_id":    workflowID,
 			"current_status": status,
 		})
@@ -593,14 +609,14 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 	// 3. Get original YAML from workflow memo
 	memo := desc.WorkflowExecutionInfo.Memo
 	if memo == nil || memo.Fields == nil {
-		h.writeError(w, r, http.StatusInternalServerError, "internal_error",
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error",
 			"Original workflow YAML not found in memo", nil)
 		return
 	}
 
 	originalYAMLPayload, ok := memo.Fields["original_yaml"]
 	if !ok {
-		h.writeError(w, r, http.StatusInternalServerError, "internal_error",
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error",
 			"Original workflow YAML not found", nil)
 		return
 	}
@@ -609,7 +625,7 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 	dc := converter.GetDefaultDataConverter()
 	if err := dc.FromPayload(originalYAMLPayload, &originalYAML); err != nil {
 		h.logger.Error("Failed to unmarshal original YAML", zap.Error(err))
-		h.writeError(w, r, http.StatusInternalServerError, "internal_error",
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error",
 			"Failed to retrieve original YAML", nil)
 		return
 	}
@@ -618,7 +634,7 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 	workflow, err := h.parser.Parse([]byte(originalYAML))
 	if err != nil {
 		h.logger.Error("Failed to parse original YAML", zap.Error(err))
-		h.writeError(w, r, http.StatusInternalServerError, "internal_error",
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error",
 			"Failed to parse original workflow", nil)
 		return
 	}
@@ -668,7 +684,7 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 			zap.String("original_id", workflowID),
 			zap.Error(err),
 		)
-		h.writeError(w, r, http.StatusInternalServerError, "internal_error",
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error",
 			"Failed to start workflow rerun", nil)
 		return
 	}
@@ -709,7 +725,7 @@ func (h *WorkflowHandlers) GetWorkflowLogs(w http.ResponseWriter, r *http.Reques
 	workflowID := vars["id"]
 
 	if workflowID == "" {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
 		return
 	}
 
@@ -722,7 +738,7 @@ func (h *WorkflowHandlers) GetWorkflowLogs(w http.ResponseWriter, r *http.Reques
 
 	// Validate tail parameter
 	if tail < 1 || tail > 1000 {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_parameter", "Invalid query parameter", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_parameter", "Invalid query parameter", map[string]interface{}{
 			"field":  "tail",
 			"value":  tail,
 			"reason": "tail must be between 1 and 1000",
@@ -733,7 +749,7 @@ func (h *WorkflowHandlers) GetWorkflowLogs(w http.ResponseWriter, r *http.Reques
 	// 1. Check workflow exists
 	desc, err := h.temporalClient.GetClient().DescribeWorkflowExecution(r.Context(), workflowID, "")
 	if err != nil {
-		h.writeError(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
 			"workflow_id": workflowID,
 		})
 		return

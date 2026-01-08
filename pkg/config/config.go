@@ -21,6 +21,8 @@ type Config struct {
 	Log LogConfig `mapstructure:"log"`
 	// Temporal contains Temporal workflow engine configuration.
 	Temporal TemporalConfig `mapstructure:"temporal"`
+	// Events contains event handling configuration.
+	Events EventsConfig `mapstructure:"events"`
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -99,6 +101,28 @@ type TemporalConfig struct {
 	RetryInterval time.Duration `mapstructure:"retry_interval"`
 }
 
+// EventsConfig holds event handling configuration.
+type EventsConfig struct {
+	// HandlerType specifies the event handler implementation.
+	// Options: "noop" (default), "webhook", "custom"
+	HandlerType string `mapstructure:"handler_type"`
+
+	// Webhook configuration (used when handler_type=webhook)
+	Webhook WebhookEventConfig `mapstructure:"webhook"`
+}
+
+// WebhookEventConfig holds webhook event handler configuration.
+type WebhookEventConfig struct {
+	// URL is the webhook endpoint
+	URL string `mapstructure:"url"`
+
+	// Headers are custom HTTP headers
+	Headers map[string]string `mapstructure:"headers"`
+
+	// Timeout is the request timeout
+	Timeout time.Duration `mapstructure:"timeout"`
+}
+
 // Load loads configuration from file and environment variables.
 // Priority: Command line flags > Environment variables > Config file > Defaults
 func Load(configFile string) (*Config, error) {
@@ -164,6 +188,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("temporal.connection_timeout", "10s")
 	v.SetDefault("temporal.max_retries", 10)
 	v.SetDefault("temporal.retry_interval", "5s")
+
+	// Events defaults
+	v.SetDefault("events.handler_type", "noop")
+	v.SetDefault("events.webhook.timeout", "5s")
 }
 
 // Validate validates the configuration.

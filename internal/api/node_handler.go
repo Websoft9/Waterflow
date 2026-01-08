@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Websoft9/waterflow/pkg/errors"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
 )
@@ -56,7 +57,7 @@ func (h *NodeHandlers) GetNode(w http.ResponseWriter, r *http.Request) {
 	nodeName := vars["name"]
 
 	if nodeName == "" {
-		h.writeError(w, r, http.StatusBadRequest, "invalid_request", "Node name is required", nil)
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Node name is required", nil)
 		return
 	}
 
@@ -73,7 +74,7 @@ func (h *NodeHandlers) GetNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if foundNode == nil {
-		h.writeError(w, r, http.StatusNotFound, "not_found", "Node not found", map[string]interface{}{
+		h.writeErrorLegacy(w, r, http.StatusNotFound, "not_found", "Node not found", map[string]interface{}{
 			"node_name": nodeName,
 		})
 		return
@@ -87,25 +88,35 @@ func (h *NodeHandlers) GetNode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeError writes an error response
-func (h *NodeHandlers) writeError(w http.ResponseWriter, r *http.Request, statusCode int, code, message string, details map[string]interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
+// writeError writes RFC 7807 error response using pkg/errors
+func (h *NodeHandlers) writeError(w http.ResponseWriter, r *http.Request, err error) {
+	rfc7807 := errors.ToRFC7807(err, r.URL.Path)
 
-	response := map[string]interface{}{
-		"error": map[string]interface{}{
-			"code":    code,
-			"message": message,
-		},
-	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(rfc7807.Status)
 
-	if details != nil {
-		response["error"].(map[string]interface{})["details"] = details
+	if encodeErr := json.NewEncoder(w).Encode(rfc7807); encodeErr != nil {
+		h.logger.Error("Failed to encode error response", zap.Error(encodeErr))
 	}
+}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.logger.Error("Failed to encode error response", zap.Error(err))
+// writeErrorLegacy provides backward compatibility during migration
+func (h *NodeHandlers) writeErrorLegacy(w http.ResponseWriter, r *http.Request, statusCode int, code, message string, details map[string]interface{}) {
+	var err error
+	switch code {
+	case "not_found":
+		err = &errors.BaseError{Type: "not_found", Message: message, Retryable: false}
+	case "invalid_request", "invalid_argument":
+		err = &errors.BaseError{Type: "invalid_argument", Message: message, Retryable: false}
+	default:
+		err = &errors.BaseError{Type: code, Message: message, Retryable: false}
 	}
+	if details != nil && len(details) > 0 {
+		if baseErr, ok := err.(*errors.BaseError); ok {
+			baseErr.Context = details
+		}
+	}
+	h.writeError(w, r, err)
 }
 
 // getKnownNodes returns hardcoded list of known nodes

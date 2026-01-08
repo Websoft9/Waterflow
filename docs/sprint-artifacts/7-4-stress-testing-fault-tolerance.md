@@ -1,6 +1,6 @@
 # Story 7.4: 压力测试和容错验证 (Event Sourcing)
 
-Status: ready-for-dev
+Status: Ready for Review (Test Framework MVP)
 
 ## Story
 

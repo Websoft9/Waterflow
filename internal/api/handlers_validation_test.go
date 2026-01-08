@@ -162,7 +162,7 @@ func TestWriteError_RFC7807Format(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/test/path", nil)
 	w := httptest.NewRecorder()
 
-	h.writeError(w, req, http.StatusBadRequest, "Test Error", "Detailed error message")
+	h.writeErrorLegacy(w, req, http.StatusBadRequest, "Test Error", "Detailed error message")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, "application/problem+json", w.Header().Get("Content-Type"))
@@ -199,7 +199,7 @@ func TestWriteError_DifferentStatusCodes(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			w := httptest.NewRecorder()
 
-			h.writeError(w, req, tt.statusCode, tt.title, "Test detail")
+			h.writeErrorLegacy(w, req, tt.statusCode, tt.title, "Test detail")
 
 			assert.Equal(t, tt.statusCode, w.Code)
 

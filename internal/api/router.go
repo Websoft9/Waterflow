@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Websoft9/waterflow/internal/api/handlers"
 	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/gorilla/mux"
@@ -103,6 +104,13 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, version, com
 	th := NewTemplateHandlers(logger)
 	router.HandleFunc("/v1/templates", th.ListTemplates).Methods(http.MethodGet)
 	router.HandleFunc("/v1/templates/{name}", th.GetTemplate).Methods(http.MethodGet)
+
+	// Admin endpoints (Story 7.2 - AC3)
+	adminRouter := router.PathPrefix("/admin").Subrouter()
+	adminRouter.Use(middleware.RequireAuth)
+	ah := handlers.NewAdminHandler(logger)
+	adminRouter.HandleFunc("/log-level", ah.GetLogLevel).Methods(http.MethodGet)
+	adminRouter.HandleFunc("/log-level", ah.SetLogLevel).Methods(http.MethodPut)
 
 	// Custom error handlers
 	router.NotFoundHandler = http.HandlerFunc(h.NotFound)
