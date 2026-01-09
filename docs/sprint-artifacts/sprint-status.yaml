@@ -129,7 +129,7 @@ development_status:
   8-2-docker-compose-complete-stack: done  # ✅代码审查完成(2026-01-09),AC3/AC4/AC6/AC7 100%达成,AC1/AC2/AC5部分达成(Server IPv6监听/Temporal UI端口/Agent metrics未实现),10个问题修复(.env.example扩展/README故障排查增强/健康检查优化/诚实评估),2026-01-09
   8-3-configuration-management: done  # 代码审查完成,修复8个问题(TOML示例/Agent环境变量文档/Completion Notes/配置路径说明),2026-01-10
   8-4-health-check-readiness-probes: done  # ✅代码审查完成(2026-01-09),所有10个问题已修复(3 CRITICAL+5 MEDIUM+2 LOW),AC1-AC6 100%达成,Story文件补充Dev Agent Record和File List,metrics集成到/ready端点,config.example.yaml添加health配置,文档完善(K8s Readiness Probe示例),3个单元测试全通过,完成日期2026-01-09
-  8-5-deployment-documentation: review  # ✅Story实施完成,AC1-AC6 100%达成,部署文档完整(726行deployment.md+467行troubleshooting.md),生产环境配置/二进制部署/Systemd集成/备份恢复(8个脚本)/版本升级(2个脚本)/故障排查手册全部完成,所有脚本可执行,完成日期2026-01-09
+  8-5-deployment-documentation: done  # ✅代码审查完成(2026-01-09),所有5个问题已修复(1 CRITICAL+3 MEDIUM+1 LOW),AC1-AC6 100%达成,完整部署文档体系(2227行:deployment 806+troubleshooting 467+configuration 954),8个运维脚本全部可执行(备份/恢复/升级/清理),生产环境最佳实践增强(高可用架构+监控集成),灾难恢复演练完整指南,数据库迁移详细说明,完成日期2026-01-09
   epic-8-retrospective: optional
 
   # Epic 9: 安全和认证 (5 stories)

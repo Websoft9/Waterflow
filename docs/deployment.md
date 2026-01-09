@@ -494,6 +494,75 @@ services:
 4. **启用 TLS**: 生产环境必须启用 HTTPS
 5. **定期更新**: 及时应用安全补丁
 
+### 高可用架构设计
+
+#### 架构图
+
+```
+                    ┌─────────────────┐
+                    │   Load Balancer │
+                    │  (Nginx/HAProxy)│
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+       ┌──────▼─────┐ ┌─────▼──────┐ ┌────▼───────┐
+       │ Waterflow  │ │ Waterflow  │ │ Waterflow  │
+       │ Server 1   │ │ Server 2   │ │ Server 3   │
+       │  :8080     │ │  :8080     │ │  :8080     │
+       └──────┬─────┘ └─────┬──────┘ └────┬───────┘
+              │              │              │
+              └──────────────┼──────────────┘
+                             │
+                      ┌──────▼──────┐
+                      │  Temporal   │
+                      │   Cluster   │
+                      │  (3+ nodes) │
+                      └──────┬──────┘
+                             │
+                   ┌─────────┼─────────┐
+                   │         │         │
+            ┌──────▼────┐ ┌─▼──────┐ ┌▼────────┐
+            │PostgreSQL │ │PostgreSQL│PostgreSQL│
+            │  Primary  │ │ Replica  │ Replica  │
+            └───────────┘ └──────────┘└─────────┘
+```
+
+#### 负载均衡配置（Nginx 示例）
+
+```nginx
+upstream waterflow_backend {
+    least_conn;  # 最少连接算法
+    server waterflow-1:8080 max_fails=3 fail_timeout=30s;
+    server waterflow-2:8080 max_fails=3 fail_timeout=30s;
+    server waterflow-3:8080 max_fails=3 fail_timeout=30s;
+}
+
+server {
+    listen 80;
+    server_name waterflow.example.com;
+    
+    location / {
+        proxy_pass http://waterflow_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # 健康检查
+        proxy_next_upstream error timeout http_503;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # 健康检查端点
+    location /health {
+        access_log off;
+        proxy_pass http://waterflow_backend/health;
+    }
+}
+```
+
 ### 监控集成
 
 参考 [监控配置文档](../deployments/monitoring/README.md) 集成 Prometheus + Grafana。
@@ -635,6 +704,214 @@ crontab -e
 ./scripts/restore-configs.sh /backups/waterflow/waterflow_configs_20260109.tar.gz
 ```
 
+### 备份验证
+
+建议定期验证备份文件的完整性：
+
+```bash
+# 验证备份文件完整性
+gunzip -t /backups/waterflow/waterflow_db_20260109.sql.gz
+echo $?  # 输出 0 表示文件完整
+
+# 验证配置备份
+tar -tzf /backups/waterflow/waterflow_configs_20260109.tar.gz > /dev/null
+echo $?  # 输出 0 表示文件完整
+```
+
+### 灾难恢复流程
+
+#### 完全重建步骤（从零开始）
+
+**场景:** 服务器完全损坏，需要在新环境完全重建系统
+
+**前置要求:**
+- 新服务器/VM 已准备（满足资源要求）
+- 有可用的备份文件
+- 备份文件已传输到新服务器
+
+**步骤 1: 准备新环境**
+
+```bash
+# 安装 Docker 和 Docker Compose
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+
+# 安装 Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# 验证安装
+docker --version
+docker-compose --version
+```
+
+**步骤 2: 克隆 Waterflow 仓库**
+
+```bash
+# 克隆代码（使用与备份相同的版本）
+git clone https://github.com/websoft9/waterflow.git
+cd waterflow
+git checkout v1.0.0  # 替换为备份时的版本
+```
+
+**步骤 3: 恢复配置文件**
+
+```bash
+# 恢复配置
+./scripts/restore-configs.sh /backups/waterflow/waterflow_configs_20260109.tar.gz
+
+# 验证配置文件
+ls -l /etc/waterflow/config.yaml
+ls -l deployments/.env
+```
+
+**步骤 4: 启动基础服务（PostgreSQL + Temporal）**
+
+```bash
+cd deployments
+
+# 只启动数据库和 Temporal（不启动 Waterflow）
+docker-compose up -d postgresql temporal
+
+# 等待 Temporal 启动完成（约 30-60 秒）
+docker-compose logs -f temporal
+# 看到 "Started Temporal server" 后按 Ctrl+C 退出
+```
+
+**步骤 5: 恢复数据库**
+
+```bash
+# 恢复数据库
+./scripts/restore-database.sh /backups/waterflow/waterflow_db_20260109.sql.gz
+
+# 验证数据库恢复
+docker-compose exec postgresql psql -U temporal -d temporal -c "SELECT COUNT(*) FROM executions;"
+# 应该看到工作流执行记录数量
+```
+
+**步骤 6: 启动 Waterflow**
+
+```bash
+# 启动 Waterflow Server 和 Agent
+docker-compose up -d waterflow agent
+
+# 查看启动日志
+docker-compose logs -f waterflow
+```
+
+**步骤 7: 验证恢复**
+
+```bash
+# 1. 健康检查
+curl http://localhost:8080/health
+# 预期: {"status":"healthy",...}
+
+# 2. 就绪检查
+curl http://localhost:8080/ready
+# 预期: {"status":"ready","checks":{"temporal":"ok"}}
+
+# 3. 列出工作流（验证数据完整性）
+curl http://localhost:8080/v1/workflows
+# 应该看到恢复的历史工作流
+
+# 4. 提交测试工作流
+curl -X POST http://localhost:8080/v1/workflows \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "test-recovery",
+    "yaml": "name: test\nsteps:\n  - name: echo\n    uses: exec/shell\n    with:\n      command: echo Recovery test successful"
+  }'
+
+# 5. 查看测试工作流状态
+curl http://localhost:8080/v1/workflows/{workflow-id}
+# 预期: status: "completed"
+```
+
+**步骤 8: 记录恢复指标**
+
+```bash
+# 记录恢复时间目标（RTO）和数据丢失时间（RPO）
+echo "灾难发生时间: $(date -d '2 hours ago')" >> recovery.log
+echo "恢复完成时间: $(date)" >> recovery.log
+echo "RTO (实际): 2 小时" >> recovery.log
+echo "RPO (实际): 0 小时（使用最新备份）" >> recovery.log
+```
+
+### 灾难恢复演练清单
+
+建议每季度进行一次灾难恢复演练，验证备份可用性和恢复流程：
+
+**演练计划:**
+
+1. **准备阶段（1 小时）**
+   - [ ] 准备独立的测试环境（VM 或容器）
+   - [ ] 复制最新备份文件到测试环境
+   - [ ] 准备演练检查清单
+
+2. **执行阶段（2-3 小时）**
+   - [ ] 安装 Docker 和 Docker Compose
+   - [ ] 克隆 Waterflow 代码（正确版本）
+   - [ ] 恢复配置文件
+   - [ ] 启动基础服务
+   - [ ] 恢复数据库
+   - [ ] 启动 Waterflow 服务
+   - [ ] 执行完整验证
+
+3. **验证阶段（30 分钟）**
+   - [ ] 健康检查通过
+   - [ ] 就绪检查通过
+   - [ ] 历史工作流可查询
+   - [ ] 新工作流可提交和执行
+   - [ ] 所有 API 端点正常响应
+
+4. **记录阶段（30 分钟）**
+   - [ ] 记录 RTO（恢复时间目标）
+   - [ ] 记录 RPO（数据丢失时间）
+   - [ ] 记录遇到的问题和解决方法
+   - [ ] 更新恢复流程文档
+   - [ ] 提交演练报告
+
+**RTO/RPO 目标:**
+
+| 环境 | RTO 目标 | RPO 目标 | 备份频率 |
+|------|---------|---------|----------|
+| 开发 | 4 小时 | 24 小时 | 每周 |
+| 测试 | 2 小时 | 12 小时 | 每天 |
+| 生产 | 1 小时 | 1 小时 | 每小时（增量）+ 每天（全量）|
+
+**常见恢复问题排查:**
+
+1. **数据库恢复失败:**
+   ```bash
+   # 检查备份文件完整性
+   gunzip -t backup.sql.gz
+   
+   # 检查 PostgreSQL 版本兼容性
+   docker-compose exec postgresql psql --version
+   
+   # 手动恢复（调试模式）
+   gunzip -c backup.sql.gz | head -100  # 查看备份内容
+   ```
+
+2. **Temporal 连接超时:**
+   ```bash
+   # 等待更长时间（Temporal 启动慢）
+   docker-compose logs temporal | grep "Started Temporal server"
+   
+   # 检查 Temporal 健康状态
+   docker-compose exec temporal temporal operator cluster health
+   ```
+
+3. **配置文件路径错误:**
+   ```bash
+   # 验证配置文件位置
+   docker-compose exec waterflow ls -la /etc/waterflow/
+   
+   # 检查配置文件内容
+   docker-compose exec waterflow cat /etc/waterflow/config.yaml
+   ```
+
 ---
 
 ## 版本升级
@@ -656,7 +933,41 @@ curl http://localhost:8080/version
 
 ### Docker Compose 环境升级
 
-#### 停机升级（简单，适用单实例）
+#### 方式 1: 滚动升级（推荐，零停机）
+
+适用于多实例部署，实现零停机升级：
+
+```bash
+cd deployments
+
+# 步骤 1: 拉取新镜像（不重启服务）
+docker-compose pull waterflow
+
+# 步骤 2: 扩容到 2 个实例
+docker-compose up -d --scale waterflow=2 --no-recreate
+
+# 步骤 3: 等待新实例启动并通过健康检查（约 30 秒）
+for i in {1..30}; do
+  curl -f http://localhost:8080/health && break
+  sleep 1
+done
+
+# 步骤 4: 逐个停止旧实例
+docker-compose stop waterflow_1  # 停止第一个旧实例
+sleep 5
+
+# 步骤 5: 缩容回 1 个实例（移除旧实例）
+docker-compose up -d --scale waterflow=1
+
+# 步骤 6: 验证升级
+curl http://localhost:8080/version
+# 预期: 显示新版本号
+
+# 步骤 7: 清理旧镜像
+docker image prune -f
+```
+
+#### 方式 2: 停机升级（简单，适用单实例）
 
 ```bash
 cd deployments
@@ -677,7 +988,7 @@ docker-compose logs -f waterflow
 ### 二进制环境升级
 
 ```bash
-# 使用升级脚本
+# 使用升级脚本（自动备份+下载+替换+重启）
 ./scripts/upgrade-binary.sh v1.2.0
 ```
 
