@@ -312,9 +312,137 @@ server {
 }
 ```
 
+## Integration with Deployment
+
+### Docker Compose Deployment
+
+监控栈已集成到主 `docker-compose.yaml` 中，包含：
+
+- **Prometheus**: 自动抓取 Waterflow Server 和 Agent 指标
+- **Grafana**: 预配置数据源和仪表板
+- **自动发现**: 服务通过 Docker 网络自动连接
+
+启动命令：
+```bash
+cd /opt/waterflow/deployments
+docker-compose up -d
+```
+
+所有服务（Waterflow、Temporal、Prometheus、Grafana）将一起启动。
+
+### 独立监控部署
+
+如果需要独立运行监控栈：
+
+```bash
+cd /opt/waterflow/deployments/monitoring
+docker-compose up -d
+```
+
+**注意**: 需要配置 `prometheus/prometheus.yml` 中的目标地址。
+
+### Grafana Dashboard 导入
+
+监控栈已包含预配置的 Waterflow 仪表板：
+
+**自动导入**（推荐）：
+- 仪表板位于 `grafana/dashboards/waterflow-overview.json`
+- Grafana 启动时自动加载（通过 provisioning）
+- 无需手动导入
+
+**手动导入**：
+1. 访问 Grafana: http://localhost:3000
+2. 导航到 **Dashboards** → **Import**
+3. 上传 `grafana/dashboards/waterflow-overview.json`
+4. 选择 **Prometheus** 数据源
+5. 点击 **Import**
+
+### AlertManager 配置
+
+生产环境建议配置告警通知：
+
+**1. 创建 AlertManager 配置**
+```yaml
+# prometheus/alertmanager.yml
+global:
+  resolve_timeout: 5m
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'slack-notifications'
+
+receivers:
+  - name: 'slack-notifications'
+    slack_configs:
+      - channel: '#waterflow-alerts'
+        title: 'Waterflow Alert'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+```
+
+**2. 启用 AlertManager**
+```yaml
+# docker-compose.yml 添加 AlertManager 服务
+alertmanager:
+  image: prom/alertmanager:latest
+  ports:
+    - "9093:9093"
+  volumes:
+    - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+  command:
+    - '--config.file=/etc/alertmanager/alertmanager.yml'
+```
+
+**3. 配置告警规则**
+
+告警规则文件已在 README 的 "Alerting (Post-MVP)" 部分定义，包括：
+- **HighFailureRate**: 工作流失败率过高
+- **NoConnectedAgents**: 无 Agent 连接
+
+更多告警规则示例参见 `prometheus/alerts.yml`（需要创建）。
+
+### 监控最佳实践
+
+**1. 设置合理的数据保留期**
+```yaml
+# docker-compose.yml
+command:
+  - '--storage.tsdb.retention.time=30d'  # 生产环境建议 30 天
+```
+
+**2. 定期备份监控数据**
+```bash
+# 使用 scripts/backup-configs.sh 备份 Prometheus 配置
+# 定期备份 Prometheus 数据卷
+docker run --rm -v waterflow_prometheus-data:/data -v /backup:/backup \
+  alpine tar czf /backup/prometheus-$(date +%Y%m%d).tar.gz /data
+```
+
+**3. 监控资源使用**
+
+监控栈本身的资源消耗：
+- **Prometheus**: ~500MB 内存（15 天保留）
+- **Grafana**: ~200MB 内存
+- **磁盘**: ~1GB/天（取决于指标数量）
+
+**4. 配置告警通知渠道**
+
+支持的通知方式：
+- Slack
+- Email
+- PagerDuty
+- Webhook（自定义集成）
+
+参见 Prometheus AlertManager 文档配置通知渠道。
+
 ## References
 
 - [Prometheus Documentation](https://prometheus.io/docs/)
 - [Grafana Documentation](https://grafana.com/docs/)
 - [PromQL Cheat Sheet](https://promlabs.com/promql-cheat-sheet/)
 - [Grafana Dashboard Best Practices](https://grafana.com/docs/grafana/latest/best-practices/)
+- [Waterflow Deployment Guide](../../docs/deployment.md)
+- [Waterflow Configuration Guide](../../docs/configuration.md)

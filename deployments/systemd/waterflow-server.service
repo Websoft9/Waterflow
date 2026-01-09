@@ -1,0 +1,48 @@
+[Unit]
+Description=Waterflow Server - Workflow Orchestration Engine
+Documentation=https://github.com/websoft9/waterflow
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=waterflow
+Group=waterflow
+WorkingDirectory=/opt/waterflow
+
+# 环境变量
+Environment="WATERFLOW_SERVER_PORT=8080"
+Environment="WATERFLOW_TEMPORAL_HOST=localhost:7233"
+Environment="WATERFLOW_LOG_LEVEL=info"
+EnvironmentFile=-/etc/waterflow/server.env
+
+# 启动命令
+ExecStart=/opt/waterflow/bin/server --config /etc/waterflow/config.yaml
+
+# 重启策略
+Restart=always
+RestartSec=10s
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/waterflow /var/lib/waterflow
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=waterflow-server
+
+# 优雅关闭
+TimeoutStopSec=30s
+KillMode=process
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

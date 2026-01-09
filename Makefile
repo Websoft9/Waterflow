@@ -47,7 +47,7 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Development Targets:"
-	@grep -E '^## (build|test|lint|fmt|check|verify|run|dev):' Makefile | sed 's/^## /  /'
+	@grep -E '^## (build|test|lint|fmt|check|verify|run|dev|docker):' Makefile | sed 's/^## /  /'
 	@echo ""
 	@echo "Docker Targets:"
 	@grep -E '^## docker-' Makefile | sed 's/^## /  /'
@@ -183,6 +183,22 @@ docker-server:
 		-t waterflow:latest \
 		.
 	@echo "Server image built: $(IMAGE_NAME_SERVER):$(TAG_VERSION)"
+
+## docker-server-multiplatform: Build multi-platform Server Docker image (amd64, arm64)
+## Requires docker buildx. Use --push to push directly to registry.
+docker-server-multiplatform:
+	@echo "Building multi-platform Server Docker image..."
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-f build/Dockerfile.server \
+		-t $(IMAGE_NAME_SERVER):$(TAG_VERSION) \
+		-t $(IMAGE_NAME_SERVER):$(TAG_LATEST) \
+		--push \
+		.
+	@echo "Multi-platform Server image built and pushed: $(IMAGE_NAME_SERVER):$(TAG_VERSION)"
 
 ## docker-agent: Build Agent Docker image with multi-stage build (~50MB)
 ## Usage: make docker-agent

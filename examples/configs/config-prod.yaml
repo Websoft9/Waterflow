@@ -1,0 +1,107 @@
+# Waterflow 生产环境配置
+# ==========================================
+# 用途: 生产环境部署
+# 特点: info日志、json格式、高可用、TLS支持
+# ==========================================
+
+# HTTP Server 配置
+server:
+  # 监听所有网络接口
+  host: "0.0.0.0"
+  
+  # 生产环境标准端口
+  port: 8080
+  
+  # 生产环境使用较长的超时时间，处理复杂请求
+  read_timeout: "60s"
+  write_timeout: "60s"
+  shutdown_timeout: "30s"
+  
+  # 生产环境启用TLS (通过环境变量注入路径)
+  # 环境变量: WATERFLOW_SERVER_TLS_CERT_FILE, WATERFLOW_SERVER_TLS_KEY_FILE
+  tls_cert_file: "/etc/waterflow/tls/cert.pem"
+  tls_key_file: "/etc/waterflow/tls/key.pem"
+  
+  # 生产环境必须设置API Key (通过环境变量注入)
+  # 环境变量: WATERFLOW_SERVER_API_KEY
+  api_key: "${WATERFLOW_API_KEY}"
+  
+  # Metrics端口
+  metrics_port: 9090
+  
+  # Server Group管理 (使用文件模式)
+  server_group_provider: "file"
+  server_group_file: "/etc/waterflow/server-groups.yaml"
+
+# 日志配置 (生产环境优化)
+log:
+  # 使用info级别，避免过多日志
+  level: "info"
+  
+  # 使用json格式方便日志聚合系统解析
+  format: "json"
+  
+  # 输出到文件 (生产环境建议使用日志收集工具)
+  output: "/var/log/waterflow/server.log"
+
+# Temporal 配置 (生产环境)
+temporal:
+  # 连接生产环境Temporal集群 (通过环境变量注入)
+  # 环境变量: WATERFLOW_TEMPORAL_HOST
+  host: "temporal.production.internal:7233"
+  
+  # 使用生产namespace
+  namespace: "waterflow-prod"
+  
+  # 生产环境task queue
+  task_queue: "waterflow-prod-server"
+  
+  # 生产环境超时配置
+  connection_timeout: "15s"
+  
+  # 生产环境增加重试次数
+  max_retries: 10
+  
+  # 重试间隔
+  retry_interval: "5s"
+
+# 事件处理配置 (生产环境使用webhook)
+events:
+  handler_type: "webhook"
+  webhook:
+    # Webhook URL (通过环境变量注入)
+    # 环境变量: WATERFLOW_EVENTS_WEBHOOK_URL
+    url: "${WEBHOOK_URL}"
+    
+    # 请求超时
+    timeout: "10s"
+    
+    # 自定义请求头 (例如: 认证token)
+    headers:
+      Authorization: "Bearer ${WEBHOOK_TOKEN}"
+      Content-Type: "application/json"
+
+# 生产环境环境变量示例:
+# ==========================================
+# export WATERFLOW_SERVER_API_KEY=your-secret-api-key
+# export WATERFLOW_SERVER_TLS_CERT_FILE=/etc/waterflow/tls/cert.pem
+# export WATERFLOW_SERVER_TLS_KEY_FILE=/etc/waterflow/tls/key.pem
+# export WATERFLOW_TEMPORAL_HOST=temporal.prod.internal:7233
+# export WATERFLOW_EVENTS_WEBHOOK_URL=https://webhook.example.com/events
+# export WEBHOOK_TOKEN=your-webhook-token
+# 
+# Docker部署示例:
+# docker run -d \
+#   -e WATERFLOW_SERVER_API_KEY=$API_KEY \
+#   -e WATERFLOW_TEMPORAL_HOST=temporal:7233 \
+#   -v /etc/waterflow:/etc/waterflow:ro \
+#   -v /var/log/waterflow:/var/log/waterflow \
+#   -p 8080:8080 \
+#   -p 9090:9090 \
+#   waterflow:latest
+#
+# Kubernetes部署提示:
+# - 使用Secret存储API Key和TLS证书
+# - 使用ConfigMap存储配置文件
+# - 配置健康检查: /health
+# - 配置资源限制: requests/limits

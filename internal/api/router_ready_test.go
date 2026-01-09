@@ -1,13 +1,17 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Websoft9/waterflow/pkg/config"
 	"github.com/Websoft9/waterflow/pkg/temporal"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -117,4 +121,88 @@ func TestRouterWithoutTemporalClient_WorkflowEndpoints(t *testing.T) {
 		// Should return 404 (endpoints not registered)
 		assert.Equal(t, http.StatusNotFound, w.Code, "Endpoint %s should not be registered without Temporal", endpoint)
 	}
+}
+
+// TestReadyEndpoint_WithDatabase tests /ready endpoint with database health check (Story 8-4 AC2)
+func TestReadyEndpoint_WithDatabase(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Create in-memory SQLite database for testing
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Create health config with custom timeouts
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Health: config.HealthConfig{
+				TemporalTimeout: 2 * time.Second,
+				DatabaseTimeout: 1 * time.Second,
+			},
+		},
+	}
+
+	router := NewRouterWithDB(logger, nil, nil, db, cfg, "v1.0.0", "abc123", "2025-12-19")
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Database should be healthy (in-memory DB is always available)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"database":"ok"`)
+	assert.Contains(t, w.Body.String(), `"status":"ready"`)
+}
+
+// TestReadyEndpoint_WithClosedDatabase tests 503 response when database is unavailable (Story 8-4 AC3)
+func TestReadyEndpoint_WithClosedDatabase(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Create and immediately close database to simulate failure
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	db.Close() // Close immediately to make Ping fail
+
+	router := NewRouterWithDB(logger, nil, nil, db, nil, "v1.0.0", "abc123", "2025-12-19")
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Story 8-4 AC3: Should return 503 when database is unavailable
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), `"status":"not_ready"`)
+	assert.Contains(t, w.Body.String(), `"database"`)
+}
+
+// TestReadyEndpoint_ConfigurableTimeouts tests custom health check timeouts (Story 8-4 AC6)
+func TestReadyEndpoint_ConfigurableTimeouts(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Create in-memory database
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Config with very short timeout (100ms)
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Health: config.HealthConfig{
+				DatabaseTimeout: 100 * time.Millisecond,
+			},
+		},
+	}
+
+	router := NewRouterWithDB(logger, nil, nil, db, cfg, "v1.0.0", "abc123", "2025-12-19")
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Even with short timeout, in-memory DB should respond quickly
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"database":"ok"`)
 }

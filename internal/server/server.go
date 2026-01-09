@@ -112,8 +112,8 @@ func (s *Server) Start() error {
 		s.agentMonitor.Start()
 	}
 
-	// Create router with all API endpoints
-	router := api.NewRouter(s.logger, s.temporalClient, s.eventDispatcher, s.version, s.commit, s.buildTime)
+	// Create router with all API endpoints (Story 8-4 AC6: pass config for health check timeouts)
+	router := api.NewRouterWithDB(s.logger, s.temporalClient, s.eventDispatcher, nil, s.config, s.version, s.commit, s.buildTime)
 
 	// Apply middleware chain: RequestID -> Logger -> Recovery -> Metrics -> CORS -> Version -> Router
 	// Order follows AC7: RequestID first for tracing, Logger for request logging,

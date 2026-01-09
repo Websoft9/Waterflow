@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/Websoft9/waterflow/internal/api/handlers"
+	"github.com/Websoft9/waterflow/pkg/config"
 	"github.com/Websoft9/waterflow/pkg/events"
 	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
@@ -14,7 +17,14 @@ import (
 )
 
 // NewRouter creates and configures HTTP router with all endpoints
+// db parameter is optional - if provided, database health check will be included in /ready endpoint
+// cfg parameter is optional - if provided, uses configured health check timeouts; otherwise uses defaults
 func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, version, commit, buildTime string) http.Handler {
+	return NewRouterWithDB(logger, temporalClient, eventDispatcher, nil, nil, version, commit, buildTime)
+}
+
+// NewRouterWithDB creates router with optional database health check support and configurable timeouts
+func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, db *sql.DB, cfg *config.Config, version, commit, buildTime string) http.Handler {
 	router := mux.NewRouter()
 
 	// Apply global middleware (AC7 - Request ID and Server Version headers)
@@ -26,18 +36,48 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatc
 
 	router.HandleFunc("/health", h.Health).Methods(http.MethodGet)
 
-	// Ready endpoint with Temporal health check
-	if temporalClient != nil {
+	// Get health check timeouts from config or use defaults (Story 8-4 AC6)
+	temporalTimeout := 2 * time.Second
+	dbTimeout := 1 * time.Second
+	if cfg != nil {
+		if cfg.Server.Health.TemporalTimeout > 0 {
+			temporalTimeout = cfg.Server.Health.TemporalTimeout
+		}
+		if cfg.Server.Health.DatabaseTimeout > 0 {
+			dbTimeout = cfg.Server.Health.DatabaseTimeout
+		}
+	}
+
+	// Ready endpoint with Temporal and optional database health checks (Story 8-4 AC2)
+	if temporalClient != nil || db != nil {
 		router.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 			checks := make(map[string]string)
 			allReady := true
 
-			// Check Temporal connection
-			if err := temporalClient.CheckHealth(r.Context()); err != nil {
-				checks["temporal"] = err.Error()
-				allReady = false
-			} else {
-				checks["temporal"] = "ok"
+			// Check Temporal connection (Story 8-4 AC2)
+			if temporalClient != nil {
+				ctx, cancel := context.WithTimeout(r.Context(), temporalTimeout)
+				defer cancel()
+
+				if err := temporalClient.CheckHealth(ctx); err != nil {
+					checks["temporal"] = err.Error()
+					allReady = false
+				} else {
+					checks["temporal"] = "ok"
+				}
+			}
+
+			// Check database connection if configured (Story 8-4 AC2)
+			if db != nil {
+				ctx, cancel := context.WithTimeout(r.Context(), dbTimeout)
+				defer cancel()
+
+				if err := db.PingContext(ctx); err != nil {
+					checks["database"] = err.Error()
+					allReady = false
+				} else {
+					checks["database"] = "ok"
+				}
 			}
 
 			response := map[string]interface{}{
@@ -47,6 +87,7 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatc
 
 			w.Header().Set("Content-Type", "application/json")
 
+			// Story 8-4 AC3: Return 503 when dependencies are unavailable
 			if allReady {
 				response["status"] = "ready"
 				w.WriteHeader(http.StatusOK)
@@ -60,7 +101,7 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatc
 			}
 		}).Methods(http.MethodGet)
 	} else {
-		// Fallback when Temporal is not configured
+		// Fallback when neither Temporal nor DB is configured
 		router.HandleFunc("/ready", h.Ready).Methods(http.MethodGet)
 	}
 	router.HandleFunc("/version", h.Version).Methods(http.MethodGet)

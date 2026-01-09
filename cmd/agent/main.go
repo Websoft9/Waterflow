@@ -46,19 +46,21 @@ func main() {
 	}
 
 	// Load configuration (config file is optional)
-	// If file doesn't exist, Load() will use defaults + environment variables
+	// If file doesn't exist, LoadAgent() will use defaults + environment variables
 	cfg, err := config.LoadAgent(*configFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Override with environment variables (for Docker)
-	overrideWithEnv(cfg)
 
 	// Override with command-line flags (highest priority)
 	if *taskQueues != "" {
 		cfg.Agent.TaskQueues = parseTaskQueues(*taskQueues)
+		// Re-validate after command-line override
+		if err := cfg.ValidateAgent(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Configuration validation failed: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	if *logLevel != "" {
 		cfg.Log.Level = *logLevel
@@ -153,37 +155,4 @@ func parseTaskQueues(s string) []string {
 		}
 	}
 	return result
-}
-
-// overrideWithEnv overrides configuration with Docker environment variables
-func overrideWithEnv(cfg *config.Config) {
-	// TEMPORAL_SERVER_URL (map to temporal.host)
-	if url := os.Getenv("TEMPORAL_SERVER_URL"); url != "" {
-		cfg.Temporal.Host = url
-	}
-
-	// TEMPORAL_NAMESPACE
-	if namespace := os.Getenv("TEMPORAL_NAMESPACE"); namespace != "" {
-		cfg.Temporal.Namespace = namespace
-	}
-
-	// TASK_QUEUES (comma-separated)
-	if queues := os.Getenv("TASK_QUEUES"); queues != "" {
-		cfg.Agent.TaskQueues = parseTaskQueues(queues)
-	}
-
-	// AGENT_ID
-	if agentID := os.Getenv("AGENT_ID"); agentID != "" {
-		cfg.Agent.ID = agentID
-	}
-
-	// LOG_LEVEL
-	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
-		cfg.Log.Level = logLevel
-	}
-
-	// METRICS_PORT
-	if metricsPort := os.Getenv("METRICS_PORT"); metricsPort != "" {
-		cfg.Agent.MetricsPort = metricsPort
-	}
 }

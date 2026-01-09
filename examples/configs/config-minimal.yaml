@@ -1,0 +1,47 @@
+# Waterflow 最小化配置
+# ==========================================
+# 用途: 快速体验和测试
+# 特点: 仅包含必需字段，其他使用默认值
+# ==========================================
+
+# Temporal 配置 (必需)
+temporal:
+  # Temporal Server 地址 (必需)
+  host: "localhost:7233"
+  
+  # Temporal Namespace (必需)
+  namespace: "default"
+  
+  # Task Queue 名称 (必需)
+  task_queue: "waterflow-server"
+
+# 其他配置项均使用默认值:
+# ==========================================
+# server.host: "0.0.0.0"
+# server.port: 8080
+# server.read_timeout: "30s"
+# server.write_timeout: "30s"
+# server.shutdown_timeout: "30s"
+# server.metrics_port: 9090
+# 
+# log.level: "info"
+# log.format: "json"
+# log.output: "stdout"
+#
+# temporal.connection_timeout: "10s"
+# temporal.max_retries: 10
+# temporal.retry_interval: "5s"
+#
+# events.handler_type: "noop"
+
+# 快速启动:
+# ==========================================
+# 1. 确保Temporal Server运行在localhost:7233
+# 2. 运行: ./bin/server --config examples/configs/config-minimal.yaml
+# 3. 测试: curl http://localhost:8080/health
+
+# 环境变量覆盖示例:
+# ==========================================
+# export WATERFLOW_TEMPORAL_HOST=temporal.example.com:7233
+# export WATERFLOW_LOG_LEVEL=debug
+# ./bin/server --config examples/configs/config-minimal.yaml

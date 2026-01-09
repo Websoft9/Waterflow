@@ -1,0 +1,36 @@
+# Waterflow 最小化配置 (TOML格式)
+# ==========================================
+# 用途: 演示 TOML 格式配置和最小必需配置项
+# 特点: 仅包含必需的 Temporal 连接配置
+# ==========================================
+
+# 日志配置 (可选,使用默认值)
+[log]
+level = "info"     # 日志级别: debug, info, warn, error
+format = "json"    # 日志格式: json, text
+
+# Temporal 连接配置 (必需)
+[temporal]
+host = "localhost:7233"           # Temporal Server 地址
+namespace = "waterflow"           # Temporal Namespace
+task_queue = "waterflow-server"   # Task Queue 名称
+
+# 说明:
+# ==========================================
+# 1. Server 配置未指定时,使用默认值:
+#    - host: 0.0.0.0
+#    - port: 8080
+#    - timeouts: 30s
+#
+# 2. 启动 Server:
+#    ./bin/server --config config-minimal.toml
+#
+# 3. 环境变量覆盖示例:
+#    export WATERFLOW_SERVER_PORT=9090
+#    export WATERFLOW_LOG_LEVEL=debug
+#    ./bin/server --config config-minimal.toml
+#
+# 4. YAML vs TOML 格式:
+#    - YAML: 使用缩进表示层级
+#    - TOML: 使用 [section] 表示层级
+#    - 两种格式功能完全等价

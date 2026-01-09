@@ -1,0 +1,73 @@
+# Waterflow 开发环境配置
+# ==========================================
+# 用途: 本地开发和调试
+# 特点: debug日志、text格式、快速失败
+# ==========================================
+
+# HTTP Server 配置
+server:
+  # 监听本地所有网络接口
+  host: "0.0.0.0"
+  
+  # 开发环境端口 (避免与其他服务冲突)
+  port: 8080
+  
+  # 开发环境使用较短的超时时间，快速发现问题
+  read_timeout: "10s"
+  write_timeout: "10s"
+  shutdown_timeout: "10s"
+  
+  # 开发环境不使用TLS
+  tls_cert_file: ""
+  tls_key_file: ""
+  
+  # 开发环境不需要API Key
+  api_key: ""
+  
+  # Metrics端口
+  metrics_port: 9090
+
+# 日志配置 (开发环境优化)
+log:
+  # 使用debug级别查看详细日志
+  level: "debug"
+  
+  # 使用text格式方便本地阅读
+  format: "text"
+  
+  # 输出到stdout方便查看
+  output: "stdout"
+
+# Temporal 配置 (本地开发)
+temporal:
+  # 连接本地Temporal Server (Docker Compose)
+  host: "localhost:7233"
+  
+  # 使用默认namespace
+  namespace: "default"
+  
+  # 开发环境使用默认task queue
+  task_queue: "waterflow-dev"
+  
+  # 快速超时，快速失败
+  connection_timeout: "5s"
+  
+  # 较少重试次数
+  max_retries: 3
+  
+  # 重试间隔
+  retry_interval: "2s"
+
+# 事件处理配置 (开发环境使用noop)
+events:
+  handler_type: "noop"
+
+# 开发环境环境变量示例:
+# ==========================================
+# export WATERFLOW_SERVER_PORT=8080
+# export WATERFLOW_LOG_LEVEL=debug
+# export WATERFLOW_LOG_FORMAT=text
+# export WATERFLOW_TEMPORAL_HOST=localhost:7233
+# 
+# 启动命令:
+# ./bin/server --config examples/configs/config-dev.yaml

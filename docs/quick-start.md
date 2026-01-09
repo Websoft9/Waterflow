@@ -92,7 +92,14 @@ docker compose down
 
 ## 🔧 自定义配置
 
-### 修改端口
+Waterflow 支持灵活的配置方式:
+- **环境变量** - 推荐用于容器部署 (Docker/Kubernetes)
+- **配置文件** - 推荐用于本地开发和复杂配置
+- **命令行参数** - 用于临时覆盖特定值
+
+**配置优先级**: 命令行参数 > 环境变量 > 配置文件 > 默认值
+
+### 修改端口 (环境变量方式)
 
 编辑 `deployments/.env`:
 ```bash
@@ -100,7 +107,7 @@ WATERFLOW_SERVER_PORT=9090
 TEMPORAL_UI_PORT=9088
 ```
 
-重启服务：
+重启服务:
 ```bash
 cd deployments
 docker compose up -d
@@ -113,6 +120,13 @@ cd deployments
 echo "WATERFLOW_LOG_LEVEL=debug" >> .env
 docker compose up -d
 ```
+
+### 完整配置说明
+
+详细的配置选项和验证规则请参考 **[配置参考文档](configuration.md)**,包括:
+- 所有配置项的环境变量映射
+- 配置验证规则和错误信息
+- 不同环境的配置示例 (开发/生产/最小配置)
 
 ## 🎨 使用工作流模板
 

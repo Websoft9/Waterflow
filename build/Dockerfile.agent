@@ -43,6 +43,7 @@ FROM alpine:3.19
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
+    wget \
     && update-ca-certificates
 
 # Create non-root user
@@ -68,11 +69,11 @@ USER waterflow
 # Expose metrics port (optional)
 EXPOSE 9090
 
-# Health check: verify agent process is running
-# Note: 30s interval allows sufficient time for Temporal connection
-# 10s start-period accommodates slow network/Temporal startup
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD pgrep agent > /dev/null || exit 1
+# Health check using metrics endpoint (Story 8-4 AC4)
+# Agent exposes Prometheus metrics on port 9090
+# Using wget instead of curl for smaller image size
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:9090/metrics || exit 1
 
 # Environment variables
 ENV TEMPORAL_SERVER_URL="temporal:7233" \

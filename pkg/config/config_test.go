@@ -153,19 +153,23 @@ func TestConfigValidation(t *testing.T) {
 					ReadTimeout:     30 * time.Second,
 					WriteTimeout:    30 * time.Second,
 					ShutdownTimeout: 30 * time.Second,
+					MetricsPort:     9090,
 				},
 				Log: LogConfig{
 					Level:  "info",
 					Format: "json",
 				},
 				Temporal: TemporalConfig{
-					Host:      "localhost:7233",
-					Namespace: "waterflow",
-					TaskQueue: "test",
+					Host:              "localhost:7233",
+					Namespace:         "waterflow",
+					TaskQueue:         "test",
+					ConnectionTimeout: 10 * time.Second,
+					MaxRetries:        3,
+					RetryInterval:     5 * time.Second,
 				},
 			},
 			wantErr: true,
-			errMsg:  "port must be between 1 and 65535",
+			errMsg:  "invalid server.port",
 		},
 		{
 			name: "invalid port - too high",
@@ -175,19 +179,23 @@ func TestConfigValidation(t *testing.T) {
 					ReadTimeout:     30 * time.Second,
 					WriteTimeout:    30 * time.Second,
 					ShutdownTimeout: 30 * time.Second,
+					MetricsPort:     9090,
 				},
 				Log: LogConfig{
 					Level:  "info",
 					Format: "json",
 				},
 				Temporal: TemporalConfig{
-					Host:      "localhost:7233",
-					Namespace: "waterflow",
-					TaskQueue: "test",
+					Host:              "localhost:7233",
+					Namespace:         "waterflow",
+					TaskQueue:         "test",
+					ConnectionTimeout: 10 * time.Second,
+					MaxRetries:        3,
+					RetryInterval:     5 * time.Second,
 				},
 			},
 			wantErr: true,
-			errMsg:  "port must be between 1 and 65535",
+			errMsg:  "invalid server.port",
 		},
 		{
 			name: "invalid log level",
@@ -197,41 +205,49 @@ func TestConfigValidation(t *testing.T) {
 					ReadTimeout:     30 * time.Second,
 					WriteTimeout:    30 * time.Second,
 					ShutdownTimeout: 30 * time.Second,
+					MetricsPort:     9090,
 				},
 				Log: LogConfig{
 					Level:  "invalid",
 					Format: "json",
 				},
 				Temporal: TemporalConfig{
-					Host:      "localhost:7233",
-					Namespace: "waterflow",
-					TaskQueue: "test",
+					Host:              "localhost:7233",
+					Namespace:         "waterflow",
+					TaskQueue:         "test",
+					ConnectionTimeout: 10 * time.Second,
+					MaxRetries:        3,
+					RetryInterval:     5 * time.Second,
 				},
 			},
 			wantErr: true,
-			errMsg:  "log.level must be one of",
+			errMsg:  "invalid log.level",
 		},
 		{
-			name: "timeout too short",
+			name: "negative timeout",
 			config: Config{
 				Server: ServerConfig{
 					Port:            8080,
-					ReadTimeout:     500 * time.Millisecond,
+					ReadTimeout:     -5 * time.Second,
 					WriteTimeout:    30 * time.Second,
 					ShutdownTimeout: 30 * time.Second,
+					MetricsPort:     9090,
 				},
 				Log: LogConfig{
 					Level:  "info",
 					Format: "json",
 				},
 				Temporal: TemporalConfig{
-					Host:      "localhost:7233",
-					Namespace: "waterflow",
-					TaskQueue: "test",
+					Host:              "localhost:7233",
+					Namespace:         "waterflow",
+					TaskQueue:         "test",
+					ConnectionTimeout: 10 * time.Second,
+					MaxRetries:        3,
+					RetryInterval:     5 * time.Second,
 				},
 			},
 			wantErr: true,
-			errMsg:  "read_timeout must be at least 1s",
+			errMsg:  "invalid server.read_timeout",
 		},
 	}
 
@@ -303,9 +319,12 @@ log:
 			yaml: `
 agent:
   task_queues: []
+temporal:
+  host: localhost:7233
+  namespace: default
 `,
 			wantErr: true,
-			errMsg:  "task_queues cannot be empty",
+			errMsg:  "agent.task_queues is required",
 		},
 		{
 			name: "invalid queue name with underscore",
@@ -421,6 +440,111 @@ func TestValidateQueueName(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+// TestLoad_TOMLFile tests loading configuration from TOML file (AC2 - Story 8-3)
+func TestLoad_TOMLFile(t *testing.T) {
+	// Create temp TOML config file
+	content := `
+[server]
+port = 9091
+host = "0.0.0.0"
+
+[log]
+level = "warn"
+format = "json"
+
+[temporal]
+host = "temporal-toml:7233"
+namespace = "toml-namespace"
+task_queue = "toml-queue"
+`
+	tmpFile, err := os.CreateTemp("", "config-*.toml")
+	require.NoError(t, err)
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			t.Logf("failed to remove temp file: %v", err)
+		}
+	}()
+
+	_, err = tmpFile.WriteString(content)
+	require.NoError(t, err)
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
+
+	cfg, err := Load(tmpFile.Name())
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	// Verify values from TOML file
+	assert.Equal(t, "0.0.0.0", cfg.Server.Host)
+	assert.Equal(t, 9091, cfg.Server.Port)
+	assert.Equal(t, "warn", cfg.Log.Level)
+	assert.Equal(t, "json", cfg.Log.Format)
+	assert.Equal(t, "temporal-toml:7233", cfg.Temporal.Host)
+	assert.Equal(t, "toml-namespace", cfg.Temporal.Namespace)
+	assert.Equal(t, "toml-queue", cfg.Temporal.TaskQueue)
+}
+
+// TestValidate_ErrorMessages tests improved error messages (AC6 - Story 8-3)
+func TestValidate_ErrorMessages(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         Config
+		expectedErrMsg string
+	}{
+		{
+			name: "invalid port with helpful message",
+			config: Config{
+				Server: ServerConfig{
+					Port:            70000,
+					ReadTimeout:     30 * time.Second,
+					WriteTimeout:    30 * time.Second,
+					ShutdownTimeout: 30 * time.Second,
+				},
+				Log: LogConfig{Level: "info", Format: "json"},
+				Temporal: TemporalConfig{
+					Host:              "localhost:7233",
+					Namespace:         "default",
+					TaskQueue:         "test",
+					ConnectionTimeout: 10 * time.Second,
+					MaxRetries:        3,
+					RetryInterval:     5 * time.Second,
+				},
+			},
+			expectedErrMsg: "WATERFLOW_SERVER_PORT",
+		},
+		{
+			name: "invalid log level with helpful message",
+			config: Config{
+				Server: ServerConfig{
+					Port:            8080,
+					ReadTimeout:     30 * time.Second,
+					WriteTimeout:    30 * time.Second,
+					ShutdownTimeout: 30 * time.Second,
+				},
+				Log: LogConfig{Level: "invalid", Format: "json"},
+				Temporal: TemporalConfig{
+					Host:              "localhost:7233",
+					Namespace:         "default",
+					TaskQueue:         "test",
+					ConnectionTimeout: 10 * time.Second,
+					MaxRetries:        3,
+					RetryInterval:     5 * time.Second,
+				},
+			},
+			expectedErrMsg: "WATERFLOW_LOG_LEVEL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErrMsg, "Error message should suggest environment variable fix")
 		})
 	}
 }
