@@ -81,6 +81,22 @@ services:
       - waterflow-network
     restart: unless-stopped
 
+  # Temporal UI (开发/调试用)
+  temporal-ui:
+    image: temporalio/ui:2.22.0
+    container_name: waterflow-temporal-ui
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:${TEMPORAL_UI_PORT:-8088}
+    ports:
+      - "${TEMPORAL_UI_PORT:-8088}:8088"
+    networks:
+      - waterflow-network
+    restart: unless-stopped
+
   # Waterflow Agent - Linux AMD64 (Instance 1)
   # 注意：配置文件是可选的，Agent 支持完全环境变量驱动
   # 如需使用配置文件，可添加 volume 挂载：
@@ -104,6 +120,12 @@ services:
       AGENT_ID: agent-linux-1
     volumes:
       - agent-plugins:/app/plugins:ro
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:9090/metrics", "||", "exit", "1" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - waterflow-network
     restart: unless-stopped

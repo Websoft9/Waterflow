@@ -126,7 +126,7 @@ development_status:
   # Epic 8: 部署和运维 (5 stories)
   epic-8: in-progress
   8-1-waterflow-server-docker-image: done  # ✅代码审查完成(2026-01-09),AC2-AC5/AC7-AC8 100%达成,AC1/AC6部分达成(59MB镜像/31s启动含Temporal重试),8个问题全部修复,环境变量文档同步,HEALTHCHECK端口修复,性能测试脚本增强,Completion Notes更新为诚实评估
-  8-2-docker-compose-complete-stack: review  # ✅Docker Compose完善完成,README文档增强(10章节),部署测试通过,所有服务健康,2026-01-09
+  8-2-docker-compose-complete-stack: done  # ✅代码审查完成(2026-01-09),AC3/AC4/AC6/AC7 100%达成,AC1/AC2/AC5部分达成(Server IPv6监听/Temporal UI端口/Agent metrics未实现),10个问题修复(.env.example扩展/README故障排查增强/健康检查优化/诚实评估),2026-01-09
   8-3-configuration-management: review  # Story实施完成,增强验证/统一Agent配置/完整文档,所有测试通过,2026-01-09
   8-4-health-check-readiness-probes: review  # ✅Story实施完成,AC1-AC6 100%达成,/ready端点增强(数据库检查+可配置超时),Server/Agent Docker HEALTHCHECK验证,3个单元测试全通过,健康检查文档完善(Server+Agent配置),完成日期2026-01-09
   8-5-deployment-documentation: review  # ✅Story实施完成,AC1-AC6 100%达成,部署文档完整(726行deployment.md+467行troubleshooting.md),生产环境配置/二进制部署/Systemd集成/备份恢复(8个脚本)/版本升级(2个脚本)/故障排查手册全部完成,所有脚本可执行,完成日期2026-01-09
