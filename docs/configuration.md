@@ -288,26 +288,95 @@ readinessProbe:
 
 ### Agent Health Check 配置 (Story 8-4)
 
-Agent 通过 Prometheus metrics 端点提供健康检查：
+Agent 通过 Prometheus metrics 端点提供健康检查。Agent 默认在端口 9090 暴露 `/metrics` 端点，Docker 和 Kubernetes 可使用此端点进行健康检查。
+
+**配置说明：**
+
+Agent 不需要单独的健康检查配置，复用现有的 metrics 端点：
+
+```yaml
+agent:
+  metrics_port: 9090  # Prometheus metrics 端口，同时用于健康检查
+```
 
 **健康检查端点：**
 - **`/metrics`**: 暴露在 `9090` 端口（可通过 `WATERFLOW_AGENT_METRICS_PORT` 配置）
 
 **Docker Health Check：**
 
-Agent Dockerfile 配置使用 metrics 端点进行健康检查：
+Agent Dockerfile 已配置健康检查（使用 wget 检查 metrics 端点）：
+
 ```dockerfile
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:9090/metrics || exit 1
 ```
 
-**说明：**
-- Agent 每 15 秒检查一次（比 Server 稍慢，因为 Agent 启动较慢）
-- 启动后等待 20 秒才开始检查（Agent 需要连接 Temporal 并加载插件）
-- 连续失败 5 次后标记为 unhealthy
-- 使用 `wget` 而非 `curl`（Alpine 镜像默认包含 wget）
+**参数说明：**
+- `--interval=15s`: 每 15 秒执行一次健康检查（Agent 比 Server 检查频率低）
+- `--timeout=5s`: 单次检查超时时间
+- `--start-period=20s`: 启动后等待 20 秒才开始检查（Agent 需要时间连接 Temporal）
+- `--retries=5`: 连续失败 5 次后标记为 unhealthy
+
+**验证健康状态：**
+
+```bash
+# 检查 Agent 容器健康状态
+docker inspect waterflow-agent --format='{{.State.Health.Status}}'
+# 预期输出: healthy
+
+# 手动测试 metrics 端点
+curl http://localhost:9090/metrics
+# 预期输出: Prometheus metrics 数据
+```
 
 **Kubernetes Liveness Probe：**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waterflow-agent
+spec:
+  template:
+    spec:
+      containers:
+      - name: agent
+        image: waterflow/agent:latest
+        ports:
+        - containerPort: 9090
+          name: metrics
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 5
+```
+
+**注意事项：**
+- Agent 只提供 Liveness Probe（进程存活检查），不需要 Readiness Probe
+- Agent 通过 Temporal Worker 机制管理任务分发，不接收外部 HTTP 流量
+- 如果 metrics 端点返回数据，说明 Agent 进程正常运行
+- 健康检查失败时，容器会自动重启并重新连接 Temporal
+
+**故障排查：**
+
+如果 Agent 容器一直显示 `unhealthy` 状态：
+
+```bash
+# 检查 metrics 端口是否正常监听
+docker exec waterflow-agent wget -O- http://localhost:9090/metrics
+
+# 查看 Agent 日志
+docker logs waterflow-agent | tail -50
+
+# 常见原因：
+# 1. Temporal 连接失败导致 Agent 未启动完成
+# 2. metrics_port 配置错误
+# 3. 容器网络问题
+```
 
 ```yaml
 livenessProbe:

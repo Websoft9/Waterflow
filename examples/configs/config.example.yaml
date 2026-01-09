@@ -21,6 +21,20 @@ server:
   # 优雅关闭超时时间
   # 环境变量: WATERFLOW_SERVER_SHUTDOWN_TIMEOUT
   shutdown_timeout: "30s"
+  
+  # 健康检查配置 (Story 8-4 AC6)
+  health:
+    # 整体健康检查超时时间
+    # 环境变量: WATERFLOW_SERVER_HEALTH_TIMEOUT
+    timeout: "2s"
+    
+    # Temporal 连接检查超时时间
+    # 环境变量: WATERFLOW_SERVER_HEALTH_TEMPORAL_TIMEOUT
+    temporal_timeout: "2s"
+    
+    # 数据库 Ping 超时时间（如果配置了数据库）
+    # 环境变量: WATERFLOW_SERVER_HEALTH_DB_TIMEOUT
+    db_timeout: "1s"
 
 # 日志配置
 log:

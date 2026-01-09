@@ -10,6 +10,7 @@ import (
 	"github.com/Websoft9/waterflow/internal/api/handlers"
 	"github.com/Websoft9/waterflow/pkg/config"
 	"github.com/Websoft9/waterflow/pkg/events"
+	"github.com/Websoft9/waterflow/pkg/metrics"
 	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"github.com/gorilla/mux"
@@ -51,6 +52,8 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 	// Ready endpoint with Temporal and optional database health checks (Story 8-4 AC2)
 	if temporalClient != nil || db != nil {
 		router.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+			// Story 8-4 Task 5: Record health check metrics
+			start := time.Now()
 			checks := make(map[string]string)
 			allReady := true
 
@@ -62,8 +65,10 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 				if err := temporalClient.CheckHealth(ctx); err != nil {
 					checks["temporal"] = err.Error()
 					allReady = false
+					metrics.UpdateDependencyHealth("temporal", false)
 				} else {
 					checks["temporal"] = "ok"
+					metrics.UpdateDependencyHealth("temporal", true)
 				}
 			}
 
@@ -75,8 +80,10 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 				if err := db.PingContext(ctx); err != nil {
 					checks["database"] = err.Error()
 					allReady = false
+					metrics.UpdateDependencyHealth("database", false)
 				} else {
 					checks["database"] = "ok"
+					metrics.UpdateDependencyHealth("database", true)
 				}
 			}
 
@@ -88,13 +95,22 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 			w.Header().Set("Content-Type", "application/json")
 
 			// Story 8-4 AC3: Return 503 when dependencies are unavailable
+			var statusLabel string
 			if allReady {
 				response["status"] = "ready"
 				w.WriteHeader(http.StatusOK)
+				statusLabel = "ready"
+				metrics.UpdateReadinessStatus(true)
 			} else {
 				response["status"] = "not_ready"
 				w.WriteHeader(http.StatusServiceUnavailable)
+				statusLabel = "not_ready"
+				metrics.UpdateReadinessStatus(false)
 			}
+
+			// Record health check duration and count
+			duration := time.Since(start).Seconds()
+			metrics.RecordHealthCheck("ready", statusLabel, duration)
 
 			if err := json.NewEncoder(w).Encode(response); err != nil {
 				logger.Error("Failed to encode ready response", zap.Error(err))

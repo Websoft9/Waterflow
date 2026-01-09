@@ -76,6 +76,10 @@ docker inspect waterflow-server --format='{{.State.Health.Status}}'
 # 手动测试健康端点
 curl http://localhost:8080/health
 # 预期输出: {"status":"healthy","timestamp":"..."}
+
+# 检查就绪状态（包含依赖服务检查）
+curl http://localhost:8080/ready
+# 预期输出: {"status":"ready","timestamp":"...","checks":{"temporal":"ok"}}
 ```
 
 ### 资源要求
@@ -701,6 +705,82 @@ sudo systemctl start waterflow-server
 - [ ] 提交新工作流成功
 - [ ] 查询历史工作流成功
 - [ ] 无错误日志
+
+---
+
+## Kubernetes 部署
+
+### 健康检查和就绪探针配置 (Story 8-4)
+
+在 Kubernetes 环境中，Waterflow Server 应配置 Liveness（存活探针）和 Readiness（就绪探针）来保证服务可靠性。
+
+**Server Deployment 配置示例：**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waterflow-server
+  namespace: waterflow
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: waterflow-server
+  template:
+    metadata:
+      labels:
+        app: waterflow-server
+    spec:
+      containers:
+      - name: server
+        image: waterflow/server:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        
+        # Liveness Probe: 检查进程是否存活
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 10
+        
+        # Readiness Probe: 检查服务是否准备好接收流量
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10  # 等待 Temporal 连接建立
+          periodSeconds: 5         # 每 5 秒检查一次
+          timeoutSeconds: 2        # 单次检查超时
+          successThreshold: 1      # 连续成功 1 次标记为 Ready
+          failureThreshold: 3      # 连续失败 3 次标记为 Not Ready
+        
+        env:
+        - name: WATERFLOW_TEMPORAL_HOST
+          value: "temporal-frontend.temporal:7233"
+        - name: WATERFLOW_LOG_LEVEL
+          value: "info"
+```
+
+**验证健康检查：**
+
+```bash
+# 查看 Pod 健康状态
+kubectl get pods -n waterflow
+
+# 手动测试健康检查端点
+kubectl port-forward waterflow-server-xxx 8080:8080 -n waterflow
+curl http://localhost:8080/ready
+```
 
 ---
 

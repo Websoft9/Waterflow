@@ -130,7 +130,11 @@ func TestReadyEndpoint_WithDatabase(t *testing.T) {
 	// Create in-memory SQLite database for testing
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	// Create health config with custom timeouts
 	cfg := &config.Config{
@@ -162,7 +166,9 @@ func TestReadyEndpoint_WithClosedDatabase(t *testing.T) {
 	// Create and immediately close database to simulate failure
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	db.Close() // Close immediately to make Ping fail
+	if err := db.Close(); err != nil {
+		t.Fatalf("Failed to close database: %v", err)
+	}
 
 	router := NewRouterWithDB(logger, nil, nil, db, nil, "v1.0.0", "abc123", "2025-12-19")
 
@@ -184,7 +190,11 @@ func TestReadyEndpoint_ConfigurableTimeouts(t *testing.T) {
 	// Create in-memory database
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	// Config with very short timeout (100ms)
 	cfg := &config.Config{
