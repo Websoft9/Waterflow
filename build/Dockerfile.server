@@ -1,6 +1,11 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
+# Build arguments for version information
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
 # Install build dependencies
 RUN apk add --no-cache git make
 
@@ -17,9 +22,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binary with static linking
+# Build binary with static linking and optimized ldflags
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-w -s -X main.Version=$(git describe --tags --always --dirty 2>/dev/null || echo 'docker') -X main.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown') -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S')" \
+    -ldflags="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}" \
     -o server cmd/server/main.go
 
 # Runtime stage
@@ -53,10 +58,12 @@ USER waterflow
 # Expose port
 EXPOSE 8080
 
-# Health check
+# Health check (use environment variable for port, default to 8080)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:${WATERFLOW_SERVER_PORT:-8080}/health || exit 1
 
 # Run server
+# Support pure environment variable startup (no --config required)
+# If config file exists, it will be loaded automatically
 ENTRYPOINT ["/app/server"]
-CMD ["--config", "/etc/waterflow/config.yaml"]
+CMD []
