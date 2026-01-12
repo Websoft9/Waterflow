@@ -9,7 +9,7 @@ import (
 func TestRequireAuth_WithBearerToken(t *testing.T) {
 	handler := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("authorized"))
+		_, _ = w.Write([]byte("authorized"))
 	}))
 
 	req := httptest.NewRequest("GET", "/admin/log-level", nil)
