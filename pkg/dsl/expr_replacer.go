@@ -1,9 +1,13 @@
 package dsl
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/Websoft9/waterflow/pkg/secrets"
 )
 
 // Expression pattern: ${{ ... }}
@@ -31,7 +35,17 @@ func (r *ExpressionReplacer) Replace(input string, ctx *EvalContext) (string, er
 		// Extract expression content (remove ${{ and }})
 		expression := strings.TrimSpace(match[3 : len(match)-2])
 
-		// Evaluate
+		// Story 9.2: Check if this is a secrets reference
+		if strings.HasPrefix(expression, "secrets.") {
+			value, err := r.resolveSecret(expression, ctx)
+			if err != nil {
+				lastErr = err
+				return match // Keep original on error
+			}
+			return value
+		}
+
+		// Evaluate normal expression
 		value, err := r.engine.Evaluate(expression, ctx)
 		if err != nil {
 			lastErr = err
@@ -47,6 +61,42 @@ func (r *ExpressionReplacer) Replace(input string, ctx *EvalContext) (string, er
 	}
 
 	return result, nil
+}
+
+// resolveSecret resolves a secret reference from Provider or static map.
+// Story 9.2: Dynamic secret resolution with fallback to static map.
+func (r *ExpressionReplacer) resolveSecret(expression string, ctx *EvalContext) (string, error) {
+	// Extract secret key: "secrets.api_key" → "api_key"
+	key := strings.TrimPrefix(expression, "secrets.")
+
+	// Priority 1: Try SecretProvider (if configured)
+	if ctx.SecretProvider != nil {
+		// Use context with 5-second timeout for secret retrieval
+		runtimeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		value, err := ctx.SecretProvider.GetSecret(runtimeCtx, key)
+		if err != nil {
+			// If not found in provider, fall back to static map
+			if secrets.IsSecretNotFound(err) && ctx.Secrets != nil {
+				if staticValue, ok := ctx.Secrets[key]; ok {
+					return staticValue, nil
+				}
+			}
+			return "", fmt.Errorf("failed to resolve secret '%s': %w", key, err)
+		}
+		return value, nil
+	}
+
+	// Priority 2: Fallback to static Secrets map (backward compatibility)
+	if ctx.Secrets != nil {
+		if value, ok := ctx.Secrets[key]; ok {
+			return value, nil
+		}
+	}
+
+	// Secret not found anywhere
+	return "", &secrets.SecretNotFoundError{Key: key}
 }
 
 // ReplaceInMap recursively replaces expressions in a map

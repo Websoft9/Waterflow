@@ -442,6 +442,7 @@ WATERFLOW_ + 配置路径（用下划线分隔层级）
 | `agent.task_queues` | `WATERFLOW_AGENT_TASK_QUEUES`<br>或 `TASK_QUEUES`(兼容) | string[] | [] | **必需**,逗号分隔 |
 | `agent.id` | `WATERFLOW_AGENT_ID` | string | auto | Agent实例ID |
 | `agent.plugin_dir` | `WATERFLOW_AGENT_PLUGIN_DIR` | string | /opt/waterflow/plugins | 插件目录 |
+| `agent.auto_reload_plugins` | `WATERFLOW_AGENT_AUTO_RELOAD_PLUGINS` | bool | false | 插件热加载 |
 | `agent.metrics_port` | `WATERFLOW_AGENT_METRICS_PORT` | string | "" | Prometheus端口 |
 | `agent.shutdown_timeout` | `WATERFLOW_AGENT_SHUTDOWN_TIMEOUT` | duration | 30s | 关闭超时 |
 | `temporal.host` | `WATERFLOW_TEMPORAL_HOST` | string | localhost:7233 | Temporal地址 |
@@ -584,49 +585,6 @@ Waterflow Server 和 Agent 使用不同的默认配置文件路径：
 
 **重要说明**:
 - 上述默认路径仅为**占位符**,实际部署中很少使用
-- **推荐做法**: 使用 `--config` 参数显式指定配置文件路径
-- **Docker 部署**: 推荐使用环境变量,无需挂载配置文件
-- **裸机部署**: 可将配置文件放置在 `/etc/waterflow/` 或自定义路径
-
-### 指定配置文件
-
-```bash
-# 使用 --config 参数指定路径
-./bin/server --config /path/to/config.yaml
-./bin/agent --config /opt/waterflow/agent-config.yaml
-
-# 使用环境变量 CONFIG_PATH (仅 Agent 支持)
-export CONFIG_PATH=/opt/waterflow/config.yaml
-./bin/agent
-
-# Docker 挂载配置文件
-docker run -d \
-  -v /etc/waterflow/config.yaml:/app/config.yaml:ro \
-  waterflow:latest --config /app/config.yaml
-```
-
-### 配置文件不存在时的行为
-
-如果指定的配置文件不存在,Waterflow 会:
-1. 输出警告信息: `Warning: config file ... not found`
-2. 使用默认值和环境变量继续启动
-3. 不会报错退出
-
-这种设计允许**完全依赖环境变量进行配置**(云原生最佳实践)。
-
-## 配置文件路径
-
-### 默认路径说明
-
-Waterflow Server 和 Agent 使用不同的默认配置文件路径：
-
-| 组件 | 默认路径 | 说明 |
-|------|---------|------|
-| **Server** | `/etc/waterflow/config.yaml` | 系统级配置目录 (裸机部署) |
-| **Agent** | `/app/config/config.yaml` | 应用配置目录 (容器部署) |
-
-**重要说明**:
-- 上述默认路径仅为**占位符**,实际部署中很少直接使用
 - **推荐做法**: 使用 `--config` 参数显式指定配置文件路径
 - **Docker 部署**: 推荐使用环境变量,无需挂载配置文件
 - **裸机部署**: 可将配置文件放置在 `/etc/waterflow/` 或自定义路径

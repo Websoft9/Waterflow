@@ -26,6 +26,12 @@ server:
   
   # Metrics端口
   metrics_port: 9090
+  
+  # 健康检查配置 (Story 8-4 AC6)
+  health:
+    timeout: "2s"             # 整体超时
+    temporal_timeout: "1s"    # 开发环境快速失败
+    db_timeout: "500ms"       # 开发环境快速失败
 
 # 日志配置 (开发环境优化)
 log:

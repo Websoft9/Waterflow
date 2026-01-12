@@ -19,7 +19,7 @@ func RequireAuth(next http.Handler) http.Handler {
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
 			// MVP: Accept any non-empty token
-			// TODO (Story 9.1): Validate token against authentication service
+			// TODO: Validate token against authentication service
 			if token != "" {
 				// Store user info in context for audit logging
 				// For MVP, use token as username
@@ -33,7 +33,7 @@ func RequireAuth(next http.Handler) http.Handler {
 		apiKey := r.Header.Get("X-API-Key")
 		if apiKey != "" {
 			// MVP: Accept any non-empty API key
-			// TODO (Story 9.1): Validate API key
+			// TODO: Validate API key
 			// ctx := context.WithValue(r.Context(), "user", apiKey)
 			next.ServeHTTP(w, r)
 			return

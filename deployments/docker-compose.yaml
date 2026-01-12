@@ -17,6 +17,22 @@ services:
     networks:
       - waterflow-network
     restart: unless-stopped
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: false # PostgreSQL needs write access to data directory
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
 
   # Temporal Server (内部服务，不对外暴露)
   temporal:
@@ -47,13 +63,26 @@ services:
     networks:
       - waterflow-network
     restart: unless-stopped
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: false # Temporal needs write access for state management
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
 
   # Waterflow Server (连接到内部 Temporal)
   waterflow:
     build:
       context: ..
       dockerfile: build/Dockerfile.server
-    image: waterflow:latest
+    image: waterflow/server:${WATERFLOW_SERVER_IMAGE_TAG:-latest}
     container_name: waterflow-server
     depends_on:
       temporal:
@@ -80,6 +109,21 @@ services:
     networks:
       - waterflow-network
     restart: unless-stopped
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
 
   # Temporal UI (开发/调试用)
   temporal-ui:
@@ -92,7 +136,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:${TEMPORAL_UI_PORT:-8088}
     ports:
-      - "${TEMPORAL_UI_PORT:-8088}:8088"
+      - "${TEMPORAL_UI_PORT:-8088}:8080" # UI 容器内监听 8080,映射到宿主机 8088
     networks:
       - waterflow-network
     restart: unless-stopped
@@ -106,18 +150,18 @@ services:
     build:
       context: ..
       dockerfile: build/Dockerfile.agent
-    image: waterflow/agent:latest
+    image: waterflow/agent:${WATERFLOW_AGENT_IMAGE_TAG:-latest}
     container_name: waterflow-agent-linux-1
     depends_on:
       waterflow:
         condition: service_healthy
     environment:
       # 连接内部 Temporal 服务（通过内部网络）
-      TEMPORAL_SERVER_URL: temporal:7233
-      TEMPORAL_NAMESPACE: ${WATERFLOW_TEMPORAL_NAMESPACE:-default}
-      TASK_QUEUES: linux-amd64,linux-common
-      LOG_LEVEL: ${AGENT_LOG_LEVEL:-info}
-      AGENT_ID: agent-linux-1
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: ${WATERFLOW_TEMPORAL_NAMESPACE:-default}
+      WATERFLOW_AGENT_TASK_QUEUES: ${AGENT_TASK_QUEUES:-linux-amd64,linux-common}
+      WATERFLOW_LOG_LEVEL: ${AGENT_LOG_LEVEL:-info}
+      WATERFLOW_AGENT_ID: agent-linux-1
     volumes:
       - agent-plugins:/app/plugins:ro
     healthcheck:
@@ -129,6 +173,22 @@ services:
     networks:
       - waterflow-network
     restart: unless-stopped
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev
+      - /app/logs:noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
 
 volumes:
   postgresql-data:

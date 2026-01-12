@@ -1,142 +1,78 @@
-# ==============================================
-# Waterflow Agent Configuration
-# ==============================================
-# 
-# 配置优先级: 环境变量 > 配置文件 > 默认值
-# 
-# 快速开始:
-#   1. 复制此文件为 config.yaml
-#   2. 修改 temporal.host 和 agent.task_queues
-#   3. 启动 Agent: ./agent --config config.yaml
-#
-# 注意: 标记 [v1.0] 的配置项已在当前版本实现
-#      标记 [PLANNED] 的配置项为未来版本计划功能
-# ==============================================
+# Waterflow Agent 配置示例
 
-# Agent 基本配置 [v1.0]
+# Agent 基本配置
 agent:
-  # Agent 唯一标识符 (可选，自动生成) [v1.0]
-  # 环境变量: AGENT_ID
-  # 默认: agent-<hostname>-<random>
-  # 注意: Agent 通过 Temporal Worker 身份自动注册，无需手动配置 ID
+  # Agent 唯一标识符 (可选)
+  # 环境变量: WATERFLOW_AGENT_ID
+  # 如果不设置，Agent 将使用 Temporal Worker 的默认标识符
   id: "agent-build-server-1"
   
-  # Agent 监听的 Task Queue 列表 (必填) [v1.0]
-  # 环境变量: TASK_QUEUES (逗号分隔)
-  # 示例: TASK_QUEUES=linux-amd64,gpu-a100
+  # Agent 监听的 Task Queue 列表 (必填)
+  # 环境变量: WATERFLOW_AGENT_TASK_QUEUES (逗号分隔)
   task_queues:
     - "linux-amd64"
     - "linux-common"
+  
+  # Plugin 目录
+  # 环境变量: WATERFLOW_AGENT_PLUGIN_DIR
+  plugin_dir: "/opt/waterflow/plugins"
+  
+  # 是否自动重载插件
+  # 环境变量: WATERFLOW_AGENT_AUTO_RELOAD_PLUGINS
+  auto_reload_plugins: false
+  
+  # Metrics 端口
+  # 环境变量: WATERFLOW_AGENT_METRICS_PORT
+  metrics_port: "9090"
+  
+  # 优雅关闭超时时间
+  # 环境变量: WATERFLOW_AGENT_SHUTDOWN_TIMEOUT
+  shutdown_timeout: "30s"
 
-# Temporal 连接配置 [v1.0]
+# Temporal 连接配置
 temporal:
-  # Temporal Server 地址 (必填) [v1.0]
-  # 环境变量: TEMPORAL_SERVER_URL
-  # 注意: 连接到 Waterflow 系统内部的 Temporal 服务 (默认端口 7233)
+  # Temporal Server 地址 (必填)
+  # 环境变量: WATERFLOW_TEMPORAL_HOST
   host: "localhost:7233"
   
-  # Temporal Namespace [v1.0]
-  # 默认: default
+  # Temporal Namespace
+  # 环境变量: WATERFLOW_TEMPORAL_NAMESPACE
   namespace: "default"
   
-  # Worker 配置
-  worker:
-    # 并发执行的 Activity 数量
-    # 建议设置为 CPU 核心数
-    max_concurrent_activities: 10
-    
-    # 并发执行的 Workflow 数量
-    max_concurrent_workflows: 10
-    
-    # Task Queue 长轮询超时时间
-    task_queue_poll_timeout: "60s"
+  # 连接超时时间
+  # 环境变量: WATERFLOW_TEMPORAL_CONNECTION_TIMEOUT
+  connection_timeout: "10s"
   
-  # 连接超时配置
-  connection:
-    # 连接超时
-    dial_timeout: "5s"
-    
-    # 保活间隔
-    keep_alive_time: "30s"
-    
-    # 保活超时
-    keep_alive_timeout: "15s"
+  # 最大重试次数
+  # 环境变量: WATERFLOW_TEMPORAL_MAX_RETRIES
+  max_retries: 10
+  
+  # 重试间隔
+  # 环境变量: WATERFLOW_TEMPORAL_RETRY_INTERVAL
+  retry_interval: "5s"
 
 # 日志配置
-logger:
+log:
   # 日志级别: debug, info, warn, error
-  # 环境变量: LOG_LEVEL
+  # 环境变量: WATERFLOW_LOG_LEVEL
   level: "info"
   
-  # 日志格式: json, console
-  format: "console"
+  # 日志格式: json, text
+  # 环境变量: WATERFLOW_LOG_FORMAT
+  format: "json"
   
-  # 日志输出: stdout, stderr, file
+  # 日志输出: stdout, stderr
+  # 环境变量: WATERFLOW_LOG_OUTPUT
   output: "stdout"
-  
-  # 日志文件配置 (仅当 output=file 时生效)
-  file:
-    path: "/var/log/waterflow/agent.log"
-    max_size: 100  # MB
-    max_backups: 7
-    max_age: 30  # days
-    compress: true
 
-# Metrics 配置
-metrics:
-  # 是否启用 Metrics
-  enabled: true
-  
-  # Metrics HTTP 端口
-  # 环境变量: METRICS_PORT
-  port: "9090"
-  
-  # Metrics 路径
-  path: "/metrics"
-
-# Plugin 配置
-plugins:
-  # Plugin 目录
-  directory: "/opt/waterflow/plugins"
-  
-  # 是否自动加载所有 .so 文件
-  auto_load: true
-  
-  # 显式指定要加载的 Plugin (可选)
-  enabled:
-    - "my-custom-plugin.so"
-
-# 安全配置 [PLANNED - 未来版本]
-security:
-  # TLS 配置 (连接 Temporal Server) [PLANNED]
-  tls:
-    enabled: false
-    cert_file: "/etc/waterflow/certs/client.crt"
-    key_file: "/etc/waterflow/certs/client.key"
-    ca_file: "/etc/waterflow/certs/ca.crt"
-    
-    # 跳过证书验证 (仅用于开发环境)
-    insecure_skip_verify: false
-  
-  # mTLS 客户端认证
-  mtls:
-    enabled: false
-    client_cert: "/etc/waterflow/certs/agent.crt"
-    client_key: "/etc/waterflow/certs/agent.key"
-
-# 高级配置
-advanced:
-  # 优雅关闭超时时间
-  graceful_shutdown_timeout: "30s"
-  
-  # Activity 心跳超时 (Temporal 原生功能)
-  # Agent 执行长时间运行的任务时，Temporal 会自动发送心跳
-  # 此超时时间定义心跳间隔的最大允许时间
-  activity_heartbeat_timeout: "10s"
-  
-  # 重试策略
-  retry:
-    initial_interval: "1s"
-    backoff_coefficient: 2.0
-    maximum_interval: "60s"
-    maximum_attempts: 5
+# 环境变量使用示例:
+# ==========================================
+# export WATERFLOW_AGENT_TASK_QUEUES=linux-amd64,linux-common
+# export WATERFLOW_TEMPORAL_HOST=localhost:7233
+# export WATERFLOW_TEMPORAL_NAMESPACE=default
+# export WATERFLOW_LOG_LEVEL=info
+# export WATERFLOW_AGENT_PLUGIN_DIR=/opt/waterflow/plugins
+# export WATERFLOW_AGENT_METRICS_PORT=9090
+# 
+# 启动命令:
+# ./bin/agent --config config.agent.yaml

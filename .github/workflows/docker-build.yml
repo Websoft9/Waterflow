@@ -76,4 +76,4 @@ jobs:
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
             COMMIT=${{ github.sha }}
-            BUILD_TIME=${{ github.run_id }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}

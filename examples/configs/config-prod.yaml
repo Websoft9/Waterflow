@@ -32,6 +32,12 @@ server:
   # Server Group管理 (使用文件模式)
   server_group_provider: "file"
   server_group_file: "/etc/waterflow/server-groups.yaml"
+  
+  # 健康检查配置 (Story 8-4 AC6)
+  health:
+    timeout: "3s"             # 整体超时
+    temporal_timeout: "2s"    # Temporal 连接检查
+    db_timeout: "1s"          # 数据库健康检查
 
 # 日志配置 (生产环境优化)
 log:

@@ -1,10 +1,11 @@
 # Story 8.4: Health Check and Readiness Probes (健康检查和就绪探针)
 
 **Created:** 2025-12-19  
-**Status:** ready-for-dev  
+**Status:** done  
 **Epic:** Epic 8 - Deployment and Operations  
-**Assignee:** TBD  
+**Assignee:** Dev Agent  
 **Story Points:** 5
+**Completed:** 2026-01-09
 
 ---
 
@@ -804,6 +805,8 @@ Story 8-4 完成度 100%。所有 6 个 Acceptance Criteria 已实现并通过�
 - ✅ 添加 Kubernetes Readiness Probe 示例到 deployment.md
 - ✅ 明确数据库健康检查是可选功能
 - ✅ 提交所有变更到 Git
+- ✅ **第二轮修复 (2026-01-09)**: 完善配置文件示例
+  - 在 config-dev.yaml 和 config-prod.yaml 添加 health 配置示例
 
 **Recommendation:**
 ✅ **Ready for Production** - Story 已完成所有 AC，测试覆盖充分，文档完整，可以合并到主分支。

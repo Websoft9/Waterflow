@@ -1801,25 +1801,9 @@ So that **正确部署和配置系统**。
 
 ## Epic 9: 安全和认证
 
-Waterflow 支持 API 认证,保护敏感凭证,提供安全的通信机制
+Waterflow 提供 HTTPS 加密通信、密钥管理、审计日志等安全机制,保护数据传输和敏感凭证
 
-### Story 9.1: API Key 认证
-
-As a **系统管理员**,  
-I want **API Key 认证机制**,  
-So that **保护 API 访问**。
-
-**Acceptance Criteria:**
-
-**Given** Server 配置启用认证  
-**When** 客户端调用 API  
-**Then** 请求必须包含 `Authorization: Bearer <api-key>` Header  
-**And** 无效 API Key 返回 401  
-**And** API Key 通过配置文件或环境变量设置  
-**And** 支持多个 API Key (用于不同应用)  
-**And** 健康检查端点不需要认证
-
-### Story 9.2: HTTPS/TLS 支持
+### Story 9.1: HTTPS/TLS 支持
 
 As a **系统管理员**,  
 I want **HTTPS 加密通信**,  
@@ -1835,7 +1819,7 @@ So that **保护传输中的数据**。
 **And** 强制最低 TLS 1.2  
 **And** HTTP 自动重定向到 HTTPS (可选)
 
-### Story 9.3: SecretProvider 接口
+### Story 9.2: SecretProvider 接口
 
 As a **开发者**,  
 I want **SecretProvider 接口支持运行时密钥注入**,  
@@ -1856,7 +1840,7 @@ So that **工作流安全获取密钥,零凭证存储在 Waterflow**。
 **And** Server 配置支持注入自定义 SecretProvider  
 **And** 文档说明如何实现自定义 SecretProvider
 
-### Story 9.4: 审计日志
+### Story 9.3: 审计日志
 
 As a **安全审计员**,  
 I want **审计日志记录所有操作**,  
@@ -1872,7 +1856,7 @@ So that **追踪系统使用情况**。
 **And** 审计日志不可篡改 (append-only)  
 **And** 支持导出审计日志
 
-### Story 9.5: 安全最佳实践文档
+### Story 9.4: 安全最佳实践文档
 
 As a **系统管理员**,  
 I want **安全配置指南**,  

@@ -165,10 +165,32 @@ curl -X POST http://localhost:8080/v1/workflows \
 ## 📚 下一步
 
 - 📖 [完整部署文档](deployment.md) - 详细配置和故障排查
+- 🔒 **[安全配置指南](guides/security-guide.md) - 生产环境安全最佳实践** ⭐
 - 🎨 **[工作流模板库](./templates/README.md) - 生产就绪的模板** ⭐
 - 🔍 [示例工作流](../examples/README.md) - 更多 YAML 示例
 - 🏗️ [架构文档](architecture.md) - 系统架构设计
 - 💻 [开发指南](development.md) - 本地开发环境
+
+## 🔒 生产环境部署
+
+**⚠️ 警告:** 上述快速启动配置仅用于开发和测试环境。生产环境部署请务必参考:
+
+1. **[安全配置指南](guides/security-guide.md)** - HTTPS/TLS、认证授权、密钥管理、审计日志
+2. **[安全检查清单](guides/security-checklist.md)** - 部署前安全验证
+3. **[合规指南](guides/compliance-guide.md)** - SOC2/ISO27001/GDPR 合规要求
+
+**快速安全加固:**
+```bash
+# 1. 生成 TLS 证书
+./scripts/generate-tls-cert.sh production yourdomain.com
+
+# 2. 运行安全检查
+./scripts/security-check.sh
+
+# 3. 使用安全配置启动
+cp examples/configs/secure-docker-compose.yaml deployments/docker-compose.yaml
+docker compose up -d
+```
 
 ## 🆘 遇到问题？
 

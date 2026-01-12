@@ -2,11 +2,11 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/Websoft9/waterflow/pkg/audit"
 	"github.com/Websoft9/waterflow/pkg/dsl"
 	"github.com/Websoft9/waterflow/pkg/errors"
 	"github.com/Websoft9/waterflow/pkg/events"
@@ -32,6 +32,7 @@ type WorkflowHandlers struct {
 	workflowTracker *metrics.WorkflowTracker
 	eventDispatcher *events.EventDispatcher
 	workflowMonitor *events.WorkflowMonitor
+	auditLogger     audit.AuditLogger
 }
 
 // NewWorkflowHandlers creates new WorkflowHandlers instance
@@ -51,7 +52,13 @@ func NewWorkflowHandlers(logger *zap.Logger, temporalClient *temporal.Client, ev
 		workflowTracker: metrics.NewWorkflowTracker(),
 		eventDispatcher: eventDispatcher,
 		workflowMonitor: events.NewWorkflowMonitor(temporalClient, eventDispatcher, logger),
+		auditLogger:     nil, // Will be set by SetAuditLogger if needed
 	}
+}
+
+// SetAuditLogger sets the audit logger for workflow operations
+func (h *WorkflowHandlers) SetAuditLogger(logger audit.AuditLogger) {
+	h.auditLogger = logger
 }
 
 // SubmitWorkflowRequest represents workflow submission request
@@ -172,6 +179,21 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 		)
 		// Track submission failure
 		h.workflowTracker.TrackSubmission(workflowID, false)
+
+		// Audit workflow submission failure
+		if h.auditLogger != nil {
+			_ = h.auditLogger.Log(r.Context(), audit.NewAuditLogEntry(audit.EventWorkflowSubmit, audit.CategoryWorkflow).
+				WithResource(&audit.ResourceContext{
+					Type: "workflow",
+					ID:   workflowID,
+					Name: workflow.Name,
+				}).
+				WithAction("submit").
+				WithResult(audit.ResultError).
+				WithSeverity(audit.SeverityError).
+				WithDetail("error", err.Error()))
+		}
+
 		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error", "Failed to start workflow execution", nil)
 		return
 	}
@@ -215,6 +237,20 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 		Status:    "running",
 		CreatedAt: createdAt,
 		URL:       "/v1/workflows/" + workflowID,
+	}
+
+	// Audit workflow submission success
+	if h.auditLogger != nil {
+		_ = h.auditLogger.Log(r.Context(), audit.NewAuditLogEntry(audit.EventWorkflowSubmit, audit.CategoryWorkflow).
+			WithResource(&audit.ResourceContext{
+				Type: "workflow",
+				ID:   workflowID,
+				Name: workflow.Name,
+			}).
+			WithAction("submit").
+			WithResult(audit.ResultSuccess).
+			WithDetail("task_queue", taskQueue).
+			WithDetail("run_id", run.GetRunID()))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -446,8 +482,8 @@ func (h *WorkflowHandlers) writeErrorLegacy(w http.ResponseWriter, r *http.Reque
 func (h *WorkflowHandlers) ListWorkflows(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
-	page := parseIntParam(query.Get("page"), 1)
-	limit := parseIntParam(query.Get("limit"), 20)
+	page := parseIntParam(r, "page", 1)
+	limit := parseIntParam(r, "limit", 20)
 
 	// Validate parameters
 	if page < 1 {
@@ -578,6 +614,25 @@ func (h *WorkflowHandlers) CancelWorkflow(w http.ResponseWriter, r *http.Request
 			zap.String("workflow_id", workflowID),
 			zap.Error(err),
 		)
+
+		// Audit cancellation failure
+		if h.auditLogger != nil {
+			workflowName := ""
+			if desc.WorkflowExecutionInfo != nil && desc.WorkflowExecutionInfo.Type != nil {
+				workflowName = desc.WorkflowExecutionInfo.Type.Name
+			}
+			_ = h.auditLogger.Log(r.Context(), audit.NewAuditLogEntry(audit.EventWorkflowCancel, audit.CategoryWorkflow).
+				WithResource(&audit.ResourceContext{
+					Type: "workflow",
+					ID:   workflowID,
+					Name: workflowName,
+				}).
+				WithAction("cancel").
+				WithResult(audit.ResultError).
+				WithSeverity(audit.SeverityError).
+				WithDetail("error", err.Error()))
+		}
+
 		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error", "Failed to cancel workflow", nil)
 		return
 	}
@@ -585,6 +640,22 @@ func (h *WorkflowHandlers) CancelWorkflow(w http.ResponseWriter, r *http.Request
 	h.logger.Info("Workflow cancellation requested",
 		zap.String("workflow_id", workflowID),
 	)
+
+	// Audit cancellation success
+	if h.auditLogger != nil {
+		workflowName := ""
+		if desc.WorkflowExecutionInfo != nil && desc.WorkflowExecutionInfo.Type != nil {
+			workflowName = desc.WorkflowExecutionInfo.Type.Name
+		}
+		_ = h.auditLogger.Log(r.Context(), audit.NewAuditLogEntry(audit.EventWorkflowCancel, audit.CategoryWorkflow).
+			WithResource(&audit.ResourceContext{
+				Type: "workflow",
+				ID:   workflowID,
+				Name: workflowName,
+			}).
+			WithAction("cancel").
+			WithResult(audit.ResultSuccess))
+	}
 
 	// 4. Return 202 Accepted
 	response := map[string]interface{}{
@@ -717,9 +788,43 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 			zap.String("original_id", workflowID),
 			zap.Error(err),
 		)
+
+		// Audit rerun failure
+		if h.auditLogger != nil {
+			_ = h.auditLogger.Log(r.Context(), audit.NewAuditLogEntry(audit.EventWorkflowRerun, audit.CategoryWorkflow).
+				WithResource(&audit.ResourceContext{
+					Type: "workflow",
+					ID:   workflowID,
+					Name: workflow.Name,
+				}).
+				WithAction("rerun").
+				WithResult(audit.ResultError).
+				WithSeverity(audit.SeverityError).
+				WithDetail("error", err.Error()))
+		}
+
 		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error",
 			"Failed to start workflow rerun", nil)
 		return
+	}
+
+	h.logger.Info("Workflow rerun started",
+		zap.String("original_id", workflowID),
+		zap.String("new_id", newWorkflowID),
+	)
+
+	// Audit rerun success
+	if h.auditLogger != nil {
+		_ = h.auditLogger.Log(r.Context(), audit.NewAuditLogEntry(audit.EventWorkflowRerun, audit.CategoryWorkflow).
+			WithResource(&audit.ResourceContext{
+				Type: "workflow",
+				ID:   newWorkflowID,
+				Name: workflow.Name,
+			}).
+			WithAction("rerun").
+			WithResult(audit.ResultSuccess).
+			WithDetail("original_id", workflowID).
+			WithDetail("run_id", run.GetRunID()))
 	}
 
 	// 9. Return new workflow info
@@ -736,18 +841,6 @@ func (h *WorkflowHandlers) RerunWorkflow(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(response)
-}
-
-// parseIntParam parses integer query parameter with default value
-func parseIntParam(s string, defaultVal int) int {
-	if s == "" {
-		return defaultVal
-	}
-	var val int
-	if _, err := fmt.Sscanf(s, "%d", &val); err != nil {
-		return defaultVal
-	}
-	return val
 }
 
 // GetWorkflowLogs handles GET /v1/workflows/{id}/logs endpoint (AC4)
@@ -767,7 +860,7 @@ func (h *WorkflowHandlers) GetWorkflowLogs(w http.ResponseWriter, r *http.Reques
 	level := query.Get("level")
 	job := query.Get("job")
 	step := query.Get("step")
-	tail := parseIntParam(query.Get("tail"), 100)
+	tail := parseIntParam(r, "tail", 100)
 
 	// Validate tail parameter
 	if tail < 1 || tail > 1000 {

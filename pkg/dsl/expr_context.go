@@ -1,5 +1,7 @@
 package dsl
 
+import "github.com/Websoft9/waterflow/pkg/secrets"
+
 // EvalContext represents the execution context for expression evaluation
 type EvalContext struct {
 	Workflow map[string]interface{} `expr:"workflow"`
@@ -10,8 +12,11 @@ type EvalContext struct {
 	Matrix   map[string]interface{} `expr:"matrix"` // Story 1.6: Matrix变量
 	Runner   map[string]interface{} `expr:"runner"`
 	Inputs   map[string]interface{} `expr:"inputs"`
-	Secrets  map[string]string      `expr:"secrets"`
-	Needs    map[string]interface{} `expr:"needs"` // Story 1.5: Job依赖输出
+	Secrets  map[string]string      `expr:"secrets"` // 静态密钥 (向后兼容)
+	Needs    map[string]interface{} `expr:"needs"`   // Story 1.5: Job依赖输出
+
+	// Story 9.2: 动态密钥提供器 (优先级高于静态 Secrets)
+	SecretProvider secrets.SecretProvider `expr:"-"` // 不暴露给表达式
 
 	// Built-in functions
 	Len        func(interface{}) (int, error)      `expr:"len"`

@@ -1,0 +1,112 @@
+# Docker Compose with HTTPS/TLS Support
+# This example demonstrates how to deploy Waterflow Server with HTTPS enabled
+
+version: '3.8'
+
+services:
+  # Temporal Server (required for Waterflow)
+  temporal:
+    image: temporalio/auto-setup:latest
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgres
+    ports:
+      - "7233:7233"
+    depends_on:
+      - postgres
+    networks:
+      - waterflow
+
+  # Temporal UI
+  temporal-ui:
+    image: temporalio/ui:latest
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8080:8080" # Changed from 8088 to avoid conflict
+    depends_on:
+      - temporal
+    networks:
+      - waterflow
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - waterflow
+
+  # Waterflow Server with HTTPS
+  waterflow-server:
+    image: waterflow/server:latest
+    ports:
+      - "443:8443" # HTTPS port
+      - "80:8080" # HTTP port (for redirect)
+    volumes:
+      # Mount TLS certificates
+      - ./certs:/etc/waterflow/certs:ro
+      # Optional: mount config file
+      - ./config.yaml:/etc/waterflow/config.yaml:ro
+    environment:
+      # HTTPS Configuration
+      - WATERFLOW_HTTPS_ENABLED=true
+      - WATERFLOW_HTTPS_PORT=8443
+      - WATERFLOW_HTTPS_CERT_FILE=/etc/waterflow/certs/server.crt
+      - WATERFLOW_HTTPS_KEY_FILE=/etc/waterflow/certs/server.key
+      - WATERFLOW_HTTPS_MIN_TLS_VERSION=1.2
+
+      # HTTP Configuration (Optional redirect)
+      - WATERFLOW_HTTP_ENABLED=true
+      - WATERFLOW_HTTP_PORT=8080
+      - WATERFLOW_HTTP_REDIRECT_TO_HTTPS=true
+
+      # Temporal Configuration
+      - WATERFLOW_TEMPORAL_HOST=temporal:7233
+      - WATERFLOW_TEMPORAL_NAMESPACE=waterflow
+      - WATERFLOW_TEMPORAL_TASK_QUEUE=waterflow-server
+
+      # Logging
+      - WATERFLOW_LOG_LEVEL=info
+      - WATERFLOW_LOG_FORMAT=json
+    depends_on:
+      - temporal
+    networks:
+      - waterflow
+
+  # Waterflow Agent (Example)
+  waterflow-agent:
+    image: waterflow/agent:latest
+    environment:
+      # Agent Configuration
+      - WATERFLOW_AGENT_TASK_QUEUES=linux-amd64,linux-common
+      - WATERFLOW_AGENT_PLUGIN_DIR=/opt/waterflow/plugins
+
+      # Temporal Configuration
+      - WATERFLOW_TEMPORAL_HOST=temporal:7233
+      - WATERFLOW_TEMPORAL_NAMESPACE=waterflow
+
+      # Logging
+      - WATERFLOW_LOG_LEVEL=info
+      - WATERFLOW_LOG_FORMAT=json
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - temporal
+      - waterflow-server
+    networks:
+      - waterflow
+
+networks:
+  waterflow:
+    driver: bridge
+
+volumes:
+  postgres-data:

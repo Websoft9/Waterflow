@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Websoft9/waterflow/internal/api/handlers"
+	"github.com/Websoft9/waterflow/pkg/audit"
 	"github.com/Websoft9/waterflow/pkg/config"
 	"github.com/Websoft9/waterflow/pkg/events"
 	"github.com/Websoft9/waterflow/pkg/metrics"
@@ -21,11 +22,11 @@ import (
 // db parameter is optional - if provided, database health check will be included in /ready endpoint
 // cfg parameter is optional - if provided, uses configured health check timeouts; otherwise uses defaults
 func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, version, commit, buildTime string) http.Handler {
-	return NewRouterWithDB(logger, temporalClient, eventDispatcher, nil, nil, version, commit, buildTime)
+	return NewRouterWithDB(logger, temporalClient, eventDispatcher, nil, nil, version, commit, buildTime, nil)
 }
 
 // NewRouterWithDB creates router with optional database health check support and configurable timeouts
-func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, db *sql.DB, cfg *config.Config, version, commit, buildTime string) http.Handler {
+func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, db *sql.DB, cfg *config.Config, version, commit, buildTime string, auditLogger audit.AuditLogger) http.Handler {
 	router := mux.NewRouter()
 
 	// Apply global middleware (AC7 - Request ID and Server Version headers)
@@ -134,6 +135,11 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 	if temporalClient != nil {
 		wh := NewWorkflowHandlers(logger, temporalClient, eventDispatcher)
 
+		// Set audit logger if provided (Story 9-3)
+		if auditLogger != nil {
+			wh.SetAuditLogger(auditLogger)
+		}
+
 		// AC1: Submit workflow
 		router.HandleFunc("/v1/workflows", wh.SubmitWorkflow).Methods(http.MethodPost)
 
@@ -151,6 +157,12 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 
 		// AC6: Rerun workflow
 		router.HandleFunc("/v1/workflows/{id}/rerun", wh.RerunWorkflow).Methods(http.MethodPost)
+	}
+
+	// Audit log endpoints (Story 9-3 AC6)
+	if auditLogger != nil {
+		auditHandler := NewAuditHandler(logger, auditLogger)
+		auditHandler.RegisterRoutes(router)
 	}
 
 	// Node management endpoints (Story 5.6)

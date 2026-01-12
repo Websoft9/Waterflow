@@ -230,6 +230,13 @@ curl http://localhost:8080/v1/workflows/{workflow-id}/logs
 
 ## 📚 Documentation
 
+### Getting Started
+- **[Quick Start Guide](docs/quick-start.md)** - 10-minute deployment and first workflow submission
+- **[Deployment Guide](docs/deployment.md)** - Production deployment, configuration, and troubleshooting
+- **[Security Guide](docs/guides/security-guide.md)** - HTTPS/TLS, authentication, secrets management, audit logging ⭐
+- **[Security Checklist](docs/guides/security-checklist.md)** - Pre-deployment and production security validation
+- **[Compliance Guide](docs/guides/compliance-guide.md)** - SOC2, ISO27001, GDPR compliance requirements
+
 ### Core Documentation
 - [Product Requirements Document (PRD)](docs/prd.md) - Product positioning, feature requirements, MVP scope
 - [Technical Architecture](docs/architecture.md) - Architecture decisions, tech stack, cross-cutting concerns

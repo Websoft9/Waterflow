@@ -351,6 +351,24 @@ open http://localhost:8088
 
 ## 故障排查
 
+### 问题 0: docker compose 命令未找到
+```bash
+# 症状: bash: docker compose: command not found 或 docker-compose: command not found
+
+# 解决方案 1: 安装 Docker Compose V2 (推荐)
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install docker-compose-plugin
+
+# 验证安装
+docker compose version
+# 预期: Docker Compose version v2.x.x
+
+# 解决方案 2: 使用 Docker Compose V1 (仅当 V2 不可用)
+# 将所有 "docker compose" 命令改为 "docker-compose"
+docker-compose up -d
+```
+
 ### 问题 1: 服务启动失败
 ```bash
 # 查看服务日志
