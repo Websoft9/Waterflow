@@ -55,6 +55,30 @@ docker run -d \
   waterflow/server:latest
 ```
 
+#### 场景 2b: 生产环境 (启用 HTTPS + TLS)
+
+```bash
+docker run -d \
+  --name waterflow-server \
+  -p 8443:8443 \
+  -e WATERFLOW_TEMPORAL_HOST=temporal-prod.internal:7233 \
+  -e WATERFLOW_SERVER_PORT=8443 \
+  -e WATERFLOW_SERVER_API_KEY=${API_SECRET} \
+  -e WATERFLOW_SERVER_TLS_CERT_FILE=/etc/tls/server.crt \
+  -e WATERFLOW_SERVER_TLS_KEY_FILE=/etc/tls/server.key \
+  -v /etc/ssl/waterflow:/etc/tls:ro \
+  waterflow/server:latest
+```
+
+**验证 TLS 配置:**
+```bash
+# 使用自签名证书验证 (跳过证书验证)
+curl -k https://localhost:8443/health
+
+# 使用 CA 证书验证 (生产环境推荐)
+curl --cacert /etc/ssl/waterflow/ca.crt https://localhost:8443/health
+```
+
 #### 场景 3: 使用配置文件
 
 ```bash
@@ -96,6 +120,21 @@ curl http://localhost:8080/ready
 - `develop` - 开发版本 (可能不稳定)
 - `v1.0.0` - 特定版本号
 - `v1.0` - 主次版本 (自动跟随补丁版本)
+
+### 多平台支持
+
+Docker 镜像支持以下架构:
+- `linux/amd64` - x86_64 架构 (已在 CI 完整测试)
+- `linux/arm64` - ARM64 架构 (构建验证通过，实际运行需要 ARM 环境测试)
+
+Docker 会自动选择匹配的架构:
+```bash
+# 在 ARM64 机器上会自动拉取 arm64 镜像
+docker pull waterflow/server:latest
+
+# 查看镜像支持的平台
+docker buildx imagetools inspect waterflow/server:latest
+```
 
 ### 故障排查
 
@@ -1088,8 +1127,14 @@ spec:
 # 查看 Pod 健康状态
 kubectl get pods -n waterflow
 
-# 手动测试健康检查端点
-kubectl port-forward waterflow-server-xxx 8080:8080 -n waterflow
+# 手动测试健康检查端点（使用实际 Pod 名称替换 <pod-name>）
+# 方式 1: 手动指定 Pod 名称
+kubectl port-forward <pod-name> 8080:8080 -n waterflow
+
+# 方式 2: 自动获取 Pod 名称（推荐）
+kubectl port-forward $(kubectl get pod -n waterflow -l app=waterflow-server -o jsonpath='{.items[0].metadata.name}') 8080:8080 -n waterflow
+
+# 测试端点
 curl http://localhost:8080/ready
 ```
 

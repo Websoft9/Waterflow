@@ -1403,12 +1403,13 @@ deployments/systemd/
 - 可操作性：100% 命令可直接复制执行
 - 结构化：清晰章节划分，易于查找
 - 验证性：所有脚本语法检查通过
+- 准确性：文档总计 2,535 行，脚本总计 1,288 行
 
 ### File List
 
-**文档文件（3个，2,227行）:**
+**文档文件（3个，2,535行）:**
 
-1. **`/docs/deployment.md`** (806 lines)
+1. **`/docs/deployment.md`** (1,155 lines)
    - Docker 单容器部署（快速开始、环境变量、健康检查）
    - Docker Compose 完整栈部署（开发+生产配置）
    - 生产环境部署（资源规划、安全加固、监控集成）
@@ -1417,7 +1418,7 @@ deployments/systemd/
    - 备份和恢复（手动备份、自动化备份、灾难恢复）
    - 版本升级（Docker/二进制升级、回滚、验证清单）
 
-2. **`/docs/troubleshooting.md`** (467 lines)
+2. **`/docs/troubleshooting.md`** (466 lines)
    - 服务无法启动（端口占用、配置错误、权限问题）
    - Temporal 连接失败（网络连通性、配置错误、版本不兼容）
    - 数据库连接失败（连接池耗尽、权限问题、网络问题）
@@ -1429,7 +1430,7 @@ deployments/systemd/
    - 日志和调试技巧
    - 获取帮助资源
 
-3. **`/docs/configuration.md`** (954 lines) - 已存在，本 Story 补充
+3. **`/docs/configuration.md`** (914 lines) - 已存在，本 Story 补充
    - Server 配置（host, port, timeouts, health）
    - Agent 配置（task_queues, plugin_dir, metrics_port）
    - Log 配置（level, format, output）
@@ -1439,9 +1440,9 @@ deployments/systemd/
    - 配置优先级说明
    - 环境变量映射表
 
-**脚本文件（8个，1,496行）:**
+**脚本文件（8个，1,288行）:**
 
-4. **`/scripts/backup-database.sh`** (134 lines)
+4. **`/scripts/backup-database.sh`** (133 lines)
    - 备份 Temporal PostgreSQL 数据库
    - 支持环境变量配置（BACKUP_DIR, RETENTION_DAYS）
    - 自动创建备份目录
@@ -1498,8 +1499,8 @@ deployments/systemd/
 
 **总计:**
 - 文件数：11 个（3 文档 + 8 脚本）
-- 总行数：3,723 行
-- 新增行数：~2,500 行（部分文档已存在）
+- 总行数：3,823 行 (2,535 文档 + 1,288 脚本)
+- 新增行数：~2,600 行（部分文档已存在）
 
 ### Change Log
 
@@ -1597,8 +1598,8 @@ Story 8-5 完成度 100%。所有 6 个 Acceptance Criteria 已实现并通过�
 8. ✅ 所有脚本可执行且语法正确
 
 **Quality Metrics:**
-- 文档总行数：2,227 行（deployment 806 + troubleshooting 467 + configuration 954）
-- 脚本总行数：1,496 行（8 个脚本）
+- 文档总行数：2,535 行（deployment 1,155 + troubleshooting 466 + configuration 914）
+- 脚本总行数：1,288 行（8 个脚本）
 - 文档完整性：覆盖所有部署场景和运维操作
 - 脚本质量：100% 通过语法检查，包含错误处理
 - 可操作性：所有命令可直接复制执行
