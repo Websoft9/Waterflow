@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,19 +14,39 @@ import (
 )
 
 type mockAuditLogger struct {
+	mu      sync.Mutex
 	entries []*audit.AuditLogEntry
 }
 
 func (m *mockAuditLogger) Log(ctx context.Context, entry *audit.AuditLogEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.entries = append(m.entries, entry)
 	return nil
 }
 
 func (m *mockAuditLogger) Query(ctx context.Context, filter audit.AuditLogFilter) ([]*audit.AuditLogEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.entries, nil
 }
 
 func (m *mockAuditLogger) Close() error {
+	return nil
+}
+
+func (m *mockAuditLogger) getEntriesCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.entries)
+}
+
+func (m *mockAuditLogger) getEntry(index int) *audit.AuditLogEntry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if index < len(m.entries) {
+		return m.entries[index]
+	}
 	return nil
 }
 
@@ -47,10 +68,10 @@ func TestAuditMiddleware(t *testing.T) {
 
 		// Wait for async audit logging to complete
 		assert.Eventually(t, func() bool {
-			return len(mockLogger.entries) == 1
+			return mockLogger.getEntriesCount() == 1
 		}, 100*time.Millisecond, 10*time.Millisecond, "audit entry should be logged")
 
-		entry := mockLogger.entries[0]
+		entry := mockLogger.getEntry(0)
 		assert.Equal(t, audit.EventAPIRequest, entry.EventType)
 		assert.Equal(t, audit.CategoryWorkflow, entry.EventCategory)
 		assert.Equal(t, audit.ResultSuccess, entry.Result)
@@ -71,7 +92,8 @@ func TestAuditMiddleware(t *testing.T) {
 		handler.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
-		assert.Len(t, mockLogger.entries, 0) // No audit entry
+		time.Sleep(50 * time.Millisecond)                // Wait for async processing
+		assert.Equal(t, 0, mockLogger.getEntriesCount()) // No audit entry
 	})
 
 	t.Run("categorizes paths correctly", func(t *testing.T) {
