@@ -1,0 +1,445 @@
+# Docker Compose 安全配置示例
+#
+# 此文件展示了使用 Docker Compose 部署 Waterflow 的安全配置
+# 包括容器安全、网络隔离、资源限制等最佳实践
+#
+# 使用方法:
+#   1. 复制此文件到 docker-compose.yaml
+#   2. 生成 TLS 证书: ./scripts/generate-tls-cert.sh production your-domain.com
+#   3. 创建 .env 文件配置环境变量
+#   4. 启动: docker compose up -d
+
+version: '3.8'
+
+# ========================================
+# 网络配置 - 多层隔离
+# ========================================
+networks:
+  # 前端网络 - 外部访问
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+  # 后端网络 - 内部通信,无外网访问
+  backend:
+    driver: bridge
+    internal: true # 禁止外网访问
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+
+# ========================================
+# Volumes 配置
+# ========================================
+volumes:
+  temporal-data:
+    driver: local
+  postgresql-data:
+    driver: local
+  audit-logs:
+    driver: local
+
+# ========================================
+# Services
+# ========================================
+services:
+  # ========================================
+  # Waterflow Server - 主服务
+  # ========================================
+  waterflow-server:
+    image: waterflow/server:${WATERFLOW_VERSION:-latest}
+    container_name: waterflow-server
+    hostname: waterflow-server
+
+    # 网络配置
+    networks:
+      - frontend # 外部 HTTPS 访问
+      - backend # 内部 Temporal 通信
+
+    # 端口映射
+    ports:
+      # HTTP 端口 - 仅本地访问 (健康检查)
+      - "127.0.0.1:8080:8080"
+
+      # HTTPS 端口 - 外部访问
+      - "0.0.0.0:8443:8443"
+
+      # Metrics 端口 - 仅本地访问
+      - "127.0.0.1:9090:9090"
+
+    # 环境变量
+    environment:
+      # Server 配置
+      WATERFLOW_SERVER_HTTP_PORT: 8080
+      WATERFLOW_SERVER_HTTPS_PORT: 8443
+      WATERFLOW_SERVER_METRICS_PORT: 9090
+
+      # HTTPS/TLS
+      WATERFLOW_HTTPS_ENABLED: "true"
+      WATERFLOW_HTTPS_CERT_FILE: /etc/waterflow/tls/cert.pem
+      WATERFLOW_HTTPS_KEY_FILE: /etc/waterflow/tls/key.pem
+      WATERFLOW_HTTPS_MIN_VERSION: "1.2"
+
+      # 认证
+      WATERFLOW_AUTH_ENABLED: "true"
+      WATERFLOW_AUTH_TYPE: api_key
+      WATERFLOW_ADMIN_API_KEY: ${WATERFLOW_ADMIN_API_KEY}
+      WATERFLOW_OPERATOR_API_KEY: ${WATERFLOW_OPERATOR_API_KEY}
+
+      # Vault 集成
+      VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_TOKEN: ${VAULT_TOKEN}
+      WATERFLOW_SECRETS_PROVIDER: vault
+      WATERFLOW_SECRETS_VAULT_MOUNT_PATH: waterflow
+
+      # 审计日志
+      WATERFLOW_AUDIT_ENABLED: "true"
+      WATERFLOW_AUDIT_STORE_TYPE: file
+      WATERFLOW_AUDIT_FILE_PATH: /var/log/waterflow/audit
+      WATERFLOW_AUDIT_FILE_MAX_AGE: 90
+
+      # Temporal
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: waterflow
+
+      # 日志
+      WATERFLOW_LOG_LEVEL: info
+      WATERFLOW_LOG_FORMAT: json
+
+    # 卷挂载
+    volumes:
+      # 配置文件 (只读)
+      - ./config/config.yaml:/etc/waterflow/config.yaml:ro
+
+      # TLS 证书 (只读)
+      - ./tls:/etc/waterflow/tls:ro
+
+      # 审计日志 (读写)
+      - audit-logs:/var/log/waterflow/audit
+
+      # 插件目录 (只读)
+      - ./plugins:/etc/waterflow/plugins:ro
+
+    # 容器安全配置
+    security_opt:
+      - no-new-privileges:true # 禁止提权
+
+    # 删除所有 Linux capabilities
+    cap_drop:
+      - ALL
+
+    # 仅添加必要的 capability
+    cap_add:
+      - NET_BIND_SERVICE # 允许绑定特权端口 (< 1024)
+
+    # 只读文件系统
+    read_only: true
+
+    # 临时文件系统
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+    # 进程数限制
+    pids_limit: 100
+
+    # 用户配置
+    user: "1000:1000" # 非 root 用户
+
+    # 健康检查
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+    # 重启策略
+    restart: unless-stopped
+
+    # 依赖
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  # ========================================
+  # Waterflow Agent - 工作节点
+  # ========================================
+  waterflow-agent:
+    image: waterflow/agent:${WATERFLOW_VERSION:-latest}
+    container_name: waterflow-agent
+    hostname: waterflow-agent
+
+    # 网络配置
+    networks:
+      - backend # 仅内部通信
+
+    # 环境变量
+    environment:
+      WATERFLOW_AGENT_SERVER_URL: https://waterflow-server:8443
+      WATERFLOW_AGENT_TOKEN: ${WATERFLOW_AGENT_TOKEN}
+      WATERFLOW_AGENT_SERVER_GROUPS: production
+      WATERFLOW_LOG_LEVEL: info
+
+    # 卷挂载
+    volumes:
+      # Agent 配置 (只读)
+      - ./config/agent.yaml:/etc/waterflow/agent.yaml:ro
+
+      # TLS CA 证书 (验证 Server)
+      - ./tls/ca.pem:/etc/waterflow/tls/ca.pem:ro
+
+    # 容器安全配置
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=50m
+
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    pids_limit: 50
+    user: "1000:1000"
+
+    # 健康检查
+    healthcheck:
+      test: [ "CMD", "pgrep", "-f", "waterflow-agent" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+    restart: unless-stopped
+
+    depends_on:
+      waterflow-server:
+        condition: service_healthy
+
+  # ========================================
+  # Temporal - 工作流引擎
+  # ========================================
+  temporal:
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.24.2}
+    container_name: temporal
+    hostname: temporal
+
+    networks:
+      - backend # 仅内部访问
+
+    ports:
+      - "127.0.0.1:7233:7233" # gRPC (仅本地)
+
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD}
+      - POSTGRES_SEEDS=postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+
+    # 安全配置 (Temporal 需要一些特权)
+    security_opt:
+      - no-new-privileges:true
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+    healthcheck:
+      test: [ "CMD", "tctl", "--address", "temporal:7233", "cluster", "health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+    restart: unless-stopped
+
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  # ========================================
+  # Temporal UI - Web 控制台
+  # ========================================
+  temporal-ui:
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.22.3}
+    container_name: temporal-ui
+    hostname: temporal-ui
+
+    networks:
+      - backend
+      - frontend # 需要外部访问
+
+    ports:
+      - "127.0.0.1:8088:8080" # 仅本地或通过反向代理
+
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8088
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=50m
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+    restart: unless-stopped
+
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  # ========================================
+  # PostgreSQL - 数据库
+  # ========================================
+  postgresql:
+    image: postgres:${POSTGRES_VERSION:-15-alpine}
+    container_name: postgresql
+    hostname: postgresql
+
+    networks:
+      - backend # 仅内部访问
+
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: temporal
+      POSTGRES_DB: temporal
+
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    shm_size: 128m
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+  # ========================================
+  # Vault - 密钥管理 (可选)
+  # ========================================
+  vault:
+    image: vault:${VAULT_VERSION:-1.15}
+    container_name: vault
+    hostname: vault
+
+    networks:
+      - backend
+
+    ports:
+      - "127.0.0.1:8200:8200" # 仅本地
+
+    environment:
+      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_API_ADDR: http://0.0.0.0:8200
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_ROOT_TOKEN} # 仅开发环境
+
+    cap_add:
+      - IPC_LOCK # Vault 需要锁定内存
+
+    security_opt:
+      - no-new-privileges:true
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+    healthcheck:
+      test: [ "CMD", "vault", "status" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+    restart: unless-stopped
+    # 注意: 生产环境应使用外部 Vault 集群
+
+    # ========================================
+    # 安全最佳实践说明
+    # ========================================
+    #
+    # 1. 网络隔离:
+    #    - frontend: 仅 Server 和 Temporal UI 可外部访问
+    #    - backend: Temporal, PostgreSQL, Vault 仅内部通信
+    #
+    # 2. 容器安全:
+    #    - 非 root 用户运行 (user: 1000:1000)
+    #    - 只读文件系统 (read_only: true)
+    #    - 禁止提权 (no-new-privileges)
+    #    - 最小 capabilities (cap_drop: ALL)
+    #
+    # 3. 资源限制:
+    #    - CPU 和内存限制防止资源耗尽
+    #    - 进程数限制防止 fork bomb
+    #
+    # 4. 数据保护:
+    #    - 卷挂载使用只读 (:ro) 保护配置
+    #    - 审计日志持久化到 volume
+    #    - 数据库数据持久化
+    #
+    # 5. 健康检查:
+    #    - 所有服务配置健康检查
+    #    - 自动重启失败的容器
+    #
+    # 6. 环境变量:
+    #    - 敏感信息从 .env 文件读取
+    #    - 不在配置文件中硬编码密钥

@@ -1,0 +1,273 @@
+# Vault 集成配置示例
+#
+# 此文件展示了 Waterflow 与 HashiCorp Vault 集成的配置
+# 用于安全地管理密钥、证书和敏感配置
+#
+# 前提条件:
+#   1. Vault 已安装并运行
+#   2. Vault 已初始化和 unsealed
+#   3. 配置了 Vault Token
+#
+# 使用方法:
+#   1. 启动 Vault: docker run -d -p 8200:8200 vault:1.15
+#   2. 初始化 Vault 密钥: ./scripts/vault-setup.sh
+#   3. 复制此配置到 config.yaml
+#   4. 设置环境变量: export VAULT_TOKEN=<your-token>
+#   5. 启动 Waterflow
+
+# ========================================
+# Server 基础配置
+# ========================================
+server:
+  http_port: 8080
+  https_port: 8443
+
+# ========================================
+# Vault 密钥管理配置
+# ========================================
+secrets:
+  # 使用 Vault 作为密钥提供者
+  provider: vault
+  
+  vault:
+    # Vault 服务器地址
+    # 开发环境: http://localhost:8200
+    # 生产环境: https://vault.example.com
+    address: ${VAULT_ADDR}
+    
+    # Vault Token (从环境变量读取,不要硬编码)
+    token: ${VAULT_TOKEN}
+    
+    # 密钥挂载路径 (KV v2)
+    mount_path: waterflow
+    
+    # Vault Namespace (Vault Enterprise 功能)
+    namespace: ${VAULT_NAMESPACE:-production}
+    
+    # TLS 配置 (生产环境必需)
+    tls:
+      enabled: true
+      ca_cert: /etc/waterflow/vault-ca.pem
+      client_cert: /etc/waterflow/vault-client.pem
+      client_key: /etc/waterflow/vault-client-key.pem
+      skip_verify: false  # 生产环境必须为 false
+      server_name: vault.example.com
+    
+    # 认证方式 (可选,替代 token)
+    # auth:
+    #   type: approle  # approle, kubernetes, aws, gcp, azure
+    #   role_id: ${VAULT_ROLE_ID}
+    #   secret_id: ${VAULT_SECRET_ID}
+    
+    # 缓存配置
+    cache:
+      enabled: true
+      ttl: 300  # 密钥缓存 5 分钟 (减少 Vault 请求)
+      max_entries: 100
+    
+    # 重试配置
+    retry:
+      max_retries: 3
+      backoff: 1s
+    
+    # 超时配置
+    timeout:
+      read: 10s
+      write: 10s
+
+# ========================================
+# 审计日志配置 (使用 Vault 记录密钥访问)
+# ========================================
+audit:
+  enabled: true
+  store_type: file
+  file:
+    path: /var/log/waterflow/audit
+  
+  # 记录所有密钥访问
+  categories:
+    - secret  # 记录密钥访问事件
+
+# ========================================
+# Vault 密钥组织结构
+# ========================================
+#
+# Vault 中的密钥路径建议:
+#
+# waterflow/
+# ├── production/
+# │   ├── db_password          # 数据库密码
+# │   ├── api_key              # API Key
+# │   ├── ssh_private_key      # SSH 私钥
+# │   ├── aws_credentials      # AWS 凭证
+# │   └── github_token         # GitHub Token
+# ├── staging/
+# │   └── ...
+# └── development/
+#     └── ...
+
+# ========================================
+# 在工作流中使用 Vault 密钥
+# ========================================
+#
+# 工作流 YAML 示例:
+#
+# name: deploy-application
+# vars:
+#   db_password: ${{ secrets.production/db_password }}
+#   api_key: ${{ secrets.production/api_key }}
+# 
+# jobs:
+#   deploy:
+#     runs-on: production
+#     steps:
+#       - uses: exec
+#         with:
+#           command: |
+#             export DB_PASSWORD="${{ vars.db_password }}"
+#             ./deploy.sh
+
+# ========================================
+# Vault 初始化脚本示例
+# ========================================
+#
+# #!/bin/bash
+# # scripts/vault-setup.sh
+# 
+# # 设置 Vault 地址
+# export VAULT_ADDR=http://localhost:8200
+# 
+# # 启用 KV v2 secrets engine
+# vault secrets enable -path=waterflow kv-v2
+# 
+# # 存储示例密钥
+# vault kv put waterflow/production/db_password \
+#   value="super_secret_password"
+# 
+# vault kv put waterflow/production/api_key \
+#   value="sk_live_xxxxxxxxxxxxx"
+# 
+# vault kv put waterflow/production/ssh_private_key \
+#   value="$(cat ~/.ssh/id_rsa)"
+# 
+# # 创建策略
+# vault policy write waterflow-secrets - <<EOF
+# path "waterflow/data/*" {
+#   capabilities = ["read", "list"]
+# }
+# EOF
+# 
+# # 创建 Token
+# vault token create -policy=waterflow-secrets
+# 
+# echo "Vault setup completed!"
+
+# ========================================
+# Vault AppRole 认证示例 (推荐生产环境)
+# ========================================
+#
+# 1. 启用 AppRole 认证:
+#    vault auth enable approle
+#
+# 2. 创建角色:
+#    vault write auth/approle/role/waterflow \
+#      token_policies="waterflow-secrets" \
+#      token_ttl=1h \
+#      token_max_ttl=24h
+#
+# 3. 获取 Role ID:
+#    vault read auth/approle/role/waterflow/role-id
+#
+# 4. 生成 Secret ID:
+#    vault write -f auth/approle/role/waterflow/secret-id
+#
+# 5. 配置 Waterflow:
+#    secrets:
+#      provider: vault
+#      vault:
+#        address: https://vault.example.com
+#        auth:
+#          type: approle
+#          role_id: ${VAULT_ROLE_ID}
+#          secret_id: ${VAULT_SECRET_ID}
+
+# ========================================
+# Vault 动态密钥示例 (数据库)
+# ========================================
+#
+# 1. 配置数据库 secrets engine:
+#    vault secrets enable database
+#
+#    vault write database/config/postgresql \
+#      plugin_name=postgresql-database-plugin \
+#      allowed_roles="waterflow-role" \
+#      connection_url="postgresql://{{username}}:{{password}}@localhost:5432/mydb" \
+#      username="vault" \
+#      password="vault-password"
+#
+# 2. 创建角色:
+#    vault write database/roles/waterflow-role \
+#      db_name=postgresql \
+#      creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';" \
+#      default_ttl="1h" \
+#      max_ttl="24h"
+#
+# 3. 在工作流中使用:
+#    vars:
+#      db_creds: ${{ secrets.database/creds/waterflow-role }}
+#    
+#    steps:
+#      - uses: exec
+#        with:
+#          command: |
+#            export PGUSER="${{ vars.db_creds.username }}"
+#            export PGPASSWORD="${{ vars.db_creds.password }}"
+#            psql -h localhost -d mydb -c "SELECT * FROM users"
+
+# ========================================
+# Vault 审计日志
+# ========================================
+#
+# 启用 Vault 审计日志以记录所有密钥访问:
+#
+# vault audit enable file file_path=/var/log/vault/audit.log
+#
+# 查询 Vault 审计日志:
+#
+# cat /var/log/vault/audit.log | jq 'select(.request.path | contains("waterflow"))'
+
+# ========================================
+# Vault 高可用配置 (生产环境)
+# ========================================
+#
+# 生产环境推荐使用 Vault 集群:
+#
+# vault:
+#   address: https://vault-cluster.example.com
+#   
+#   # 使用 Consul 作为存储后端
+#   # 或使用 Raft (Vault 1.4+)
+#   
+#   tls:
+#     enabled: true
+#     ca_cert: /etc/waterflow/vault-ca.pem
+#   
+#   # 启用自动 unseal (AWS KMS, GCP KMS, Azure Key Vault)
+#   # auto_unseal:
+#   #   type: awskms
+#   #   region: us-east-1
+#   #   kms_key_id: arn:aws:kms:us-east-1:123456789012:key/xxxxx
+
+# ========================================
+# 环境变量
+# ========================================
+#
+# 必需:
+#   VAULT_ADDR   - Vault 地址 (例如: https://vault.example.com)
+#   VAULT_TOKEN  - Vault Token (或使用 AppRole)
+#
+# 可选:
+#   VAULT_NAMESPACE      - Vault Namespace (Vault Enterprise)
+#   VAULT_ROLE_ID        - AppRole Role ID
+#   VAULT_SECRET_ID      - AppRole Secret ID
+#   VAULT_SKIP_VERIFY    - 跳过 TLS 验证 (仅开发环境)

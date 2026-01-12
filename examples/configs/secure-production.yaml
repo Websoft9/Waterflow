@@ -1,0 +1,301 @@
+# 生产环境安全配置示例
+# 
+# 此配置文件展示了 Waterflow 生产环境的完整安全配置
+# 包括 HTTPS、认证、审计日志、密钥管理等
+#
+# 使用方法:
+#   1. 复制此文件到 /etc/waterflow/config.yaml
+#   2. 替换所有 ${VARIABLE} 为实际值
+#   3. 生成 TLS 证书: ./scripts/generate-tls-cert.sh production your-domain.com
+#   4. 配置 Vault 集成
+#   5. 启动 Server: ./bin/server --config /etc/waterflow/config.yaml
+
+# ========================================
+# Server 配置
+# ========================================
+server:
+  # HTTP 端口 (仅用于健康检查,本地访问)
+  http_port: 8080
+  http_bind: "127.0.0.1"  # 仅绑定本地接口
+  
+  # Metrics 端口 (Prometheus)
+  metrics_port: 9090
+  metrics_bind: "127.0.0.1"  # 仅本地或通过反向代理访问
+
+# ========================================
+# HTTPS/TLS 配置 (Story 9.1)
+# ========================================
+https:
+  enabled: true
+  
+  # TLS 证书路径
+  cert_file: /etc/waterflow/tls/cert.pem
+  key_file: /etc/waterflow/tls/key.pem
+  
+  # 监听配置
+  port: 8443
+  bind: "0.0.0.0"  # 允许外部访问
+  
+  # 最低 TLS 版本 (推荐 1.2+,符合 SOC2/ISO27001)
+  min_version: "1.2"
+  
+  # 安全密码套件 (仅使用强加密)
+  cipher_suites:
+    - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+  
+  # 客户端证书认证 (可选,用于双向 TLS)
+  client_auth:
+    enabled: false  # 设置为 true 启用双向认证
+    ca_cert: /etc/waterflow/tls/client-ca.pem
+    require: false  # true = 要求客户端证书
+
+# ========================================
+# 认证配置 (Story 1.2)
+# ========================================
+auth:
+  enabled: true
+  type: api_key
+  
+  # API Keys (生产环境应从环境变量或 Vault 读取)
+  # 生成: openssl rand -base64 32
+  api_keys:
+    - name: admin
+      key: ${WATERFLOW_ADMIN_API_KEY}  # 从环境变量读取
+      roles: [admin]
+    
+    - name: operator
+      key: ${WATERFLOW_OPERATOR_API_KEY}
+      roles: [operator]
+    
+    - name: readonly
+      key: ${WATERFLOW_READONLY_API_KEY}
+      roles: [readonly]
+
+# 角色和权限配置
+roles:
+  admin:
+    description: "完全管理权限"
+    permissions:
+      - workflows:*
+      - agents:*
+      - audit:read
+      - config:write
+  
+  operator:
+    description: "工作流操作权限"
+    permissions:
+      - workflows:submit
+      - workflows:status
+      - workflows:logs
+      - workflows:cancel
+  
+  readonly:
+    description: "仅查看权限"
+    permissions:
+      - workflows:status
+      - workflows:logs
+
+# ========================================
+# 密钥管理配置 (Story 9.2)
+# ========================================
+secrets:
+  # 推荐使用 Vault (生产环境)
+  provider: vault
+  
+  vault:
+    # Vault 地址
+    address: ${VAULT_ADDR}  # 例如: https://vault.example.com
+    
+    # Vault Token (从环境变量读取,不要硬编码)
+    token: ${VAULT_TOKEN}
+    
+    # 密钥挂载路径
+    mount_path: waterflow
+    
+    # Vault Namespace (Vault Enterprise)
+    namespace: ${VAULT_NAMESPACE:-production}
+    
+    # TLS 配置
+    tls:
+      enabled: true
+      ca_cert: /etc/waterflow/vault-ca.pem
+      skip_verify: false  # 生产环境必须为 false
+    
+    # 缓存配置
+    cache:
+      enabled: true
+      ttl: 300  # 密钥缓存 5 分钟
+
+# 环境变量模式 (开发/测试环境)
+# secrets:
+#   provider: env
+#   env:
+#     prefix: WATERFLOW_SECRET_
+
+# ========================================
+# 审计日志配置 (Story 9.3)
+# ========================================
+audit:
+  enabled: true
+  
+  # 存储类型: file, syslog, multi
+  store_type: file
+  
+  # 文件存储配置
+  file:
+    path: /var/log/waterflow/audit
+    max_size: 100  # MB per file
+    max_age: 90    # days (符合 SOC2 要求)
+    max_backups: 30
+    compress: true
+  
+  # 数据脱敏 (GDPR 要求)
+  masking:
+    ip_address: true  # 脱敏 IP 地址最后一段
+    sensitive_fields:
+      - password
+      - token
+      - secret
+
+# ========================================
+# 日志配置
+# ========================================
+log:
+  level: info  # debug, info, warn, error
+  format: json  # text, json (生产推荐 json)
+  output: stdout
+  
+  # 结构化日志字段
+  fields:
+    service: waterflow-server
+    environment: production
+
+# ========================================
+# Temporal 配置
+# ========================================
+temporal:
+  # Temporal Server 地址 (gRPC)
+  host: ${TEMPORAL_HOST:-temporal.internal}
+  port: 7233
+  
+  # Namespace
+  namespace: ${TEMPORAL_NAMESPACE:-waterflow}
+  
+  # Task Queue
+  task_queue: waterflow-server
+  
+  # TLS 配置 (如果 Temporal 启用 TLS)
+  tls:
+    enabled: false
+    cert_file: /etc/waterflow/temporal-client.pem
+    key_file: /etc/waterflow/temporal-client-key.pem
+    ca_cert: /etc/waterflow/temporal-ca.pem
+    server_name: temporal.internal
+
+# ========================================
+# 健康检查配置 (Story 8.4)
+# ========================================
+health:
+  enabled: true
+  timeout: 5s
+  
+  # 依赖检查
+  dependencies:
+    - name: temporal
+      type: grpc
+      address: ${TEMPORAL_HOST}:7233
+      timeout: 3s
+    
+    - name: vault
+      type: http
+      address: ${VAULT_ADDR}/v1/sys/health
+      timeout: 2s
+
+# ========================================
+# Metrics 配置 (Story 7.5)
+# ========================================
+metrics:
+  enabled: true
+  port: 9090
+  path: /metrics
+  
+  # Prometheus 标签
+  labels:
+    environment: production
+    datacenter: us-east-1
+
+# ========================================
+# Agent 配置
+# ========================================
+agents:
+  # Agent 认证
+  auth_enabled: true
+  
+  # 允许的 Agent Tokens (生产环境从环境变量读取)
+  allowed_tokens:
+    - ${WATERFLOW_AGENT_TOKEN_1}
+    - ${WATERFLOW_AGENT_TOKEN_2}
+
+# ========================================
+# 插件配置
+# ========================================
+plugins:
+  directory: /etc/waterflow/plugins
+  
+  # 插件加载配置
+  load:
+    - name: exec
+      path: /etc/waterflow/plugins/exec.so
+    - name: http
+      path: /etc/waterflow/plugins/http.so
+    - name: file
+      path: /etc/waterflow/plugins/file.so
+
+# ========================================
+# 性能和限制
+# ========================================
+limits:
+  # API 速率限制
+  rate_limit:
+    enabled: true
+    requests_per_second: 100
+    burst: 200
+  
+  # 工作流大小限制
+  max_workflow_size: 10485760  # 10MB
+  
+  # 并发限制
+  max_concurrent_workflows: 1000
+
+# ========================================
+# 备份配置
+# ========================================
+backup:
+  enabled: true
+  path: /backup/waterflow
+  schedule: "0 2 * * *"  # 每天凌晨 2 点
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 12
+
+# ========================================
+# 环境变量参考
+# ========================================
+# 
+# 必需的环境变量:
+#   WATERFLOW_ADMIN_API_KEY      - 管理员 API Key
+#   WATERFLOW_OPERATOR_API_KEY   - 操作员 API Key
+#   WATERFLOW_READONLY_API_KEY   - 只读 API Key
+#   VAULT_ADDR                   - Vault 地址
+#   VAULT_TOKEN                  - Vault Token
+#   TEMPORAL_HOST                - Temporal Server 地址
+#   WATERFLOW_AGENT_TOKEN_1      - Agent Token 1
+#   WATERFLOW_AGENT_TOKEN_2      - Agent Token 2
+#
+# 可选的环境变量:
+#   VAULT_NAMESPACE              - Vault Namespace (默认: production)
+#   TEMPORAL_NAMESPACE           - Temporal Namespace (默认: waterflow)
