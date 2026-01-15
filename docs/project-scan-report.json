@@ -1,0 +1,43 @@
+{
+  "workflow_version": "1.2.0",
+  "timestamps": {
+    "started": "2026-01-15T00:00:00Z",
+    "last_updated": "2026-01-15T00:00:00Z"
+  },
+  "mode": "initial_scan",
+  "scan_level": "exhaustive",
+  "project_root": "/data/Waterflow",
+  "output_folder": "/data/Waterflow/docs",
+  "completed_steps": [],
+  "current_step": "step_1",
+  "findings": {
+    "project_classification": {
+      "repository_type": "monorepo",
+      "parts_count": 3,
+      "primary_language": "Go",
+      "primary_framework": "Temporal + Gorilla Mux"
+    },
+    "project_types": [
+      {
+        "part_id": "server",
+        "project_type_id": "backend",
+        "display_name": "Waterflow Server (REST API)",
+        "root_path": "cmd/server, internal/server, internal/api"
+      },
+      {
+        "part_id": "agent",
+        "project_type_id": "backend",
+        "display_name": "Waterflow Agent (Distributed Worker)",
+        "root_path": "cmd/agent, internal/agent"
+      },
+      {
+        "part_id": "cli",
+        "project_type_id": "cli",
+        "display_name": "Waterflow CLI",
+        "root_path": "cmd/waterflow-cli, pkg/sdk"
+      }
+    ]
+  },
+  "outputs_generated": ["project-scan-report.json"],
+  "resume_instructions": "Starting from step 1"
+}

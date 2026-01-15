@@ -1,6 +1,30 @@
 # Sleep Node - Delay Examples
 # 演示 flow/sleep 节点的各种使用场景
 
+# ========================================
+# Workflow: Sleep/Delay Examples
+# Story: 10.5 - 工作流示例库
+# ========================================
+#
+# 用途: 演示 flow/sleep 节点实现延迟等待
+#
+# 前置条件:
+# - Waterflow Server 和 Agent 运行中
+# - Agent 注册到 waterflow-server 队列
+#
+# 参数:
+# - 无需额外参数，开箱即用
+#
+# 运行方式:
+# waterflow submit examples/workflows/sleep-examples.yaml
+#
+# 预期输出:
+# - Job 1: 基础延迟（秒、分钟）
+# - Job 2: 服务启动等待
+# - Job 3: 健康检查重试间隔
+# - Job 4: 速率限制
+# ========================================
+
 name: Sleep Node Examples
 description: Demonstrates various use cases of the flow/sleep node
 

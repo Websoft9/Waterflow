@@ -1,0 +1,513 @@
+{
+    "metadata_version": "1.0",
+    "last_updated": "2024-01-09",
+    "total_examples": 14,
+    "categories": {
+        "deployment": {
+            "count": 3,
+            "examples": [
+                "single-server-deployment",
+                "distributed-stack-deployment",
+                "ci-cd-pipeline"
+            ]
+        },
+        "monitoring": {
+            "count": 2,
+            "examples": [
+                "multi-server-health-check",
+                "sleep-examples"
+            ]
+        },
+        "backup": {
+            "count": 1,
+            "examples": [
+                "database-backup"
+            ]
+        },
+        "testing": {
+            "count": 1,
+            "examples": [
+                "ci-cd-pipeline"
+            ]
+        },
+        "notification": {
+            "count": 1,
+            "examples": [
+                "webhook-notification"
+            ]
+        },
+        "basic": {
+            "count": 6,
+            "examples": [
+                "shell-examples",
+                "script-examples",
+                "file-transfer-examples",
+                "sleep-examples",
+                "docker-exec-examples",
+                "docker-compose-examples"
+            ]
+        }
+    },
+    "examples": [
+        {
+            "id": "shell-examples",
+            "name": "Shell Command Examples",
+            "file": "shell-examples.yaml",
+            "category": "basic",
+            "complexity": "beginner",
+            "nodes_used": [
+                "exec/shell"
+            ],
+            "features": [
+                "basic shell commands",
+                "environment variables",
+                "working directory"
+            ],
+            "estimated_run_time": "< 1 min",
+            "description": "Basic shell command execution examples demonstrating command execution, environment variables, and working directory configuration",
+            "prerequisites": [
+                "Linux/Unix shell"
+            ],
+            "learning_path_order": 1
+        },
+        {
+            "id": "script-examples",
+            "name": "Script Execution Examples",
+            "file": "script-examples.yaml",
+            "category": "basic",
+            "complexity": "beginner",
+            "nodes_used": [
+                "exec/script"
+            ],
+            "features": [
+                "inline scripts",
+                "Bash scripts",
+                "Python scripts",
+                "script parameters"
+            ],
+            "estimated_run_time": "< 1 min",
+            "description": "Script execution examples demonstrating inline Bash and Python script execution with parameter passing",
+            "prerequisites": [
+                "Bash interpreter",
+                "Python 3.x"
+            ],
+            "learning_path_order": 2
+        },
+        {
+            "id": "file-transfer-examples",
+            "name": "File Transfer Examples",
+            "file": "file-transfer-examples.yaml",
+            "category": "basic",
+            "complexity": "beginner",
+            "nodes_used": [
+                "file/transfer"
+            ],
+            "features": [
+                "SCP upload",
+                "SCP download",
+                "SSH authentication",
+                "file permissions"
+            ],
+            "estimated_run_time": "< 2 min",
+            "description": "File transfer examples demonstrating SCP upload/download operations with SSH authentication",
+            "prerequisites": [
+                "SSH server access",
+                "SSH key authentication configured"
+            ],
+            "learning_path_order": 3
+        },
+        {
+            "id": "sleep-examples",
+            "name": "Sleep/Delay Examples",
+            "file": "sleep-examples.yaml",
+            "category": "basic",
+            "complexity": "beginner",
+            "nodes_used": [
+                "flow/sleep"
+            ],
+            "features": [
+                "basic delay",
+                "service readiness waiting",
+                "health check retries"
+            ],
+            "estimated_run_time": "< 1 min",
+            "description": "Delay and wait examples demonstrating basic sleep, service readiness waiting, and health check retries",
+            "prerequisites": [
+                "None"
+            ],
+            "learning_path_order": 4
+        },
+        {
+            "id": "docker-exec-examples",
+            "name": "Docker Command Examples",
+            "file": "docker-exec-examples.yaml",
+            "category": "basic",
+            "complexity": "intermediate",
+            "nodes_used": [
+                "docker/exec"
+            ],
+            "features": [
+                "Docker pull",
+                "container run",
+                "container exec",
+                "image build",
+                "cleanup operations"
+            ],
+            "estimated_run_time": "< 3 min",
+            "description": "Comprehensive Docker operation examples including pull, run, exec, build, and cleanup",
+            "prerequisites": [
+                "Docker installed",
+                "Docker daemon running"
+            ],
+            "learning_path_order": 5
+        },
+        {
+            "id": "docker-compose-examples",
+            "name": "Docker Compose Examples",
+            "file": "docker-compose-examples.yaml",
+            "category": "basic",
+            "complexity": "intermediate",
+            "nodes_used": [
+                "docker/compose"
+            ],
+            "features": [
+                "compose up",
+                "compose down",
+                "health checks",
+                "service dependencies"
+            ],
+            "estimated_run_time": "< 3 min",
+            "description": "Docker Compose examples demonstrating multi-container application orchestration",
+            "prerequisites": [
+                "Docker Compose installed"
+            ],
+            "learning_path_order": 6
+        },
+        {
+            "id": "single-server-deployment",
+            "name": "Single Server Deployment Template",
+            "file": "single-server-deployment.yaml",
+            "category": "deployment",
+            "complexity": "intermediate",
+            "nodes_used": [
+                "exec/shell",
+                "file/transfer",
+                "http/request",
+                "flow/sleep"
+            ],
+            "features": [
+                "job dependencies",
+                "conditional execution",
+                "health checks",
+                "rollback support",
+                "timeout handling"
+            ],
+            "estimated_run_time": "5-10 min",
+            "description": "Production-ready single server deployment template with build, deploy, health check, and rollback capabilities",
+            "prerequisites": [
+                "SSH access to target server",
+                "Application code repository",
+                "Build tools installed"
+            ],
+            "learning_path_order": 7
+        },
+        {
+            "id": "distributed-stack-deployment",
+            "name": "Distributed Stack Deployment Template",
+            "file": "distributed-stack-deployment.yaml",
+            "category": "deployment",
+            "complexity": "advanced",
+            "nodes_used": [
+                "exec/shell",
+                "docker/compose",
+                "flow/sleep",
+                "http/request"
+            ],
+            "features": [
+                "multi-tier orchestration",
+                "job dependencies",
+                "health check loops",
+                "rollback on failure",
+                "parallel execution"
+            ],
+            "estimated_run_time": "10-15 min",
+            "description": "Advanced multi-tier application deployment (Database + Application) with orchestration, health checks, and rollback",
+            "prerequisites": [
+                "Multiple servers with SSH access",
+                "Docker Compose installed",
+                "Database server available"
+            ],
+            "learning_path_order": 8
+        },
+        {
+            "id": "multi-server-health-check",
+            "name": "Multi-Server Health Check Template",
+            "file": "multi-server-health-check.yaml",
+            "category": "monitoring",
+            "complexity": "intermediate",
+            "nodes_used": [
+                "exec/shell",
+                "exec/script"
+            ],
+            "features": [
+                "parallel execution",
+                "metrics collection",
+                "report generation",
+                "threshold alerts"
+            ],
+            "estimated_run_time": "2-5 min",
+            "description": "Parallel health check across multiple servers collecting CPU, memory, disk metrics with unified reporting",
+            "prerequisites": [
+                "SSH access to all monitored servers"
+            ],
+            "learning_path_order": 9
+        },
+        {
+            "id": "database-backup",
+            "name": "Database Backup Workflow",
+            "file": "database-backup.yaml",
+            "category": "backup",
+            "complexity": "intermediate",
+            "nodes_used": [
+                "exec/shell",
+                "file/transfer",
+                "exec/script"
+            ],
+            "features": [
+                "conditional execution (if)",
+                "multi-database support",
+                "remote backup transfer",
+                "backup verification",
+                "cleanup old backups",
+                "report generation"
+            ],
+            "estimated_run_time": "5-15 min",
+            "description": "Automated database backup workflow supporting PostgreSQL and MySQL with remote transfer, verification, and cleanup",
+            "prerequisites": [
+                "Database server access",
+                "Backup storage server access",
+                "pg_dump or mysqldump installed"
+            ],
+            "learning_path_order": 10
+        },
+        {
+            "id": "ci-cd-pipeline",
+            "name": "CI/CD Pipeline Workflow",
+            "file": "ci-cd-pipeline.yaml",
+            "category": "deployment",
+            "complexity": "advanced",
+            "nodes_used": [
+                "exec/shell",
+                "exec/script",
+                "http/request",
+                "flow/sleep"
+            ],
+            "features": [
+                "job dependencies",
+                "conditional deployment",
+                "environment branching",
+                "blue-green deployment",
+                "smoke tests",
+                "Slack notifications",
+                "retry strategies"
+            ],
+            "estimated_run_time": "10-20 min",
+            "description": "Complete CI/CD pipeline with build, test, conditional deployment (dev/staging/production), blue-green strategy, and notifications",
+            "prerequisites": [
+                "Git repository access",
+                "Build tools installed",
+                "Target servers for all environments",
+                "Slack webhook (optional)"
+            ],
+            "learning_path_order": 11
+        },
+        {
+            "id": "webhook-notification",
+            "name": "Webhook Notification Workflow",
+            "file": "webhook-notification.yaml",
+            "category": "notification",
+            "complexity": "beginner",
+            "nodes_used": [
+                "http/request"
+            ],
+            "features": [
+                "multi-platform support",
+                "conditional execution (if)",
+                "retry strategies",
+                "rich message formatting",
+                "continue-on-error"
+            ],
+            "estimated_run_time": "< 1 min",
+            "description": "Multi-platform webhook notification workflow supporting Slack, DingTalk, and WeCom with simple and rich message formats",
+            "prerequisites": [
+                "Webhook URLs for target platforms"
+            ],
+            "learning_path_order": 12
+        }
+    ],
+    "learning_paths": {
+        "beginner": {
+            "description": "Start here if you're new to Waterflow",
+            "examples": [
+                "shell-examples",
+                "script-examples",
+                "file-transfer-examples",
+                "sleep-examples",
+                "webhook-notification"
+            ],
+            "estimated_time": "< 30 min"
+        },
+        "intermediate": {
+            "description": "For users familiar with basic concepts",
+            "examples": [
+                "docker-exec-examples",
+                "docker-compose-examples",
+                "single-server-deployment",
+                "multi-server-health-check",
+                "database-backup"
+            ],
+            "estimated_time": "1-2 hours"
+        },
+        "advanced": {
+            "description": "Complex production scenarios",
+            "examples": [
+                "distributed-stack-deployment",
+                "ci-cd-pipeline"
+            ],
+            "estimated_time": "2-3 hours"
+        }
+    },
+    "scenario_coverage": {
+        "deployment": {
+            "coverage": 100,
+            "examples": [
+                "single-server-deployment",
+                "distributed-stack-deployment",
+                "ci-cd-pipeline"
+            ]
+        },
+        "monitoring": {
+            "coverage": 100,
+            "examples": [
+                "multi-server-health-check",
+                "sleep-examples"
+            ]
+        },
+        "backup": {
+            "coverage": 100,
+            "examples": [
+                "database-backup"
+            ]
+        },
+        "testing": {
+            "coverage": 100,
+            "examples": [
+                "ci-cd-pipeline"
+            ]
+        },
+        "notification": {
+            "coverage": 100,
+            "examples": [
+                "webhook-notification"
+            ]
+        }
+    },
+    "node_coverage": {
+        "exec/shell": {
+            "examples": [
+                "shell-examples",
+                "single-server-deployment",
+                "distributed-stack-deployment",
+                "multi-server-health-check",
+                "database-backup",
+                "ci-cd-pipeline"
+            ],
+            "count": 6
+        },
+        "exec/script": {
+            "examples": [
+                "script-examples",
+                "multi-server-health-check",
+                "database-backup",
+                "ci-cd-pipeline"
+            ],
+            "count": 4
+        },
+        "file/transfer": {
+            "examples": [
+                "file-transfer-examples",
+                "single-server-deployment",
+                "database-backup"
+            ],
+            "count": 3
+        },
+        "flow/sleep": {
+            "examples": [
+                "sleep-examples",
+                "single-server-deployment",
+                "distributed-stack-deployment",
+                "ci-cd-pipeline"
+            ],
+            "count": 4
+        },
+        "http/request": {
+            "examples": [
+                "single-server-deployment",
+                "distributed-stack-deployment",
+                "webhook-notification",
+                "ci-cd-pipeline"
+            ],
+            "count": 4
+        },
+        "docker/exec": {
+            "examples": [
+                "docker-exec-examples"
+            ],
+            "count": 1
+        },
+        "docker/compose": {
+            "examples": [
+                "docker-compose-examples",
+                "distributed-stack-deployment"
+            ],
+            "count": 2
+        }
+    },
+    "feature_coverage": {
+        "job_dependencies": [
+            "single-server-deployment",
+            "distributed-stack-deployment",
+            "ci-cd-pipeline"
+        ],
+        "conditional_execution_if": [
+            "database-backup",
+            "ci-cd-pipeline",
+            "webhook-notification"
+        ],
+        "parallel_execution": [
+            "multi-server-health-check"
+        ],
+        "retry_strategies": [
+            "database-backup",
+            "ci-cd-pipeline",
+            "webhook-notification"
+        ],
+        "timeout_handling": [
+            "single-server-deployment",
+            "database-backup"
+        ],
+        "continue_on_error": [
+            "database-backup",
+            "webhook-notification"
+        ],
+        "health_checks": [
+            "single-server-deployment",
+            "distributed-stack-deployment",
+            "sleep-examples"
+        ],
+        "rollback_support": [
+            "single-server-deployment",
+            "distributed-stack-deployment"
+        ]
+    }
+}

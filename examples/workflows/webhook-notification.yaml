@@ -1,0 +1,279 @@
+# ========================================
+# Workflow: Webhook Notification
+# Story: 10.5 - 工作流示例库
+# ========================================
+#
+# 用途: 演示如何发送 Webhook 通知到 Slack、钉钉、企业微信等
+#
+# 前置条件:
+# - Waterflow Server 和 Agent 运行中
+# - Agent 注册到 waterflow-server 队列
+# - 配置 Webhook URL（Slack/钉钉/企业微信）
+#
+# 参数:
+# - notification_type: 通知类型 (slack, dingtalk, wecom)
+# - webhook_url: Webhook URL
+# - message_title: 消息标题
+# - message_content: 消息内容
+# - severity: 严重级别 (info, warning, error, success)
+#
+# 运行方式:
+# waterflow submit examples/workflows/webhook-notification.yaml \
+#   --var notification_type=slack \
+#   --var webhook_url=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+#
+# 预期输出:
+# - Step 1: 发送 Slack 通知（如果 notification_type=slack）
+# - Step 2: 发送钉钉通知（如果 notification_type=dingtalk）
+# - Step 3: 发送企业微信通知（如果 notification_type=wecom）
+# - Step 4: 发送自定义 Webhook（通用）
+# ========================================
+
+name: webhook-notification
+vars:
+  # 通知配置
+  notification_type: slack  # slack, dingtalk, wecom, custom
+  webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+  
+  # 消息内容
+  message_title: "Workflow Notification"
+  message_content: "This is a test notification from Waterflow"
+  severity: info  # info, warning, error, success
+  
+  # 可选：工作流元数据
+  workflow_name: example-workflow
+  workflow_status: completed
+  workflow_url: http://localhost:8080/workflows/example-123
+
+jobs:
+  send-slack-notification:
+    runs-on: waterflow-server
+    if: ${{ vars.notification_type == 'slack' }}
+    
+    steps:
+      - name: Send Slack message (simple)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            text: ${{ vars.message_content }}
+        timeout-minutes: 1
+        continue-on-error: true
+      
+      - name: Send Slack message (rich format)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            text: ${{ vars.message_title }}
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: ${{ vars.message_title }}
+              
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*Workflow:*\n${{ vars.workflow_name }}"
+                  - type: mrkdwn
+                    text: "*Status:*\n${{ vars.workflow_status }}"
+                  - type: mrkdwn
+                    text: "*Severity:*\n${{ vars.severity }}"
+                  - type: mrkdwn
+                    text: "*Time:*\n$(date)"
+              
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: ${{ vars.message_content }}
+              
+              - type: actions
+                elements:
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: "View Workflow"
+                    url: ${{ vars.workflow_url }}
+                    style: primary
+        timeout-minutes: 1
+        continue-on-error: true
+  
+  send-dingtalk-notification:
+    runs-on: waterflow-server
+    if: ${{ vars.notification_type == 'dingtalk' }}
+    
+    steps:
+      - name: Send DingTalk message (text)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            msgtype: text
+            text:
+              content: |
+                【${{ vars.message_title }}】
+                
+                工作流: ${{ vars.workflow_name }}
+                状态: ${{ vars.workflow_status }}
+                级别: ${{ vars.severity }}
+                
+                ${{ vars.message_content }}
+                
+                查看详情: ${{ vars.workflow_url }}
+        timeout-minutes: 1
+        continue-on-error: true
+      
+      - name: Send DingTalk message (markdown)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            msgtype: markdown
+            markdown:
+              title: ${{ vars.message_title }}
+              text: |
+                # ${{ vars.message_title }}
+                
+                ---
+                
+                **工作流:** ${{ vars.workflow_name }}
+                
+                **状态:** ${{ vars.workflow_status }}
+                
+                **级别:** ${{ vars.severity }}
+                
+                **时间:** $(date +"%Y-%m-%d %H:%M:%S")
+                
+                ---
+                
+                ${{ vars.message_content }}
+                
+                [查看详情](${{ vars.workflow_url }})
+        timeout-minutes: 1
+        continue-on-error: true
+  
+  send-wecom-notification:
+    runs-on: waterflow-server
+    if: ${{ vars.notification_type == 'wecom' }}
+    
+    steps:
+      - name: Send WeCom message (text)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            msgtype: text
+            text:
+              content: |
+                【${{ vars.message_title }}】
+                工作流: ${{ vars.workflow_name }}
+                状态: ${{ vars.workflow_status }}
+                级别: ${{ vars.severity }}
+                
+                ${{ vars.message_content }}
+        timeout-minutes: 1
+        continue-on-error: true
+      
+      - name: Send WeCom message (markdown)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            msgtype: markdown
+            markdown:
+              content: |
+                # ${{ vars.message_title }}
+                
+                > 工作流: <font color="info">${{ vars.workflow_name }}</font>
+                > 状态: <font color="info">${{ vars.workflow_status }}</font>
+                > 级别: <font color="warning">${{ vars.severity }}</font>
+                
+                ${{ vars.message_content }}
+                
+                [查看详情](${{ vars.workflow_url }})
+        timeout-minutes: 1
+        continue-on-error: true
+  
+  send-custom-webhook:
+    runs-on: waterflow-server
+    if: ${{ vars.notification_type == 'custom' }}
+    
+    steps:
+      - name: Send custom webhook (GET)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: GET
+          query_params:
+            title: ${{ vars.message_title }}
+            message: ${{ vars.message_content }}
+            status: ${{ vars.workflow_status }}
+        timeout-minutes: 1
+        continue-on-error: true
+      
+      - name: Send custom webhook (POST JSON)
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          headers:
+            Content-Type: application/json
+            X-Waterflow-Event: workflow.completed
+          body:
+            event: workflow.completed
+            workflow:
+              id: ${{ workflow.id }}
+              name: ${{ vars.workflow_name }}
+              status: ${{ vars.workflow_status }}
+            notification:
+              title: ${{ vars.message_title }}
+              content: ${{ vars.message_content }}
+              severity: ${{ vars.severity }}
+            timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        timeout-minutes: 1
+        continue-on-error: true
+  
+  notification-with-retry:
+    runs-on: waterflow-server
+    
+    steps:
+      - name: Critical notification with retry
+        uses: http/request@v1
+        with:
+          url: ${{ vars.webhook_url }}
+          method: POST
+          body:
+            text: "🚨 Critical: ${{ vars.message_content }}"
+        timeout-minutes: 1
+        retry-strategy:
+          max-attempts: 5
+          initial-interval: 2s
+          backoff-coefficient: 2.0
+          max-interval: 30s
+        continue-on-error: false  # 通知失败则工作流失败
+      
+      - name: Notification status report
+        uses: exec/shell@v1
+        with:
+          command: echo
+          args:
+            - "✅ Notification sent successfully to ${{ vars.notification_type }}"

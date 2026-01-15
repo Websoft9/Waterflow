@@ -1,3 +1,27 @@
+# ========================================
+# Workflow: Script Execution Examples
+# Story: 10.5 - 工作流示例库
+# ========================================
+#
+# 用途: 演示 exec/script 节点执行 Bash 和 Python 脚本
+#
+# 前置条件:
+# - Waterflow Server 和 Agent 运行中
+# - Agent 注册到 linux-amd64 队列
+# - Agent 服务器已安装 Python 3
+#
+# 参数:
+# - 无需额外参数，开箱即用
+#
+# 运行方式:
+# waterflow submit examples/workflows/script-examples.yaml
+#
+# 预期输出:
+# - Job 1: Bash 脚本示例（内联脚本、参数传递、环境变量）
+# - Job 2: Python 脚本示例（系统信息、文件操作、JSON 处理）
+# - Job 3: 高级脚本示例（错误处理、超时控制）
+# ========================================
+
 name: Script Node Examples
 
 jobs:

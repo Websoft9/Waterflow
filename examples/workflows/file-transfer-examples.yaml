@@ -1,6 +1,35 @@
 # File Transfer Node - Comprehensive Examples
 # Demonstrates file/transfer node usage for various scenarios
 
+# ========================================
+# Workflow: File Transfer Examples
+# Story: 10.5 - 工作流示例库
+# ========================================
+#
+# 用途: 演示 file/transfer 节点进行 SCP 文件传输
+#
+# 前置条件:
+# - Waterflow Server 和 Agent 运行中
+# - Agent 注册到 linux-amd64 队列
+# - 配置 SSH 密钥或密码认证
+# - 目标服务器允许 SSH 连接
+#
+# 参数:
+# - remote_host: 远程服务器地址
+# - remote_user: SSH 用户名
+# - remote_path: 远程目录路径
+#
+# 运行方式:
+# waterflow submit examples/workflows/file-transfer-examples.yaml \
+#   --var remote_host=server.example.com \
+#   --var remote_user=deploy
+#
+# 预期输出:
+# - Job 1: 上传文件到远程服务器
+# - Job 2: 从远程服务器下载文件
+# - Job 3: 传输带权限设置
+# ========================================
+
 name: File Transfer Examples
 
 jobs:

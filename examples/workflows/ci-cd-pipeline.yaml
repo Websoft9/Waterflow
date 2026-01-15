@@ -1,0 +1,294 @@
+# ========================================
+# Workflow: CI/CD Pipeline Integration
+# Story: 10.5 - 工作流示例库
+# ========================================
+#
+# 用途: 演示完整的 CI/CD 流程 - 构建、测试、条件部署
+#
+# 前置条件:
+# - Waterflow Server 和 Agent 运行中
+# - Agent 注册到 ci-servers 和 deploy-servers 队列
+# - 安装 Git 和 Docker
+# - 配置 SSH 密钥访问 Git 仓库
+# - 部署服务器可访问
+#
+# 参数:
+# - repo_url: Git 仓库地址
+# - branch: Git 分支
+# - environment: 部署环境 (dev, staging, production)
+# - image_name: Docker 镜像名称
+# - deploy_host: 部署服务器地址
+# - slack_webhook: Slack Webhook URL（通知）
+#
+# 运行方式:
+# waterflow submit examples/workflows/ci-cd-pipeline.yaml \
+#   --var environment=staging \
+#   --var branch=develop
+#
+# 预期输出:
+# - Step 1: 克隆代码仓库
+# - Step 2: 构建 Docker 镜像
+# - Step 3: 运行单元测试
+# - Step 4: 运行集成测试
+# - Step 5: （条件）部署到目标环境
+# - Step 6: 运行烟雾测试验证部署
+# - Step 7: 发送 Slack 通知
+# ========================================
+
+name: ci-cd-pipeline
+vars:
+  # Git 配置
+  repo_url: https://github.com/myorg/myapp.git
+  branch: main
+  
+  # 环境配置
+  environment: staging  # dev, staging, production
+  
+  # Docker 配置
+  image_name: myapp
+  registry: ghcr.io/myorg
+  
+  # 部署配置
+  deploy_host: app-server.example.com
+  deploy_user: deploy
+  health_check_url: http://app-server.example.com:8080/health
+  
+  # 通知配置
+  slack_webhook: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+
+jobs:
+  build:
+    runs-on: ci-servers
+    outputs:
+      image_tag: ${{ steps.build-image.outputs.tag }}
+      commit_sha: ${{ steps.clone.outputs.sha }}
+    
+    steps:
+      - id: clone
+        name: Clone repository
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              rm -rf /tmp/myapp-build
+              git clone --branch ${{ vars.branch }} ${{ vars.repo_url }} /tmp/myapp-build
+              cd /tmp/myapp-build
+              COMMIT_SHA=$(git rev-parse --short HEAD)
+              echo "::set-output name=sha::$COMMIT_SHA"
+              echo "✅ Cloned commit: $COMMIT_SHA"
+        timeout-minutes: 5
+      
+      - id: build-image
+        name: Build Docker image
+        uses: docker/exec@v1
+        with:
+          command: build
+          args:
+            - -t
+            - ${{ vars.registry }}/${{ vars.image_name }}:${{ vars.environment }}-${COMMIT_SHA}
+            - -t
+            - ${{ vars.registry }}/${{ vars.image_name }}:${{ vars.environment }}-latest
+            - /tmp/myapp-build
+        env:
+          DOCKER_BUILDKIT: "1"
+        timeout-minutes: 20
+        retry-strategy:
+          max-attempts: 2
+          initial-interval: 30s
+      
+      - name: Set image tag output
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              cd /tmp/myapp-build
+              COMMIT_SHA=$(git rev-parse --short HEAD)
+              echo "::set-output name=tag::${{ vars.environment }}-$COMMIT_SHA"
+  
+  test:
+    runs-on: ci-servers
+    needs: [build]
+    
+    steps:
+      - name: Run unit tests
+        uses: docker/exec@v1
+        with:
+          command: run
+          args:
+            - --rm
+            - ${{ vars.registry }}/${{ vars.image_name }}:${{ vars.environment }}-latest
+            - npm
+            - test
+        timeout-minutes: 10
+      
+      - name: Run integration tests
+        uses: docker/exec@v1
+        with:
+          command: run
+          args:
+            - --rm
+            - -e
+            - TEST_ENV=ci
+            - ${{ vars.registry }}/${{ vars.image_name }}:${{ vars.environment }}-latest
+            - npm
+            - run
+            - test:integration
+        timeout-minutes: 15
+        retry-strategy:
+          max-attempts: 2
+          initial-interval: 10s
+  
+  deploy-dev:
+    runs-on: deploy-servers
+    needs: [build, test]
+    if: ${{ vars.environment == 'dev' }}
+    
+    steps:
+      - name: Deploy to dev environment
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              ssh ${{ vars.deploy_user }}@dev-server.example.com \
+                "docker pull ${{ vars.registry }}/${{ vars.image_name }}:dev-latest && \
+                 docker stop myapp-dev || true && \
+                 docker rm myapp-dev || true && \
+                 docker run -d --name myapp-dev -p 8080:8080 \
+                   ${{ vars.registry }}/${{ vars.image_name }}:dev-latest"
+        timeout-minutes: 10
+  
+  deploy-staging:
+    runs-on: deploy-servers
+    needs: [build, test]
+    if: ${{ vars.environment == 'staging' }}
+    
+    steps:
+      - name: Deploy to staging environment
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              ssh ${{ vars.deploy_user }}@staging-server.example.com \
+                "docker pull ${{ vars.registry }}/${{ vars.image_name }}:staging-latest && \
+                 docker stop myapp-staging || true && \
+                 docker rm myapp-staging || true && \
+                 docker run -d --name myapp-staging -p 8080:8080 \
+                   -e ENV=staging \
+                   ${{ vars.registry }}/${{ vars.image_name }}:staging-latest"
+        timeout-minutes: 10
+        retry-strategy:
+          max-attempts: 2
+          initial-interval: 10s
+      
+      - name: Wait for service startup
+        uses: flow/sleep@v1
+        with:
+          duration: 10s
+      
+      - name: Health check
+        uses: http/request@v1
+        with:
+          url: http://staging-server.example.com:8080/health
+          method: GET
+        timeout-minutes: 2
+        retry-strategy:
+          max-attempts: 5
+          initial-interval: 5s
+          backoff-coefficient: 1.5
+  
+  deploy-production:
+    runs-on: deploy-servers
+    needs: [build, test]
+    if: ${{ vars.environment == 'production' }}
+    
+    steps:
+      - name: Deploy to production environment
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              # Blue-Green 部署示例
+              CURRENT_COLOR=$(ssh ${{ vars.deploy_user }}@${{ vars.deploy_host }} \
+                "docker ps --filter 'name=myapp-' --format '{{.Names}}' | grep -o 'blue\|green' | head -1")
+              NEW_COLOR="green"
+              if [ "$CURRENT_COLOR" = "green" ]; then
+                NEW_COLOR="blue"
+              fi
+              
+              echo "Current: $CURRENT_COLOR, Deploying: $NEW_COLOR"
+              
+              ssh ${{ vars.deploy_user }}@${{ vars.deploy_host }} \
+                "docker pull ${{ vars.registry }}/${{ vars.image_name }}:production-latest && \
+                 docker stop myapp-$NEW_COLOR || true && \
+                 docker rm myapp-$NEW_COLOR || true && \
+                 docker run -d --name myapp-$NEW_COLOR -p 808${NEW_COLOR:0:1}:8080 \
+                   -e ENV=production \
+                   ${{ vars.registry }}/${{ vars.image_name }}:production-latest"
+              
+              echo "::set-output name=new_color::$NEW_COLOR"
+        timeout-minutes: 15
+        retry-strategy:
+          max-attempts: 2
+          initial-interval: 20s
+      
+      - name: Smoke test new deployment
+        uses: http/request@v1
+        with:
+          url: ${{ vars.health_check_url }}
+          method: GET
+        timeout-minutes: 2
+        retry-strategy:
+          max-attempts: 10
+          initial-interval: 5s
+          backoff-coefficient: 1.2
+          max-interval: 30s
+      
+      - name: Switch traffic to new version
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              echo "✅ Traffic switched to new version"
+              echo "Old version containers can be removed after validation"
+        continue-on-error: true
+  
+  notify:
+    runs-on: ci-servers
+    needs: [deploy-dev, deploy-staging, deploy-production]
+    if: ${{ always() }}
+    
+    steps:
+      - name: Send Slack notification
+        uses: http/request@v1
+        with:
+          url: ${{ vars.slack_webhook }}
+          method: POST
+          body:
+            text: "CI/CD Pipeline Completed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    *CI/CD Pipeline Status*
+                    
+                    Environment: `${{ vars.environment }}`
+                    Branch: `${{ vars.branch }}`
+                    Image: `${{ vars.registry }}/${{ vars.image_name }}:${{ vars.environment }}-latest`
+                    Status: ${{ job.status }}
+                    
+                    Workflow: <http://localhost:8080/v1/workflows/${{ workflow.id }}|View Details>
+        timeout-minutes: 1
+        continue-on-error: true

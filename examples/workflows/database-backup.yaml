@@ -1,0 +1,186 @@
+# ========================================
+# Workflow: Database Backup
+# Story: 10.5 - 工作流示例库
+# ========================================
+#
+# 用途: 定期备份 PostgreSQL/MySQL 数据库到本地或远程存储
+#
+# 前置条件:
+# - Waterflow Server 和 Agent 运行中
+# - Agent 注册到 db-servers 队列
+# - 数据库服务器已安装 pg_dump 或 mysqldump
+# - 备份目录有写入权限
+# - （可选）配置 SSH 密钥用于远程备份传输
+#
+# 参数:
+# - db_type: 数据库类型 (postgres 或 mysql)
+# - db_host: 数据库主机地址
+# - db_port: 数据库端口
+# - db_name: 数据库名称
+# - db_user: 数据库用户
+# - backup_dir: 本地备份目录
+# - backup_retention_days: 备份保留天数
+# - remote_backup_enabled: 是否启用远程备份
+# - remote_host: 远程备份服务器（如果启用）
+# - remote_path: 远程备份路径（如果启用）
+#
+# 运行方式:
+# waterflow submit examples/workflows/database-backup.yaml
+#
+# 预期输出:
+# - Step 1: 创建备份目录
+# - Step 2: 执行数据库备份（生成 .sql.gz 文件）
+# - Step 3: 验证备份文件完整性
+# - Step 4: （可选）传输备份到远程服务器
+# - Step 5: 清理超过保留期的旧备份
+# - Step 6: 生成备份报告
+# ========================================
+
+name: database-backup
+vars:
+  # 数据库配置
+  db_type: postgres          # postgres 或 mysql
+  db_host: localhost
+  db_port: 5432
+  db_name: myapp_production
+  db_user: backup_user
+  
+  # 备份配置
+  backup_dir: /var/backups/database
+  backup_retention_days: 7
+  
+  # 远程备份配置
+  remote_backup_enabled: false
+  remote_host: backup-server.example.com
+  remote_path: /backups/database
+  remote_user: backup
+
+jobs:
+  backup:
+    runs-on: db-servers
+    env:
+      BACKUP_TIMESTAMP: "$(date +%Y%m%d_%H%M%S)"
+      PGPASSWORD: ${{ secrets.db_password }}  # PostgreSQL 密码（从密钥管理获取）
+    
+    steps:
+      - name: Create backup directory
+        uses: exec/shell@v1
+        with:
+          command: mkdir
+          args:
+            - -p
+            - ${{ vars.backup_dir }}
+        timeout-minutes: 1
+      
+      - name: Backup PostgreSQL database
+        if: ${{ vars.db_type == 'postgres' }}
+        uses: exec/shell@v1
+        with:
+          command: pg_dump
+          args:
+            - -h
+            - ${{ vars.db_host }}
+            - -p
+            - ${{ vars.db_port }}
+            - -U
+            - ${{ vars.db_user }}
+            - -F
+            - c                                    # Custom format (compressed)
+            - -f
+            - ${{ vars.backup_dir }}/${{ vars.db_name }}_${BACKUP_TIMESTAMP}.dump
+            - ${{ vars.db_name }}
+        timeout-minutes: 30
+        retry-strategy:
+          max-attempts: 3
+          initial-interval: 10s
+          backoff-coefficient: 2.0
+          max-interval: 60s
+      
+      - name: Backup MySQL database
+        if: ${{ vars.db_type == 'mysql' }}
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              mysqldump -h ${{ vars.db_host }} -P ${{ vars.db_port }} \
+                -u ${{ vars.db_user }} -p${MYSQL_PASSWORD} \
+                --single-transaction --quick --lock-tables=false \
+                ${{ vars.db_name }} | gzip > ${{ vars.backup_dir }}/${{ vars.db_name }}_${BACKUP_TIMESTAMP}.sql.gz
+        env:
+          MYSQL_PASSWORD: ${{ secrets.db_password }}
+        timeout-minutes: 30
+        retry-strategy:
+          max-attempts: 3
+          initial-interval: 10s
+      
+      - name: Verify backup file exists
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              LATEST_BACKUP=$(ls -t ${{ vars.backup_dir }}/${{ vars.db_name }}_* | head -1)
+              if [ ! -f "$LATEST_BACKUP" ]; then
+                echo "ERROR: Backup file not found"
+                exit 1
+              fi
+              FILE_SIZE=$(stat -f%z "$LATEST_BACKUP" 2>/dev/null || stat -c%s "$LATEST_BACKUP")
+              if [ "$FILE_SIZE" -lt 1024 ]; then
+                echo "ERROR: Backup file too small (${FILE_SIZE} bytes)"
+                exit 1
+              fi
+              echo "✅ Backup verified: $LATEST_BACKUP (${FILE_SIZE} bytes)"
+        timeout-minutes: 2
+      
+      - name: Transfer backup to remote server
+        if: ${{ vars.remote_backup_enabled }}
+        uses: file/transfer@v1
+        with:
+          source: ${{ vars.backup_dir }}/${{ vars.db_name }}_${BACKUP_TIMESTAMP}.*
+          destination: ${{ vars.remote_path }}/
+          host: ${{ vars.remote_host }}
+          user: ${{ vars.remote_user }}
+          mode: upload
+        timeout-minutes: 15
+        continue-on-error: true
+      
+      - name: Cleanup old backups
+        uses: exec/shell@v1
+        with:
+          command: find
+          args:
+            - ${{ vars.backup_dir }}
+            - -name
+            - ${{ vars.db_name }}_*
+            - -mtime
+            - +${{ vars.backup_retention_days }}
+            - -delete
+        timeout-minutes: 5
+        continue-on-error: true
+      
+      - name: Generate backup report
+        uses: exec/shell@v1
+        with:
+          command: bash
+          args:
+            - -c
+            - |
+              echo "# Database Backup Report"
+              echo ""
+              echo "**Date:** $(date)"
+              echo "**Database:** ${{ vars.db_name }} (${{ vars.db_type }})"
+              echo "**Host:** ${{ vars.db_host }}:${{ vars.db_port }}"
+              echo ""
+              echo "## Backup Files"
+              echo ""
+              ls -lh ${{ vars.backup_dir }}/${{ vars.db_name }}_* | tail -5
+              echo ""
+              echo "## Disk Usage"
+              echo ""
+              du -sh ${{ vars.backup_dir }}
+              echo ""
+              echo "✅ Backup completed successfully"
+        timeout-minutes: 2

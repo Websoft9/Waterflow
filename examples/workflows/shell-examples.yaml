@@ -1,3 +1,27 @@
+# ========================================
+# Workflow: Shell Command Examples
+# Story: 10.5 - 工作流示例库
+# ========================================
+#
+# 用途: 演示 exec/shell 节点的各种用法
+#
+# 前置条件:
+# - Waterflow Server 和 Agent 运行中
+# - Agent 注册到 linux-amd64 队列
+#
+# 参数:
+# - 无需额外参数，开箱即用
+#
+# 运行方式:
+# waterflow submit examples/workflows/shell-examples.yaml
+#
+# 预期输出:
+# - Job 1: 基础 Shell 命令（echo, uname, ls）
+# - Job 2: 环境变量使用
+# - Job 3: 工作目录操作
+# - Job 4: 错误处理和超时控制
+# ========================================
+
 name: Shell Node Examples
 
 jobs:

@@ -125,6 +125,100 @@ EOF
 - 并行任务执行
 - 矩阵变量引用
 
+## 📚 基础示例库
+
+### workflows/ 目录 - 节点功能示例
+
+基础示例展示每个核心节点的用法和常见场景。适合新用户学习 Waterflow DSL 语法和节点特性。
+
+#### 可用基础示例
+
+| 示例文件 | 节点类型 | 学习难度 | 说明 |
+|---------|---------|---------|------|
+| [shell-examples.yaml](workflows/shell-examples.yaml) | `exec/shell` | 入门 | Shell 命令执行、环境变量、工作目录配置 |
+| [script-examples.yaml](workflows/script-examples.yaml) | `exec/script` | 入门 | Bash/Python 内联脚本、参数传递 |
+| [file-transfer-examples.yaml](workflows/file-transfer-examples.yaml) | `file/transfer` | 入门 | SCP 文件上传/下载、SSH 认证 |
+| [sleep-examples.yaml](workflows/sleep-examples.yaml) | `flow/sleep` | 入门 | 延迟等待、服务就绪检查、重试间隔 |
+| [docker-exec-examples.yaml](workflows/docker-exec-examples.yaml) | `docker/exec` | 中级 | Docker 拉取、运行、exec、构建、清理 |
+| [docker-compose-examples.yaml](workflows/docker-compose-examples.yaml) | `docker/compose` | 中级 | Docker Compose 多容器编排 |
+| [database-backup.yaml](workflows/database-backup.yaml) | 多节点 | 中级 | PostgreSQL/MySQL 自动备份、条件执行 |
+| [ci-cd-pipeline.yaml](workflows/ci-cd-pipeline.yaml) | 多节点 | 高级 | 完整 CI/CD 流水线、Job 依赖、条件部署 |
+| [webhook-notification.yaml](workflows/webhook-notification.yaml) | `http/request` | 入门 | Slack/钉钉/企业微信通知、HTTP POST |
+
+#### 学习路径建议
+
+**🌱 入门级 (< 30 分钟)**  
+学习基本节点和 DSL 语法：
+1. [shell-examples.yaml](workflows/shell-examples.yaml) - 命令执行基础
+2. [script-examples.yaml](workflows/script-examples.yaml) - 脚本编写
+3. [sleep-examples.yaml](workflows/sleep-examples.yaml) - 流程控制
+4. [webhook-notification.yaml](workflows/webhook-notification.yaml) - HTTP 请求
+
+**🌿 中级 (1-2 小时)**  
+学习文件操作和容器编排：
+5. [file-transfer-examples.yaml](workflows/file-transfer-examples.yaml) - 文件传输
+6. [docker-exec-examples.yaml](workflows/docker-exec-examples.yaml) - Docker 操作
+7. [docker-compose-examples.yaml](workflows/docker-compose-examples.yaml) - 容器编排
+8. [database-backup.yaml](workflows/database-backup.yaml) - 数据备份场景
+
+**🌳 高级 (2-3 小时)**  
+学习复杂编排和生产级模板：
+9. [ci-cd-pipeline.yaml](workflows/ci-cd-pipeline.yaml) - CI/CD 集成
+10. [single-server-deployment.yaml](workflows/single-server-deployment.yaml) - 单服务器部署
+11. [multi-server-health-check.yaml](workflows/multi-server-health-check.yaml) - 多服务器监控
+12. [distributed-stack-deployment.yaml](workflows/distributed-stack-deployment.yaml) - 分布式部署
+
+#### 按场景分类索引
+
+**部署场景:**
+- [single-server-deployment.yaml](workflows/single-server-deployment.yaml) - 单服务器应用部署
+- [distributed-stack-deployment.yaml](workflows/distributed-stack-deployment.yaml) - 多层应用栈部署
+- [ci-cd-pipeline.yaml](workflows/ci-cd-pipeline.yaml) - CI/CD 自动化部署
+
+**监控场景:**
+- [multi-server-health-check.yaml](workflows/multi-server-health-check.yaml) - 服务器健康检查
+- [sleep-examples.yaml](workflows/sleep-examples.yaml) - 服务就绪等待
+
+**备份场景:**
+- [database-backup.yaml](workflows/database-backup.yaml) - 数据库自动备份
+
+**测试场景:**
+- [ci-cd-pipeline.yaml](workflows/ci-cd-pipeline.yaml) - 自动化测试流水线
+
+**通知场景:**
+- [webhook-notification.yaml](workflows/webhook-notification.yaml) - 多平台消息推送
+
+#### 快速体验
+
+```bash
+# 1. 运行 Shell 命令示例
+waterflow submit examples/workflows/shell-examples.yaml
+
+# 2. 测试文件传输（需配置 SSH）
+waterflow submit examples/workflows/file-transfer-examples.yaml
+
+# 3. 发送 Webhook 通知
+waterflow submit examples/workflows/webhook-notification.yaml
+
+# 4. 执行数据库备份
+waterflow submit examples/workflows/database-backup.yaml
+```
+
+#### 获取示例元数据
+
+```bash
+# 查看示例元数据 JSON
+cat examples/workflows/examples-metadata.json
+
+# 按类别查询（如果 API 支持）
+curl http://localhost:8080/v1/examples?category=basic
+
+# 按学习难度查询
+curl http://localhost:8080/v1/examples?complexity=beginner
+```
+
+---
+
 ## 🎯 生产级模板
 
 ### workflows/ 目录 - 生产就绪的工作流模板

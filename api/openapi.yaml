@@ -1,0 +1,1032 @@
+openapi: 3.0.3
+info:
+  title: Waterflow API
+  version: 1.0.0
+  description: |
+    声明式工作流编排引擎 REST API
+    
+    Waterflow 提供 YAML 驱动的分布式工作流编排能力，支持跨服务器任务执行、
+    自动重试、完整的状态持久化和实时日志流。
+    
+    ## 核心功能
+    - 🎯 声明式 YAML DSL (类似 GitHub Actions)
+    - 🔄 Event Sourcing 架构 - 完整执行历史追踪
+    - 🌐 分布式 Agent 系统 - 跨服务器任务路由
+    - 🔌 插件化节点系统 - 10+ 内置节点，支持自定义
+    - 📊 实时日志流 - 支持 SSE 和 NDJSON 格式
+    
+    ## 认证
+    当前版本支持两种认证方式:
+    - **Bearer Token**: JWT 格式，用于用户认证
+    - **API Key**: 在 HTTP Header 中传递 `X-API-Key`
+    
+    开发环境默认不需要认证。生产环境请配置 TLS 和认证。
+  contact:
+    name: Websoft9 Team
+    url: https://github.com/websoft9/waterflow
+    email: support@websoft9.com
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: http://localhost:8080
+    description: 本地开发环境
+  - url: https://api.waterflow.example.com
+    description: 生产环境
+
+tags:
+  - name: Workflows
+    description: 工作流管理 - 提交、查询、取消、重新运行工作流
+  - name: Validation
+    description: YAML 验证 - 在提交前验证工作流语法
+  - name: Templates
+    description: 工作流模板 - 生产就绪的模板库
+  - name: Nodes
+    description: 节点管理 - 查询可用节点和参数模式
+  - name: Audit
+    description: 审计日志 - 查询系统审计事件
+  - name: Health
+    description: 健康检查和监控 - 系统状态、指标、版本信息
+
+security:
+  - bearerAuth: []
+  - apiKey: []
+  - {} # Allow unauthenticated access for development
+
+paths:
+  # ==================== Workflows ====================
+  /v1/workflows:
+    post:
+      summary: 提交工作流
+      description: |
+        提交 YAML 格式的工作流定义并开始执行。
+        
+        工作流将被解析、验证后提交到 Temporal 引擎执行。
+        返回工作流 ID 用于后续状态查询和日志获取。
+      tags: [Workflows]
+      operationId: submitWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitWorkflowRequest'
+            examples:
+              hello-world:
+                summary: Hello World 示例
+                value:
+                  yaml: |
+                    name: hello-world
+                    jobs:
+                      greet:
+                        runs-on: default
+                        steps:
+                          - name: Say Hello
+                            uses: shell@v1
+                            with:
+                              command: echo
+                              args: ["Hello, World!"]
+              with-variables:
+                summary: 使用变量示例
+                value:
+                  yaml: |
+                    name: deploy-app
+                    jobs:
+                      deploy:
+                        runs-on: web-servers
+                        steps:
+                          - uses: shell@v1
+                            with:
+                              command: docker
+                              args: ["pull", "${{ vars.image }}"]
+                  vars:
+                    image: "nginx:latest"
+      responses:
+        '201':
+          description: 工作流创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitWorkflowResponse'
+              example:
+                id: "wf_20260115_abc123"
+                run_id: "def456ghi789"
+                name: "hello-world"
+                status: "pending"
+                created_at: "2026-01-15T10:30:00Z"
+                url: "http://localhost:8088/namespaces/default/workflows/wf_20260115_abc123/def456ghi789"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    
+    get:
+      summary: 列出工作流
+      description: |
+        查询工作流列表，支持分页和过滤。
+        
+        可按状态、名称、创建时间等条件过滤。
+      tags: [Workflows]
+      operationId: listWorkflows
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          description: 按状态过滤
+          schema:
+            type: string
+            enum: [pending, running, completed, failed, cancelled]
+        - name: name
+          in: query
+          description: 按工作流名称模糊搜索
+          schema:
+            type: string
+        - name: created_after
+          in: query
+          description: 创建时间起始（ISO 8601 格式）
+          schema:
+            type: string
+            format: date-time
+        - name: created_before
+          in: query
+          description: 创建时间结束（ISO 8601 格式）
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 成功返回工作流列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowListResponse'
+              example:
+                workflows:
+                  - id: "wf_20260115_abc123"
+                    name: "hello-world"
+                    status: "completed"
+                    created_at: "2026-01-15T10:30:00Z"
+                    completed_at: "2026-01-15T10:30:05Z"
+                  - id: "wf_20260115_xyz789"
+                    name: "deploy-app"
+                    status: "running"
+                    created_at: "2026-01-15T10:32:00Z"
+                meta:
+                  total: 42
+                  page: 1
+                  limit: 20
+                  total_pages: 3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  /v1/workflows/{id}:
+    get:
+      summary: 查询工作流状态
+      description: |
+        获取指定工作流的详细状态信息。
+        
+        包含所有 Job 和 Step 的执行状态、输出、错误信息等。
+      tags: [Workflows]
+      operationId: getWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowID'
+      responses:
+        '200':
+          description: 成功返回工作流详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDetailResponse'
+              example:
+                id: "wf_20260115_abc123"
+                run_id: "def456ghi789"
+                name: "hello-world"
+                status: "completed"
+                created_at: "2026-01-15T10:30:00Z"
+                started_at: "2026-01-15T10:30:01Z"
+                completed_at: "2026-01-15T10:30:05Z"
+                jobs:
+                  - name: "greet"
+                    status: "completed"
+                    started_at: "2026-01-15T10:30:01Z"
+                    completed_at: "2026-01-15T10:30:05Z"
+                    steps:
+                      - name: "Say Hello"
+                        status: "completed"
+                        started_at: "2026-01-15T10:30:02Z"
+                        completed_at: "2026-01-15T10:30:04Z"
+                        outputs:
+                          stdout: "Hello, World!\n"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  /v1/workflows/{id}/logs:
+    get:
+      summary: 获取工作流日志
+      description: |
+        获取工作流执行日志，支持 NDJSON 流式输出。
+        
+        可按日志级别、Job、Step 过滤，支持 tail 模式实时跟踪。
+      tags: [Workflows]
+      operationId: getWorkflowLogs
+      parameters:
+        - $ref: '#/components/parameters/WorkflowID'
+        - name: level
+          in: query
+          description: 日志级别过滤
+          schema:
+            type: string
+            enum: [debug, info, warn, error]
+        - name: job
+          in: query
+          description: 按 Job 名称过滤
+          schema:
+            type: string
+        - name: step
+          in: query
+          description: 按 Step 名称过滤
+          schema:
+            type: string
+        - name: tail
+          in: query
+          description: 只返回最后 N 条日志
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 1000
+      responses:
+        '200':
+          description: 成功返回日志（NDJSON 格式）
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+              example: |
+                {"timestamp":"2026-01-15T10:30:02Z","level":"info","job":"greet","step":"Say Hello","message":"Executing command: echo"}
+                {"timestamp":"2026-01-15T10:30:04Z","level":"info","job":"greet","step":"Say Hello","message":"Command output: Hello, World!"}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  /v1/workflows/{id}/cancel:
+    post:
+      summary: 取消工作流
+      description: |
+        取消正在运行的工作流。
+        
+        已完成或失败的工作流无法取消。
+      tags: [Workflows]
+      operationId: cancelWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowID'
+      responses:
+        '200':
+          description: 取消请求已接受
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Workflow cancellation requested"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  /v1/workflows/{id}/rerun:
+    post:
+      summary: 重新运行工作流
+      description: |
+        基于现有工作流创建新的执行实例。
+        
+        保留原工作流的 YAML 定义和变量。
+      tags: [Workflows]
+      operationId: rerunWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowID'
+      responses:
+        '201':
+          description: 新工作流创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitWorkflowResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  # ==================== Validation ====================
+  /v1/validate:
+    post:
+      summary: 验证工作流 YAML
+      description: |
+        在提交前验证工作流 YAML 语法和语义。
+        
+        检查语法错误、节点参数、表达式语法等。
+      tags: [Validation]
+      operationId: validateWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [yaml]
+              properties:
+                yaml:
+                  type: string
+                  description: 工作流 YAML 内容
+            example:
+              yaml: |
+                name: test-workflow
+                jobs:
+                  test:
+                    runs-on: default
+                    steps:
+                      - uses: shell@v1
+                        with:
+                          command: echo test
+      responses:
+        '200':
+          description: 验证通过
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Validation successful"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  # ==================== Templates ====================
+  /v1/templates:
+    get:
+      summary: 列出工作流模板
+      description: |
+        获取可用的工作流模板列表。
+        
+        模板是生产就绪的工作流示例，可直接使用或作为起点。
+      tags: [Templates]
+      operationId: listTemplates
+      responses:
+        '200':
+          description: 成功返回模板列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TemplateMetadata'
+              example:
+                templates:
+                  - name: "single-server-deployment"
+                    title: "单服务器部署"
+                    description: "将应用部署到单台服务器"
+                    category: "deployment"
+                    tags: ["deployment", "docker", "single-server"]
+                  - name: "multi-server-health-check"
+                    title: "多服务器健康检查"
+                    description: "并行检查多台服务器状态"
+                    category: "monitoring"
+                    tags: ["health-check", "monitoring", "parallel"]
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  /v1/templates/{name}:
+    get:
+      summary: 获取模板内容
+      description: 获取指定模板的完整 YAML 内容和元数据
+      tags: [Templates]
+      operationId: getTemplate
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: 模板名称
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功返回模板内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  # ==================== Nodes ====================
+  /v1/nodes:
+    get:
+      summary: 列出可用节点
+      description: |
+        获取所有已注册的节点插件列表。
+        
+        包含内置节点和自定义节点。
+      tags: [Nodes]
+      operationId: listNodes
+      responses:
+        '200':
+          description: 成功返回节点列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NodeMetadata'
+              example:
+                nodes:
+                  - name: "shell@v1"
+                    category: "exec"
+                    description: "执行 Shell 命令"
+                  - name: "http@v1"
+                    category: "http"
+                    description: "发送 HTTP 请求"
+                  - name: "docker@v1"
+                    category: "docker"
+                    description: "执行 Docker 命令"
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  # ==================== Audit ====================
+  /v1/audit/logs:
+    get:
+      summary: 查询审计日志
+      description: |
+        查询系统审计事件，支持时间范围和事件类型过滤。
+        
+        记录所有关键操作，如工作流提交、取消、密钥访问等。
+      tags: [Audit]
+      operationId: getAuditLogs
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: event_type
+          in: query
+          description: 事件类型过滤
+          schema:
+            type: string
+            enum: [workflow.submit, workflow.cancel, workflow.rerun, secret.access, api.request]
+        - name: start_time
+          in: query
+          description: 开始时间（ISO 8601 格式）
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          description: 结束时间（ISO 8601 格式）
+          schema:
+            type: string
+            format: date-time
+        - name: user
+          in: query
+          description: 按用户过滤（如配置认证）
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功返回审计日志
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLogEntry'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  # ==================== Health & Monitoring ====================
+  /health:
+    get:
+      summary: 健康检查
+      description: |
+        基础健康检查端点。
+        
+        返回 200 表示服务运行中。
+      tags: [Health]
+      operationId: healthCheck
+      security: [] # No authentication required
+      responses:
+        '200':
+          description: 服务健康
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+  
+  /ready:
+    get:
+      summary: 就绪检查
+      description: |
+        完整就绪检查，包含 Temporal 连接状态。
+        
+        用于 Kubernetes Readiness Probe。
+      tags: [Health]
+      operationId: readinessCheck
+      security: []
+      responses:
+        '200':
+          description: 服务就绪
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ready"
+                  checks:
+                    type: object
+                    properties:
+                      temporal:
+                        type: string
+                        example: "ok"
+        '503':
+          description: 服务未就绪
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "not_ready"
+                  checks:
+                    type: object
+                    additionalProperties:
+                      type: string
+  
+  /metrics:
+    get:
+      summary: Prometheus 指标
+      description: |
+        导出 Prometheus 格式的监控指标。
+        
+        包含工作流计数、执行时间、错误率等。
+      tags: [Health]
+      operationId: getMetrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus 指标
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP waterflow_workflow_total Total number of workflows
+                # TYPE waterflow_workflow_total counter
+                waterflow_workflow_total{status="completed"} 42
+                waterflow_workflow_total{status="failed"} 3
+  
+  /version:
+    get:
+      summary: 版本信息
+      description: 获取 Waterflow Server 版本、Git 提交和构建时间
+      tags: [Health]
+      operationId: getVersion
+      security: []
+      responses:
+        '200':
+          description: 版本信息
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  commit:
+                    type: string
+                    example: "abc123def456"
+                  build_time:
+                    type: string
+                    example: "2026-01-15T10:00:00Z"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer Token 认证
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API Key 认证
+  
+  parameters:
+    WorkflowID:
+      name: id
+      in: path
+      required: true
+      description: 工作流 ID
+      schema:
+        type: string
+        pattern: '^wf_[0-9]+_[a-zA-Z0-9]+$'
+        example: "wf_20260115_abc123"
+    
+    Page:
+      name: page
+      in: query
+      description: 页码（从 1 开始）
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    
+    Limit:
+      name: limit
+      in: query
+      description: 每页数量（最大 100）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  
+  schemas:
+    # ========== Workflow Schemas ==========
+    SubmitWorkflowRequest:
+      type: object
+      required: [yaml]
+      properties:
+        yaml:
+          type: string
+          description: 工作流 YAML 定义
+          example: |
+            name: hello-world
+            jobs:
+              greet:
+                runs-on: default
+                steps:
+                  - uses: shell@v1
+                    with:
+                      command: echo
+                      args: ["Hello"]
+        vars:
+          type: object
+          description: 工作流变量（可选）
+          additionalProperties: true
+          example:
+            environment: "production"
+            image: "nginx:latest"
+    
+    SubmitWorkflowResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: 工作流 ID
+          example: "wf_20260115_abc123"
+        run_id:
+          type: string
+          description: Temporal Run ID
+          example: "def456ghi789"
+        name:
+          type: string
+          description: 工作流名称
+          example: "hello-world"
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+          example: "pending"
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间（ISO 8601）
+        url:
+          type: string
+          description: Temporal UI URL
+          example: "http://localhost:8088/namespaces/default/workflows/wf_20260115_abc123/def456ghi789"
+    
+    WorkflowSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    
+    WorkflowDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/WorkflowSummary'
+        - type: object
+          properties:
+            run_id:
+              type: string
+            jobs:
+              type: array
+              items:
+                $ref: '#/components/schemas/JobStatus'
+    
+    JobStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, skipped]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StepStatus'
+    
+    StepStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, skipped]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        outputs:
+          type: object
+          additionalProperties: true
+        error:
+          type: string
+    
+    WorkflowListResponse:
+      type: object
+      properties:
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowSummary'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    
+    # ========== Template Schemas ==========
+    TemplateMetadata:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "single-server-deployment"
+        title:
+          type: string
+          example: "单服务器部署"
+        description:
+          type: string
+          example: "将应用部署到单台服务器"
+        category:
+          type: string
+          example: "deployment"
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["deployment", "docker"]
+    
+    TemplateDetail:
+      allOf:
+        - $ref: '#/components/schemas/TemplateMetadata'
+        - type: object
+          properties:
+            yaml:
+              type: string
+              description: 模板 YAML 内容
+            variables:
+              type: object
+              description: 模板变量说明
+              additionalProperties:
+                type: object
+                properties:
+                  description:
+                    type: string
+                  default:
+                    type: string
+                  required:
+                    type: boolean
+    
+    # ========== Node Schemas ==========
+    NodeMetadata:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "shell@v1"
+        category:
+          type: string
+          example: "exec"
+        description:
+          type: string
+          example: "执行 Shell 命令"
+        parameters:
+          type: object
+          description: 参数模式（JSON Schema）
+    
+    # ========== Audit Schemas ==========
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+          enum: [workflow.submit, workflow.cancel, workflow.rerun, secret.access, api.request]
+        user:
+          type: string
+        resource_id:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    
+    # ========== Common Schemas ==========
+    PaginationMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: 总记录数
+          example: 42
+        page:
+          type: integer
+          description: 当前页码
+          example: 1
+        limit:
+          type: integer
+          description: 每页数量
+          example: 20
+        total_pages:
+          type: integer
+          description: 总页数
+          example: 3
+    
+    # ========== Error Schemas (RFC 7807) ==========
+    ProblemDetails:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          description: 错误类型标识符
+          example: "invalid_request"
+        title:
+          type: string
+          description: 错误简短标题
+          example: "Invalid Request"
+        status:
+          type: integer
+          description: HTTP 状态码
+          example: 400
+        detail:
+          type: string
+          description: 错误详细说明
+          example: "Missing required parameter: yaml"
+        instance:
+          type: string
+          description: 请求路径
+          example: "/v1/workflows"
+        errors:
+          type: array
+          description: 详细错误列表（可选）
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+  
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "invalid_request"
+            title: "Invalid Request"
+            status: 400
+            detail: "Missing required parameter: yaml"
+            instance: "/v1/workflows"
+    
+    ValidationError:
+      description: YAML 验证失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "validation_failed"
+            title: "Validation Failed"
+            status: 422
+            detail: "Workflow validation failed"
+            instance: "/v1/workflows"
+            errors:
+              - field: "jobs.build.steps[0].uses"
+                message: "Unknown node: unknown@v1"
+    
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "not_found"
+            title: "Not Found"
+            status: 404
+            detail: "Workflow not found"
+            instance: "/v1/workflows/wf_invalid"
+    
+    Conflict:
+      description: 资源冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "conflict"
+            title: "Conflict"
+            status: 409
+            detail: "Workflow already cancelled"
+            instance: "/v1/workflows/wf_20260115_abc123/cancel"
+    
+    InternalError:
+      description: 服务器内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "internal_error"
+            title: "Internal Server Error"
+            status: 500
+            detail: "An unexpected error occurred"
+            instance: "/v1/workflows"

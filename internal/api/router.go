@@ -124,6 +124,10 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 	router.HandleFunc("/version", h.Version).Methods(http.MethodGet)
 	router.HandleFunc("/metrics", h.Metrics).Methods(http.MethodGet)
 
+	// API Documentation endpoints (Story 10-2)
+	router.HandleFunc("/docs", ServeSwaggerUI).Methods(http.MethodGet)
+	router.HandleFunc("/api/openapi.yaml", ServeOpenAPISpec).Methods(http.MethodGet)
+
 	// V1 API endpoints (utility endpoints)
 	router.HandleFunc("/v1/workflows/validate", h.ValidateWorkflow).Methods(http.MethodPost)
 	router.HandleFunc("/v1/workflows/render", h.RenderWorkflow).Methods(http.MethodPost)

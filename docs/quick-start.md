@@ -6,9 +6,35 @@
 
 ### 前置要求
 
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- 最少 2GB 可用内存
+**硬件要求:**
+
+| 资源 | 最低要求 | 推荐配置 |
+|------|---------|----------|
+| CPU | 1 核 | 2 核+ |
+| 内存 | 2GB | 4GB+ |
+| 磁盘 | 20GB | 50GB+ |
+
+**软件依赖:**
+
+| 软件 | 最低版本 | 验证命令 |
+|------|---------|----------|
+| Docker Engine | 20.10+ | `docker --version` |
+| Docker Compose | 2.0+ | `docker compose version` |
+
+**环境检查:**
+
+```bash
+# 验证 Docker 安装和版本
+docker --version
+# 预期输出: Docker version 20.10.x 或更高
+
+docker compose version
+# 预期输出: Docker Compose version v2.x.x 或更高
+
+# 检查可用内存（Linux/macOS）
+free -h | grep Mem
+# 确保至少有 2GB 可用内存
+```
 
 ### 快速启动
 
@@ -29,12 +55,37 @@ docker compose up -d
 ```bash
 # 检查服务状态
 docker compose ps
+```
 
-# 验证健康检查
+**预期输出** - 应看到5个运行中的容器：
+
+| 服务 | 状态 | 端口 |
+|------|------|------|
+| waterflow-server | Up | 8080 |
+| waterflow-agent | Up | - |
+| temporal | Up | 7233, 8233 |
+| temporal-ui | Up | 8088 |
+| postgresql | Up | 5432 |
+
+```bash
+# 验证 Waterflow 健康检查
 curl http://localhost:8080/health
 ```
 
-预期输出：`{"status":"ok"}`
+**预期输出:**
+```json
+{"status":"ok"}
+```
+
+```bash
+# 验证 Temporal 连接
+curl http://localhost:8080/ready
+```
+
+**预期输出:**
+```json
+{"status":"ready","checks":{"temporal":"ok"}}
+```
 
 ## 🎯 提交第一个工作流
 
@@ -58,6 +109,34 @@ curl http://localhost:8080/v1/workflows
 curl http://localhost:8080/v1/workflows/{id}
 ```
 
+**预期响应示例:**
+```json
+{
+  "id": "wf_abc123def456",
+  "status": "completed",
+  "created_at": "2026-01-15T10:30:00Z",
+  "completed_at": "2026-01-15T10:30:05Z",
+  "jobs": [
+    {
+      "name": "hello",
+      "status": "completed",
+      "steps": [
+        {"name": "greet", "status": "completed", "outputs": {"message": "Hello, World!"}}
+      ]
+    }
+  ]
+}
+```
+
+**查看工作流日志:**
+```bash
+# 查询工作流日志（替换 {id} 为实际 ID）
+curl http://localhost:8080/v1/workflows/{id}/logs
+
+# 或使用命令行工具
+./scripts/logs.sh waterflow
+```
+
 **方法 2: Temporal UI**
 
 访问 http://localhost:8088 查看可视化执行流程。
@@ -67,10 +146,13 @@ curl http://localhost:8080/v1/workflows/{id}
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | Waterflow API | 8080 | REST API 服务 |
+| Swagger UI | 8080/docs | **API 交互式文档** ⭐ |
 | Temporal gRPC | 7233 | Temporal 客户端连接 |
 | Temporal HTTP | 8233 | Temporal HTTP API |
 | Temporal UI | 8088 | Web 控制台 |
 | PostgreSQL | 5432 | 数据库（内部） |
+
+**访问 API 文档:** http://localhost:8080/docs - 查看完整的 REST API 规范并在线测试
 
 ## 🛠️ 常用命令
 
@@ -89,6 +171,94 @@ docker compose down
 # 清理环境（删除所有数据）
 ./scripts/cleanup.sh
 ```
+
+## 🆘 常见问题排查
+
+### ❌ Docker 未安装或版本过低
+
+**现象:** 执行 `docker --version` 失败或版本低于 20.10
+
+**解决方案:**
+```bash
+# Ubuntu/Debian
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# macOS
+brew install docker docker-compose
+
+# 验证安装
+docker --version
+docker compose version
+```
+
+### ❌ 端口冲突 (8080/8088 已被占用)
+
+**现象:** `docker compose up` 报错 "bind: address already in use"
+
+**解决方案:**
+```bash
+# 方法 1: 查找占用端口的进程并停止
+sudo lsof -i :8080
+sudo kill -9 <PID>
+
+# 方法 2: 修改 Waterflow 端口
+cd deployments
+echo "WATERFLOW_SERVER_PORT=9090" >> .env
+echo "TEMPORAL_UI_PORT=9088" >> .env
+docker compose up -d
+```
+
+### ❌ 内存不足 (Temporal 启动失败)
+
+**现象:** Temporal 容器反复重启，日志显示 "OOMKilled"
+
+**解决方案:**
+```bash
+# 检查可用内存
+free -h
+
+# 增加 Docker 内存限制（Docker Desktop）
+# Settings → Resources → Memory → 设置为 4GB+
+
+# 或使用轻量级配置
+cd deployments
+docker compose -f docker-compose-minimal.yaml up -d
+```
+
+### ❌ 网络连接问题 (无法访问 Docker Hub)
+
+**现象:** 镜像拉取失败 "error pulling image"
+
+**解决方案:**
+```bash
+# 配置 Docker 镜像加速（中国大陆用户）
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": ["https://mirror.gcr.io"]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+### ❌ 工作流提交失败 (YAML 语法错误)
+
+**现象:** API 返回 400 错误 "invalid YAML syntax"
+
+**解决方案:**
+```bash
+# 先验证 YAML 语法
+curl -X POST http://localhost:8080/v1/workflows/validate \
+  -H "Content-Type: application/json" \
+  -d "{\"yaml\": \"$(cat your-workflow.yaml)\"}" | jq
+
+# 查看详细错误信息
+# 常见问题: 缩进错误、冒号后缺少空格、引号不匹配
+```
+
+**更多问题?** 查看 **[完整故障排查文档](deployment.md#常见问题排查)**
 
 ## 🔧 自定义配置
 
