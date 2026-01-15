@@ -162,7 +162,7 @@ make build test
 - ✅ **Plugin Architecture** - Hot-swappable node system without restart
 - ✅ **Stateless Server** - All workflow state externally persisted, supports horizontal scaling
 
-See: [Architecture Documentation](docs/architecture.md) | [Architecture Decision Records](docs/adr/README.md)
+See: [Architecture Documentation](docs/architecture.md) | [Core Concepts](docs/concepts/README.md) | [Architecture Decision Records](docs/adr/README.md)
 
 ---
 
@@ -232,6 +232,7 @@ curl http://localhost:8080/v1/workflows/{workflow-id}/logs
 
 ### Getting Started
 - **[Quick Start Guide](docs/quick-start.md)** - 10-minute deployment and first workflow submission
+- **[API Documentation](http://localhost:8080/docs)** - Interactive Swagger UI for REST API (OpenAPI 3.0) ⭐
 - **[Deployment Guide](docs/deployment.md)** - Production deployment, configuration, and troubleshooting
 - **[Security Guide](docs/guides/security-guide.md)** - HTTPS/TLS, authentication, secrets management, audit logging ⭐
 - **[Security Checklist](docs/guides/security-checklist.md)** - Pre-deployment and production security validation
