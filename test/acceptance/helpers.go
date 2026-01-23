@@ -79,7 +79,7 @@ func getTemporalHost() string {
 // submitWorkflow submits a workflow YAML to the server
 func submitWorkflow(ctx context.Context, serverURL, yamlContent string) (*WorkflowSubmitResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		serverURL+"/api/v1/workflows",
+		serverURL+"/v1/workflows",
 		bytes.NewBufferString(yamlContent))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -114,7 +114,7 @@ func submitWorkflow(ctx context.Context, serverURL, yamlContent string) (*Workfl
 // getWorkflowStatus retrieves the current status of a workflow
 func getWorkflowStatus(ctx context.Context, serverURL, workflowID string) (*WorkflowStatus, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		serverURL+"/api/v1/workflows/"+workflowID,
+		serverURL+"/v1/workflows/"+workflowID,
 		nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -184,7 +184,7 @@ func waitForWorkflowCompletion(ctx context.Context, serverURL, workflowID string
 // getWorkflowLogs retrieves the logs for a workflow
 func getWorkflowLogs(ctx context.Context, serverURL, workflowID string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		serverURL+"/api/v1/workflows/"+workflowID+"/logs",
+		serverURL+"/v1/workflows/"+workflowID+"/logs",
 		nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)

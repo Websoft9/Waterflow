@@ -90,8 +90,12 @@ func (r *ReportGenerator) buildReport(results []ScenarioResult) string {
 	}
 
 	sb.WriteString("\n")
+	percentage := 0
+	if len(results) > 0 {
+		percentage = (passed * 100) / len(results)
+	}
 	sb.WriteString(fmt.Sprintf("**Total:** %d/%d passed (%d%%)\n",
-		passed, len(results), (passed*100)/(len(results)+1)))
+		passed, len(results), percentage))
 	sb.WriteString(fmt.Sprintf("**Total Duration:** %s\n\n", formatDuration(totalDuration)))
 
 	// Scenario Details

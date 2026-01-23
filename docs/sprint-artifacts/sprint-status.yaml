@@ -154,7 +154,7 @@ development_status:
   epic-11: in-progress
   11-1-unit-testing-framework: in-progress
   11-2-integration-testing: done  # ✅代码审查完成(2026-01-23),12个问题已修复(4 HIGH+5 MEDIUM+3 LOW):H1重复定义删除,H2 API路径统一,H4 Agent测试修复,M1-M5环境变量/CI配置修复,10个Task全部完成
-  11-3-acceptance-testing-scenarios: code-complete  # ✅完成PRD场景1(健康检查)/场景2(分布式部署),多Agent环境,报告生成,CI集成,9个Task完成,待代码审查
+  11-3-acceptance-testing-scenarios: done  # ✅代码审查完成(2026-01-23),4个问题已修复(1 CRITICAL+2 MEDIUM+1 LOW):mock-app main.go重写,report.go百分比计算,helpers.go API路径,README示例,AC1-AC5 100%达成,编译通过
   11-4-github-actions-cicd: code-complete  # ✅完成:CI增强(lint/security/test/build/integration/acceptance并行),Docker Trivy扫描,Release 15平台+checksum,分支保护文档,README徽章,待代码审查
   11-5-release-and-distribution: code-complete  # ✅完成:CHANGELOG.md/install.sh安装脚本/installation.md/RELEASING.md发布指南/README安装部分,待代码审查
   epic-11-retrospective: optional

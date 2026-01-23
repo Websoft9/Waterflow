@@ -1,68 +1,65 @@
-package mockapp
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-}	return "1.0.0"	}		return v	if v := os.Getenv("APP_VERSION"); v != "" {func getVersion() string {}	fmt.Fprintf(w, "Uptime: %s\n", time.Since(startTime))	fmt.Fprintf(w, "Mock App v%s\n", getVersion())	w.Header().Set("Content-Type", "text/plain")func rootHandler(w http.ResponseWriter, r *http.Request) {}	fmt.Fprint(w, "ready")	w.WriteHeader(http.StatusOK)func readyHandler(w http.ResponseWriter, r *http.Request) {}	json.NewEncoder(w).Encode(response)	w.Header().Set("Content-Type", "application/json")	}		Uptime:    time.Since(startTime).String(),		Version:   getVersion(),		Timestamp: time.Now().UTC().Format(time.RFC3339),		Status:    "healthy",	response := HealthResponse{func healthHandler(w http.ResponseWriter, r *http.Request) {}	}		log.Fatalf("Server failed: %v", err)	if err := http.ListenAndServe(":"+port, nil); err != nil {	log.Printf("Mock app starting on port %s", port)	http.HandleFunc("/", rootHandler)	http.HandleFunc("/ready", readyHandler)	http.HandleFunc("/health", healthHandler)	}		port = "8080"	if port == "" {	port := os.Getenv("PORT")func main() {var startTime = time.Now()}	Uptime    string `json:"uptime"`	Version   string `json:"version"`	Timestamp string `json:"timestamp"`	Status    string `json:"status"`type HealthResponse struct {// HealthResponse represents the health check response)	"time"	"os"	"net/http"	"log"	"fmt"	"encoding/json"import (package main
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"time"
+)
+
+// HealthResponse represents the health check response
+type HealthResponse struct {
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp"`
+	Version   string `json:"version"`
+	Uptime    string `json:"uptime"`
+}
+
+var startTime = time.Now()
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	http.HandleFunc("/health", healthHandler)
+	http.HandleFunc("/ready", readyHandler)
+	http.HandleFunc("/", rootHandler)
+
+	log.Printf("Mock app starting on port %s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	response := HealthResponse{
+		Status:    "healthy",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Version:   getVersion(),
+		Uptime:    time.Since(startTime).String(),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "ready")
+}
+
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "Mock App v%s\n", getVersion())
+	fmt.Fprintf(w, "Uptime: %s\n", time.Since(startTime))
+}
+
+func getVersion() string {
+	if v := os.Getenv("APP_VERSION"); v != "" {
+		return v
+	}
+	return "1.0.0"
+}

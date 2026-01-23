@@ -266,7 +266,7 @@ docker compose -f test/acceptance/docker-compose.acceptance.yaml exec temporal \
 docker compose -f test/acceptance/docker-compose.acceptance.yaml logs waterflow-server
 
 # 查看工作流日志
-curl http://localhost:18080/api/v1/workflows/{id}/logs
+curl http://localhost:18080/v1/workflows/{id}/logs
 ```
 
 ## 相关文档
