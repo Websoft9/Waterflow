@@ -61,7 +61,20 @@ jobs:
 
 ## 🚀 Quick Start
 
-### One-Click Deployment with Docker Compose
+### Installation
+
+```bash
+# One-line install (Linux/macOS)
+curl -fsSL https://raw.githubusercontent.com/Websoft9/waterflow/main/scripts/install.sh | bash
+
+# Or via Go
+go install github.com/Websoft9/waterflow/cmd/waterflow-cli@latest
+
+# Or download from GitHub Releases
+# https://github.com/Websoft9/waterflow/releases
+```
+
+### Docker Compose Deployment
 
 ```bash
 # Clone repository
@@ -79,13 +92,16 @@ curl http://localhost:8080/health
 ### Submit Your First Workflow
 
 ```bash
-# Submit hello-world example
+# Using CLI
+waterflow submit examples/hello-world.yaml
+
+# Or using curl
 curl -X POST http://localhost:8080/v1/workflows \
   -H "Content-Type: application/json" \
-  -d "{\"yaml\": \"$(cat ../examples/hello-world.yaml | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
+  -d "{\"yaml\": \"$(cat examples/hello-world.yaml | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
 
 # Check workflow status
-curl http://localhost:8080/v1/workflows
+waterflow status
 ```
 
 ### Access Temporal UI
