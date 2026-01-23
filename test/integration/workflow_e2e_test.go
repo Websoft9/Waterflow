@@ -3,19 +3,12 @@
 // Package integration contains end-to-end integration tests for Waterflow.
 // These tests require a running Waterflow environment (Server + Temporal + Agent).
 //
-// Run with: go test -v ./test/integration/...
+// Run with: go test -v -tags integration ./test/integration/...
 // Or use: make integration-test
 package integration
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -23,24 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// WorkflowResponse represents the API response for workflow operations
-type WorkflowResponse struct {
-	WorkflowID string `json:"workflow_id"`
-	RunID      string `json:"run_id,omitempty"`
-	Status     string `json:"status"`
-	Message    string `json:"message,omitempty"`
-}
-
-// WorkflowStatus represents workflow status response
-type WorkflowStatus struct {
-	WorkflowID string                 `json:"workflow_id"`
-	RunID      string                 `json:"run_id"`
-	Status     string                 `json:"status"`
-	StartTime  string                 `json:"start_time,omitempty"`
-	EndTime    string                 `json:"end_time,omitempty"`
-	Jobs       map[string]interface{} `json:"jobs,omitempty"`
-}
 
 // TestIntegration_WorkflowSubmitAndComplete tests the full workflow lifecycle
 func TestIntegration_WorkflowSubmitAndComplete(t *testing.T) {
@@ -180,157 +155,4 @@ func TestIntegration_WorkflowLogs(t *testing.T) {
 		assert.NotEmpty(t, logs, "Logs should not be empty")
 		t.Logf("Retrieved %d bytes of logs", len(logs))
 	})
-}
-
-// Helper functions
-
-func getServerURL() string {
-	url := os.Getenv("WATERFLOW_TEST_URL")
-	if url == "" {
-		url = "http://localhost:18080"
-	}
-	return url
-}
-
-func loadTestWorkflow(name string) (string, error) {
-	// Try multiple paths
-	paths := []string{
-		filepath.Join("testdata", "workflows", name),
-		filepath.Join("test", "integration", "testdata", "workflows", name),
-	}
-
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err == nil {
-			return string(data), nil
-		}
-	}
-
-	return "", fmt.Errorf("workflow file not found: %s", name)
-}
-
-func submitWorkflow(ctx context.Context, serverURL, yaml string) (*WorkflowResponse, error) {
-	reqBody, _ := json.Marshal(map[string]string{"yaml": yaml})
-	req, err := http.NewRequestWithContext(ctx, "POST", serverURL+"/v1/workflows", bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to submit workflow: %d - %s", resp.StatusCode, string(body))
-	}
-
-	var result WorkflowResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	return &result, nil
-}
-
-func getWorkflowStatus(ctx context.Context, serverURL, workflowID string) (*WorkflowStatus, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", serverURL+"/v1/workflows/"+workflowID, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get workflow status: %d - %s", resp.StatusCode, string(body))
-	}
-
-	var status WorkflowStatus
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
-		return nil, err
-	}
-
-	return &status, nil
-}
-
-func waitForWorkflowCompletion(ctx context.Context, serverURL, workflowID string, timeout time.Duration) (*WorkflowStatus, error) {
-	deadline := time.Now().Add(timeout)
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			if time.Now().After(deadline) {
-				return nil, fmt.Errorf("timeout waiting for workflow completion")
-			}
-
-			status, err := getWorkflowStatus(ctx, serverURL, workflowID)
-			if err != nil {
-				continue // Retry on error
-			}
-
-			statusLower := strings.ToLower(status.Status)
-			if statusLower == "completed" || statusLower == "succeeded" ||
-				statusLower == "failed" || statusLower == "cancelled" ||
-				statusLower == "terminated" {
-				return status, nil
-			}
-		}
-	}
-}
-
-func cancelWorkflow(ctx context.Context, serverURL, workflowID string) error {
-	req, err := http.NewRequestWithContext(ctx, "POST", serverURL+"/v1/workflows/"+workflowID+"/cancel", nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to cancel workflow: %d - %s", resp.StatusCode, string(body))
-	}
-
-	return nil
-}
-
-func getWorkflowLogs(ctx context.Context, serverURL, workflowID string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", serverURL+"/v1/workflows/"+workflowID+"/logs", nil)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("failed to get logs: %d - %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return string(body), nil
 }

@@ -77,17 +77,17 @@ SERVER_URL=http://localhost:8080 go test -v -tags integration ./test/integration
 
 验证 REST API 端点：
 
-- **YAML 验证** - `/api/v1/validate` 端点
-- **可用节点** - `/api/v1/nodes` 端点
-- **工作流列表** - `/api/v1/workflows` 端点
+- **YAML 验证** - `/v1/validate` 端点
+- **可用节点** - `/v1/nodes` 端点
+- **工作流列表** - `/v1/workflows` 端点
 - **健康检查** - `/health` 和 `/ready` 端点
-- **工作流重跑** - `/api/v1/workflows/:id/rerun`
+- **工作流重跑** - `/v1/workflows/:id/rerun`
 
 ### 3. Agent 测试 (`agent_test.go`)
 
 验证 Agent 功能：
 
-- **连接性** - Agent 健康检查和注册
+- **连接性** - 通过工作流执行验证 Agent 连接状态
 - **命令执行** - Shell 命令在 Agent 上执行
 - **环境变量** - 全局和步骤级环境变量传递
 - **工作目录** - 工作目录设置
@@ -118,9 +118,10 @@ SERVER_URL=http://localhost:8080 go test -v -tags integration ./test/integration
 
 | 变量 | 默认值 | 描述 |
 |------|--------|------|
-| `SERVER_URL` | `http://localhost:18080` | Waterflow Server 地址 |
-| `AGENT_URL` | `http://localhost:18081` | Waterflow Agent 地址 |
-| `TEST_TIMEOUT` | `5m` | 测试超时时间 |
+| `WATERFLOW_TEST_URL` | `http://localhost:18080` | Waterflow Server 地址 (优先) |
+| `SERVER_URL` | `http://localhost:18080` | Waterflow Server 地址 (兼容) |
+| `WATERFLOW_AGENT_URL` | `http://localhost:18081` | Waterflow Agent 地址 |
+| `TEST_TIMEOUT` | `10m` | 测试超时时间 |
 
 ## 测试夹具
 

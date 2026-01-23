@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -13,44 +12,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestIntegration_AgentConnection tests agent connectivity
+// TestIntegration_AgentConnection tests agent connectivity by verifying
+// workflow execution (Agent doesn't expose HTTP endpoint directly)
 func TestIntegration_AgentConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	serverURL := getServerURL()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	t.Run("Agent health check", func(t *testing.T) {
-		agentURL := getAgentURL()
+	t.Run("Agent is connected and processing tasks", func(t *testing.T) {
+		// Verify agent connectivity by executing a simple workflow
+		// This proves the agent is registered and accepting tasks
+		yaml := `
+name: agent-connectivity-test
+on: workflow_dispatch
+jobs:
+  verify:
+    runs-on: linux-amd64
+    steps:
+      - name: Verify agent is alive
+        uses: shell@v1
+        with:
+          command: echo "Agent is connected and processing"
+`
+		resp, err := submitWorkflow(ctx, serverURL, yaml)
+		require.NoError(t, err, "Should be able to submit workflow")
+		assert.NotEmpty(t, resp.WorkflowID, "Should receive workflow ID")
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, agentURL+"/health", nil)
-		require.NoError(t, err)
-
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode,
-			"Agent health check should return 200")
-	})
-
-	t.Run("Agent registration", func(t *testing.T) {
-		// Check that agent appears in server's agent list
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL+"/api/v1/agents", nil)
-		require.NoError(t, err)
-
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		// Agent list endpoint should be accessible
-		assert.True(t, resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound,
-			"Agents endpoint should respond")
+		// If workflow completes successfully, agent is connected
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		require.NoError(t, err, "Workflow should complete")
+		assert.Equal(t, "completed", strings.ToLower(status.Status),
+			"Agent should execute workflow successfully, proving it's connected")
 	})
 }
 
@@ -234,10 +230,4 @@ jobs:
 				"Concurrent workflow %d should complete", i)
 		}
 	})
-}
-
-// getAgentURL returns the agent URL from environment or default
-func getAgentURL() string {
-	url := getEnvOrDefault("AGENT_URL", "http://localhost:18081")
-	return url
 }

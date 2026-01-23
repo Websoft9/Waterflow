@@ -185,11 +185,11 @@ jobs:
         docker compose -f deployments/docker-compose.test.yaml up -d
         echo "Waiting for services to be healthy..."
         
-        # Wait for PostgreSQL
-        timeout 60 bash -c 'until docker compose -f deployments/docker-compose.test.yaml exec -T postgres pg_isready; do sleep 2; done'
+        # Wait for PostgreSQL (service name is 'postgresql' in docker-compose.test.yaml)
+        timeout 60 bash -c 'until docker compose -f deployments/docker-compose.test.yaml exec -T postgresql pg_isready -U temporal; do sleep 2; done'
         
-        # Wait for Temporal
-        timeout 90 bash -c 'until curl -sf http://localhost:17233/health > /dev/null 2>&1; do sleep 3; done'
+        # Wait for Temporal (check via docker exec since it's not exposed externally)
+        timeout 90 bash -c 'until docker compose -f deployments/docker-compose.test.yaml exec -T temporal sh -c "nc -z localhost 7233"; do sleep 3; done'
         
         # Wait for Server
         timeout 60 bash -c 'until curl -sf http://localhost:18080/health > /dev/null 2>&1; do sleep 2; done'
@@ -200,17 +200,18 @@ jobs:
       run: |
         go test -v -tags integration -timeout 10m ./test/integration/... 2>&1 | tee integration-test-output.txt
       env:
+        WATERFLOW_TEST_URL: http://localhost:18080
         SERVER_URL: http://localhost:18080
-        AGENT_URL: http://localhost:18081
+        WATERFLOW_AGENT_URL: http://localhost:18081
 
     - name: Collect service logs on failure
       if: failure()
       run: |
         mkdir -p logs
-        docker compose -f deployments/docker-compose.test.yaml logs server > logs/server.log 2>&1 || true
-        docker compose -f deployments/docker-compose.test.yaml logs agent > logs/agent.log 2>&1 || true
+        docker compose -f deployments/docker-compose.test.yaml logs waterflow-server > logs/server.log 2>&1 || true
+        docker compose -f deployments/docker-compose.test.yaml logs waterflow-agent > logs/agent.log 2>&1 || true
         docker compose -f deployments/docker-compose.test.yaml logs temporal > logs/temporal.log 2>&1 || true
-        docker compose -f deployments/docker-compose.test.yaml logs postgres > logs/postgres.log 2>&1 || true
+        docker compose -f deployments/docker-compose.test.yaml logs postgresql > logs/postgres.log 2>&1 || true
 
     - name: Upload logs artifact
       if: failure()

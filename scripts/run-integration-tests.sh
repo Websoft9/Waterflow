@@ -187,10 +187,12 @@ run_tests() {
     
     # Set test environment variables
     export WATERFLOW_TEST_URL="${WATERFLOW_TEST_URL}"
+    export SERVER_URL="${WATERFLOW_TEST_URL}"  # Legacy support
+    export WATERFLOW_AGENT_URL="${WATERFLOW_AGENT_URL:-http://localhost:18081}"
     export INTEGRATION_TEST=true
     
-    # Run tests
-    local test_args="-v -timeout ${TEST_TIMEOUT}"
+    # Run tests with build tags
+    local test_args="-v -tags integration -timeout ${TEST_TIMEOUT}"
     if [ "$VERBOSE" = true ]; then
         test_args="${test_args} -v"
     fi
