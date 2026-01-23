@@ -6,21 +6,65 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+env:
+  GO_VERSION: '1.24'
+
 jobs:
-  build:
-    name: Build and Test
+  # Stage 1: Lint (fast feedback)
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Full history for version tags
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        args: --timeout=5m
+
+  # Stage 1: Security scan (parallel with lint)
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Run govulncheck
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./...
+
+  # Stage 2: Unit tests (after lint passes)
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -35,25 +79,56 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
-    - name: Run linters
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
-        args: --timeout=5m
-
     - name: Run unit tests
       run: make test
-      # Note: Integration tests requiring Temporal are excluded (-short flag)
-      # They will be added back when infrastructure is set up
 
     - name: Generate coverage report
       run: make coverage
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.out
+        flags: unittests
+        name: waterflow-coverage
+        fail_ci_if_error: false
+        verbose: true
 
     - name: Upload coverage to artifacts
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: coverage.html
+        path: |
+          coverage.html
+          coverage.out
+
+  # Stage 2: Build (parallel with unit tests)
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
     - name: Build server binary
       run: make build
@@ -61,10 +136,14 @@ jobs:
     - name: Build agent binary
       run: make build-agent
 
+    - name: Build CLI binary
+      run: make cli
+
     - name: Verify binaries
       run: |
         ./bin/server --version || echo "Server binary built successfully"
         ./bin/agent --version || echo "Agent binary built successfully"
+        ./bin/waterflow version || echo "CLI binary built successfully"
 
     - name: Upload binaries to artifacts
       uses: actions/upload-artifact@v4
@@ -73,4 +152,155 @@ jobs:
         path: |
           bin/server
           bin/agent
+          bin/waterflow
 
+  # Stage 3: Integration tests (requires successful build)
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-test, build]
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Start test environment
+      run: |
+        docker compose -f deployments/docker-compose.test.yaml up -d
+        echo "Waiting for services to be healthy..."
+        
+        # Wait for PostgreSQL
+        timeout 60 bash -c 'until docker compose -f deployments/docker-compose.test.yaml exec -T postgres pg_isready; do sleep 2; done'
+        
+        # Wait for Temporal
+        timeout 90 bash -c 'until curl -sf http://localhost:17233/health > /dev/null 2>&1; do sleep 3; done'
+        
+        # Wait for Server
+        timeout 60 bash -c 'until curl -sf http://localhost:18080/health > /dev/null 2>&1; do sleep 2; done'
+        
+        echo "All services are healthy"
+
+    - name: Run integration tests
+      run: |
+        go test -v -tags integration -timeout 10m ./test/integration/... 2>&1 | tee integration-test-output.txt
+      env:
+        SERVER_URL: http://localhost:18080
+        AGENT_URL: http://localhost:18081
+
+    - name: Collect service logs on failure
+      if: failure()
+      run: |
+        mkdir -p logs
+        docker compose -f deployments/docker-compose.test.yaml logs server > logs/server.log 2>&1 || true
+        docker compose -f deployments/docker-compose.test.yaml logs agent > logs/agent.log 2>&1 || true
+        docker compose -f deployments/docker-compose.test.yaml logs temporal > logs/temporal.log 2>&1 || true
+        docker compose -f deployments/docker-compose.test.yaml logs postgres > logs/postgres.log 2>&1 || true
+
+    - name: Upload logs artifact
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-test-logs
+        path: |
+          logs/
+          integration-test-output.txt
+        retention-days: 7
+
+    - name: Stop test environment
+      if: always()
+      run: docker compose -f deployments/docker-compose.test.yaml down -v
+
+  # Stage 4: Acceptance tests (requires integration tests to pass)
+  acceptance-tests:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    timeout-minutes: 25
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Start acceptance test environment
+      run: |
+        docker compose -f test/acceptance/docker-compose.acceptance.yaml up -d --build
+        echo "Waiting for services to be healthy..."
+        
+        # Wait for PostgreSQL
+        timeout 60 bash -c 'until docker compose -f test/acceptance/docker-compose.acceptance.yaml exec -T postgres pg_isready; do sleep 2; done'
+        
+        # Wait for Temporal
+        timeout 120 bash -c 'until curl -sf http://localhost:17233/health > /dev/null 2>&1; do sleep 3; done' || true
+        
+        # Wait for Server
+        timeout 90 bash -c 'until curl -sf http://localhost:18080/health > /dev/null 2>&1; do sleep 3; done'
+        
+        # Wait for Agents to register
+        sleep 15
+        
+        echo "All services are healthy"
+
+    - name: Run acceptance tests
+      run: |
+        mkdir -p test/acceptance/reports
+        SERVER_URL=http://localhost:18080 \
+        TEMPORAL_HOST=localhost:17233 \
+        go test -v -tags acceptance -timeout 15m ./test/acceptance/... 2>&1 | tee test/acceptance/reports/test-output.txt
+      env:
+        SERVER_URL: http://localhost:18080
+        TEMPORAL_HOST: localhost:17233
+
+    - name: Collect service logs on failure
+      if: failure()
+      run: |
+        mkdir -p logs
+        docker compose -f test/acceptance/docker-compose.acceptance.yaml logs waterflow-server > logs/acceptance-server.log 2>&1 || true
+        docker compose -f test/acceptance/docker-compose.acceptance.yaml logs agent-web-1 > logs/acceptance-agent-web-1.log 2>&1 || true
+        docker compose -f test/acceptance/docker-compose.acceptance.yaml logs agent-web-2 > logs/acceptance-agent-web-2.log 2>&1 || true
+        docker compose -f test/acceptance/docker-compose.acceptance.yaml logs agent-db-1 > logs/acceptance-agent-db-1.log 2>&1 || true
+        docker compose -f test/acceptance/docker-compose.acceptance.yaml logs temporal > logs/acceptance-temporal.log 2>&1 || true
+
+    - name: Upload acceptance test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: acceptance-test-report
+        path: |
+          test/acceptance/reports/
+          logs/
+        retention-days: 14
+
+    - name: Stop acceptance test environment
+      if: always()
+      run: docker compose -f test/acceptance/docker-compose.acceptance.yaml down -v

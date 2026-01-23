@@ -151,10 +151,10 @@ development_status:
   epic-10-retrospective: optional
 
   # Epic 11: 质量保证和发布 (5 stories)
-  epic-11: backlog
-  11-1-unit-testing-framework: backlog
-  11-2-integration-testing: backlog
-  11-3-acceptance-testing-scenarios: backlog
-  11-4-github-actions-cicd: backlog
-  11-5-release-and-distribution: backlog
+  epic-11: in-progress
+  11-1-unit-testing-framework: in-progress
+  11-2-integration-testing: code-complete  # ✅完成基础设施/E2E测试/API测试/Agent测试/Fixture/CI集成/文档,10个Task全部完成,待代码审查
+  11-3-acceptance-testing-scenarios: code-complete  # ✅完成PRD场景1(健康检查)/场景2(分布式部署),多Agent环境,报告生成,CI集成,9个Task完成,待代码审查
+  11-4-github-actions-cicd: code-complete  # ✅完成:CI增强(lint/security/test/build/integration/acceptance并行),Docker Trivy扫描,Release 15平台+checksum,分支保护文档,README徽章,待代码审查
+  11-5-release-and-distribution: ready-for-dev
   epic-11-retrospective: optional

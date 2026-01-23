@@ -1,8 +1,11 @@
 # Waterflow
 
-[![CI](https://github.com/Websoft9/Waterflow/workflows/CI/badge.svg)](https://github.com/Websoft9/Waterflow/actions)
+[![CI](https://github.com/Websoft9/Waterflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Websoft9/Waterflow/actions/workflows/ci.yml)
+[![Docker](https://github.com/Websoft9/Waterflow/actions/workflows/docker.yml/badge.svg)](https://github.com/Websoft9/Waterflow/actions/workflows/docker.yml)
+[![Release](https://github.com/Websoft9/Waterflow/actions/workflows/release.yml/badge.svg)](https://github.com/Websoft9/Waterflow/releases)
+[![codecov](https://codecov.io/gh/Websoft9/Waterflow/branch/main/graph/badge.svg)](https://codecov.io/gh/Websoft9/Waterflow)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Websoft9/Waterflow)](https://goreportcard.com/report/github.com/Websoft9/Waterflow)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Planning-blue)]()
 
 [中文文档](README_zh.md) | English
 

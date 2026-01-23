@@ -61,6 +61,10 @@ func errorTypeToHTTPStatus(errType string) int {
 		return http.StatusBadRequest // 400
 	case "not_found":
 		return http.StatusNotFound // 404
+	case "method_not_allowed":
+		return http.StatusMethodNotAllowed // 405
+	case "payload_too_large":
+		return http.StatusRequestEntityTooLarge // 413
 	case "permission_denied":
 		return http.StatusForbidden // 403
 	case "deadline_exceeded":
@@ -80,6 +84,8 @@ func errorTypeToTitle(errType string) string {
 		"validation_error":    "Validation Failed",
 		"schema_error":        "Schema Validation Failed",
 		"not_found":           "Resource Not Found",
+		"method_not_allowed":  "Method Not Allowed",
+		"payload_too_large":   "Payload Too Large",
 		"permission_denied":   "Permission Denied",
 		"invalid_argument":    "Invalid Argument",
 		"node_not_registered": "Node Not Registered",

@@ -171,3 +171,40 @@ func TestDisplayNodeList_Empty(t *testing.T) {
 		t.Errorf("displayNodeList() with empty nodes failed: %v", err)
 	}
 }
+
+// TestNewNodeListCmd tests node list command creation
+func TestNewNodeListCmd(t *testing.T) {
+	cmd := newNodeListCmd()
+	if cmd == nil {
+		t.Fatal("newNodeListCmd() returned nil")
+	}
+
+	if cmd.Use != "list [node-name]" {
+		t.Errorf("Unexpected Use: %s", cmd.Use)
+	}
+
+	// Check flags
+	if cmd.Flags().Lookup("format") == nil {
+		t.Error("Missing 'format' flag")
+	}
+	if cmd.Flags().Lookup("no-group") == nil {
+		t.Error("Missing 'no-group' flag")
+	}
+}
+
+// TestNewNodeCmd tests node command creation
+func TestNewNodeCmd(t *testing.T) {
+	cmd := newNodeCmd()
+	if cmd == nil {
+		t.Fatal("newNodeCmd() returned nil")
+	}
+
+	if cmd.Use != "node" {
+		t.Errorf("Unexpected Use: %s", cmd.Use)
+	}
+
+	// Should have subcommands
+	if len(cmd.Commands()) == 0 {
+		t.Error("Expected subcommands")
+	}
+}

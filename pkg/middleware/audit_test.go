@@ -92,8 +92,10 @@ func TestAuditMiddleware(t *testing.T) {
 		handler.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
-		time.Sleep(50 * time.Millisecond)                // Wait for async processing
-		assert.Equal(t, 0, mockLogger.getEntriesCount()) // No audit entry
+		// Verify no audit entry was logged (health check is skipped)
+		assert.Eventually(t, func() bool {
+			return mockLogger.getEntriesCount() == 0
+		}, 100*time.Millisecond, 10*time.Millisecond, "no audit entry should be logged for health check")
 	})
 
 	t.Run("categorizes paths correctly", func(t *testing.T) {

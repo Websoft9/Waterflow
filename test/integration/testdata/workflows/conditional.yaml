@@ -1,0 +1,52 @@
+# Conditional Execution Workflow
+# Tests if conditions and continue-on-error
+name: conditional-test
+on: workflow_dispatch
+
+jobs:
+  conditional:
+    name: Conditional Steps
+    runs-on: linux-amd64
+    steps:
+      - name: Set Status
+        id: status
+        uses: shell@v1
+        with:
+          command: |
+            echo "success=true"
+            echo "environment=test"
+      
+      - name: Run if success
+        if: ${{ steps.status.outputs.success == 'true' }}
+        uses: shell@v1
+        with:
+          command: echo "This runs because success is true"
+      
+      - name: Run if production (should skip)
+        if: ${{ steps.status.outputs.environment == 'production' }}
+        uses: shell@v1
+        with:
+          command: echo "This should be skipped in test environment"
+      
+      - name: Always run
+        if: ${{ always() }}
+        uses: shell@v1
+        with:
+          command: echo "This always runs"
+
+  error-handling:
+    name: Error Handling
+    runs-on: linux-amd64
+    steps:
+      - name: Allowed to fail
+        continue-on-error: true
+        uses: shell@v1
+        with:
+          command: |
+            echo "This step is allowed to fail"
+            # exit 1  # Uncomment to test error handling
+      
+      - name: Continue after error
+        uses: shell@v1
+        with:
+          command: echo "Workflow continues even if previous step failed"

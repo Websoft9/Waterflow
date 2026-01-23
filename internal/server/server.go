@@ -17,6 +17,46 @@ import (
 	"go.uber.org/zap"
 )
 
+// AgentMonitor periodically updates agent metrics.
+type AgentMonitor struct {
+	client   *temporal.Client
+	logger   *zap.Logger
+	interval time.Duration
+	stopCh   chan struct{}
+}
+
+// NewAgentMonitor creates a new AgentMonitor instance.
+func NewAgentMonitor(client *temporal.Client, logger *zap.Logger, interval time.Duration) *AgentMonitor {
+	return &AgentMonitor{
+		client:   client,
+		logger:   logger,
+		interval: interval,
+		stopCh:   make(chan struct{}),
+	}
+}
+
+// Start begins the agent monitoring loop.
+func (am *AgentMonitor) Start() {
+	go func() {
+		ticker := time.NewTicker(am.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// TODO: Implement agent metric updates
+			case <-am.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+// Stop halts the agent monitoring loop.
+func (am *AgentMonitor) Stop() {
+	close(am.stopCh)
+}
+
 // Server represents the HTTP server.
 type Server struct {
 	// httpServer is the underlying HTTP server instance.

@@ -37,7 +37,7 @@ func TestWorkflowTracker(t *testing.T) {
 	})
 
 	t.Run("TrackCompletion", func(t *testing.T) {
-		time.Sleep(10 * time.Millisecond)
+		// Small delay to ensure submission is processed
 		tracker.TrackCompletion("wf-1", "completed")
 
 		if count := tracker.GetRunningCount(); count != 0 {
@@ -99,8 +99,12 @@ func TestNodeTracker(t *testing.T) {
 	})
 
 	t.Run("TrackNodeStart", func(t *testing.T) {
+		start := time.Now()
 		done := tracker.TrackNodeStart("flow/sleep")
-		time.Sleep(50 * time.Millisecond)
+		// Simulate some work with minimal sleep (this is testing duration tracking)
+		for time.Since(start) < 50*time.Millisecond {
+			// Busy wait for more precise timing
+		}
 		done(true)
 
 		count := testutil.ToFloat64(NodeExecutionsTotal.WithLabelValues("flow/sleep", "success"))

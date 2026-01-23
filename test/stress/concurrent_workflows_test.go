@@ -63,7 +63,7 @@ jobs:
 	// 资源监控
 	resourceMonitor := newResourceMonitor()
 	resourceMonitor.start()
-	defer resourceMonitor.stop()
+	// Note: stop() is called explicitly after wg.Wait(), don't use defer
 
 	start := time.Now()
 

@@ -87,8 +87,8 @@ func TestWorkerShutdown_Integration(t *testing.T) {
 	err = worker.Start()
 	require.NoError(t, err)
 
-	// Give worker time to start
-	time.Sleep(2 * time.Second)
+	// Worker is started, proceed to shutdown test
+	// No need to wait - worker.Shutdown will handle graceful shutdown
 
 	// Test shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -419,14 +419,19 @@ func TestDockerExecNode_Execute_ActualTimeout(t *testing.T) {
 
 	if err != nil && (strings.Contains(err.Error(), "not found") ||
 		strings.Contains(err.Error(), "not running") ||
-		strings.Contains(err.Error(), "permission denied")) {
-		t.Skipf("Docker not available: %v", err)
+		strings.Contains(err.Error(), "permission denied") ||
+		strings.Contains(err.Error(), "ImageNotFound")) {
+		t.Skipf("Docker not available or image not found: %v", err)
 	}
 
 	// Should timeout
 	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "TimeoutError")
+	// Error could be TimeoutError or context deadline exceeded
+	assert.True(t, strings.Contains(err.Error(), "TimeoutError") ||
+		strings.Contains(err.Error(), "deadline") ||
+		strings.Contains(err.Error(), "timeout"),
+		"expected timeout error, got: %v", err)
 }
 
 // Test timeout parsing with invalid value

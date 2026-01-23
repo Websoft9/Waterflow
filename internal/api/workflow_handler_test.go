@@ -22,7 +22,8 @@ func TestSubmitWorkflow_InvalidJSON(t *testing.T) {
 	handlers.SubmitWorkflow(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+	// Response uses RFC 7807 format
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/problem+json")
 }
 
 func TestSubmitWorkflow_EmptyYAML(t *testing.T) {
@@ -56,7 +57,8 @@ func TestSubmitWorkflow_InvalidYAML(t *testing.T) {
 
 	handlers.SubmitWorkflow(w, req)
 
-	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	// Malformed YAML returns 400 Bad Request with validation_error type
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestGetWorkflowStatus_MissingID(t *testing.T) {

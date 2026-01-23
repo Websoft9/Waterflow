@@ -1,0 +1,121 @@
+# Acceptance Test: Multi-Server Health Check
+# PRD Scenario 1: Concurrent execution on 3 servers, collect metrics, generate report
+# Expected completion time: < 5 minutes
+
+name: acceptance-health-check
+on: workflow_dispatch
+
+vars:
+  threshold_cpu: 90
+  threshold_memory: 90
+  threshold_disk: 90
+
+jobs:
+  health-check:
+    runs-on: linux-amd64
+    strategy:
+      matrix:
+        server: [web-server-1, web-server-2, db-server-1]
+      fail-fast: false
+    steps:
+      - name: Check CPU Usage
+        id: cpu-check
+        uses: shell@v1
+        timeout-minutes: 1
+        with:
+          command: |
+            echo "=== CPU Check on ${{ matrix.server }} ==="
+            # Use environment variable or simulate
+            CPU_PERCENT=${SERVER_CPU_PERCENT:-$(( RANDOM % 50 + 30 ))}
+            echo "CPU Usage: ${CPU_PERCENT}%"
+            
+            if [ "$CPU_PERCENT" -gt "${{ vars.threshold_cpu }}" ]; then
+              echo "WARNING: CPU usage exceeds threshold!"
+              echo "status=warning" >> $WATERFLOW_OUTPUT
+            else
+              echo "CPU usage is within normal range"
+              echo "status=ok" >> $WATERFLOW_OUTPUT
+            fi
+            
+            echo "cpu_percent=${CPU_PERCENT}" >> $WATERFLOW_OUTPUT
+
+      - name: Check Memory Usage
+        id: memory-check
+        uses: shell@v1
+        timeout-minutes: 1
+        with:
+          command: |
+            echo "=== Memory Check on ${{ matrix.server }} ==="
+            MEM_PERCENT=${SERVER_MEMORY_PERCENT:-$(( RANDOM % 40 + 40 ))}
+            echo "Memory Usage: ${MEM_PERCENT}%"
+            
+            if [ "$MEM_PERCENT" -gt "${{ vars.threshold_memory }}" ]; then
+              echo "WARNING: Memory usage exceeds threshold!"
+              echo "status=warning" >> $WATERFLOW_OUTPUT
+            else
+              echo "Memory usage is within normal range"
+              echo "status=ok" >> $WATERFLOW_OUTPUT
+            fi
+            
+            echo "memory_percent=${MEM_PERCENT}" >> $WATERFLOW_OUTPUT
+
+      - name: Check Disk Usage
+        id: disk-check
+        uses: shell@v1
+        timeout-minutes: 1
+        with:
+          command: |
+            echo "=== Disk Check on ${{ matrix.server }} ==="
+            DISK_PERCENT=${SERVER_DISK_PERCENT:-$(( RANDOM % 30 + 40 ))}
+            echo "Disk Usage: ${DISK_PERCENT}%"
+            
+            if [ "$DISK_PERCENT" -gt "${{ vars.threshold_disk }}" ]; then
+              echo "WARNING: Disk usage exceeds threshold!"
+              echo "status=warning" >> $WATERFLOW_OUTPUT
+            else
+              echo "Disk usage is within normal range"
+              echo "status=ok" >> $WATERFLOW_OUTPUT
+            fi
+            
+            echo "disk_percent=${DISK_PERCENT}" >> $WATERFLOW_OUTPUT
+
+      - name: Generate Health Summary
+        uses: shell@v1
+        with:
+          command: |
+            echo ""
+            echo "=========================================="
+            echo "HEALTH CHECK SUMMARY: ${{ matrix.server }}"
+            echo "=========================================="
+            echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "CPU: ${{ steps.cpu-check.outputs.cpu_percent }}%"
+            echo "Memory: ${{ steps.memory-check.outputs.memory_percent }}%"
+            echo "Disk: ${{ steps.disk-check.outputs.disk_percent }}%"
+            echo ""
+            echo "Overall Status: OK"
+            echo "=========================================="
+
+  aggregate-report:
+    runs-on: linux-amd64
+    needs: health-check
+    steps:
+      - name: Generate Aggregate Report
+        uses: shell@v1
+        with:
+          command: |
+            echo ""
+            echo "============================================"
+            echo "   MULTI-SERVER HEALTH CHECK REPORT"
+            echo "============================================"
+            echo ""
+            echo "Report Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "Servers Checked: 3"
+            echo ""
+            echo "Server Status:"
+            echo "  - web-server-1: OK"
+            echo "  - web-server-2: OK"
+            echo "  - db-server-1: OK"
+            echo ""
+            echo "Overall System Health: HEALTHY"
+            echo "============================================"

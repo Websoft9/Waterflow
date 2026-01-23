@@ -1,0 +1,71 @@
+# Codecov configuration for Waterflow
+# https://docs.codecov.io/docs/codecov-yaml
+
+coverage:
+  precision: 2
+  round: down
+  range: "60...100"
+  
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2%
+        # Only run on main project, not on plugins
+        paths:
+          - "pkg/**"
+          - "internal/**"
+          - "cmd/**"
+        if_not_found: success
+        
+    patch:
+      default:
+        target: 70%
+        threshold: 5%
+        if_not_found: success
+
+# Coverage targets by component
+flags:
+  pkg:
+    paths:
+      - "pkg/**"
+    target: 80%
+    
+  internal:
+    paths:
+      - "internal/**"
+    target: 70%
+    
+  cli:
+    paths:
+      - "cmd/waterflow-cli/**"
+    target: 60%
+
+# Ignore paths
+ignore:
+  - "**/*_test.go"
+  - "test/**"
+  - "testdata/**"
+  - "examples/**"
+  - "plugins/**"  # Plugins are separate Go modules
+  - "docs/**"
+  - "scripts/**"
+  - "deployments/**"
+  - "vendor/**"
+
+# Comment configuration
+comment:
+  layout: "header,diff,flags,components"
+  behavior: default
+  require_changes: true
+  require_base: false
+  require_head: true
+
+# GitHub integration
+github_checks:
+  annotations: true
+
+# Parsers
+parsers:
+  go:
+    partials_as_hits: true

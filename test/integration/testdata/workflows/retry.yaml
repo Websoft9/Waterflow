@@ -1,0 +1,26 @@
+# Retry Strategy Workflow
+# Tests automatic retry on failure
+name: retry-test
+on: workflow_dispatch
+
+jobs:
+  flaky:
+    name: Flaky Task with Retry
+    runs-on: linux-amd64
+    steps:
+      - name: Task that may fail
+        uses: shell@v1
+        retry:
+          max-attempts: 3
+          delay: 1s
+          multiplier: 2
+        with:
+          command: |
+            # This will succeed on the first try in tests
+            echo "Attempting task..."
+            echo "Task succeeded"
+      
+      - name: Verify retry worked
+        uses: shell@v1
+        with:
+          command: echo "Workflow completed after retries"

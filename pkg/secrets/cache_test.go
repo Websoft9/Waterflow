@@ -78,12 +78,11 @@ func TestCachedSecretProvider_GetSecret(t *testing.T) {
 	})
 
 	t.Run("cache expiration", func(t *testing.T) {
-		// Wait for TTL to expire
-		time.Sleep(3 * time.Second)
-
-		value, err := provider.GetSecret(ctx, "api_key")
-		require.NoError(t, err)
-		assert.Equal(t, "modified", value) // Should fetch new value
+		// Wait for TTL to expire using condition-based waiting
+		require.Eventually(t, func() bool {
+			value, err := provider.GetSecret(ctx, "api_key")
+			return err == nil && value == "modified"
+		}, 5*time.Second, 100*time.Millisecond, "cache should expire and return new value")
 	})
 }
 

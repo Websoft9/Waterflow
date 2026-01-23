@@ -135,11 +135,16 @@ func (h *Handlers) writeError(w http.ResponseWriter, r *http.Request, err error)
 // writeErrorLegacy provides backward compatibility during migration
 func (h *Handlers) writeErrorLegacy(w http.ResponseWriter, r *http.Request, status int, title, detail string) {
 	var err error
-	if status == http.StatusNotFound {
+	switch status {
+	case http.StatusNotFound:
 		err = &errors.BaseError{Type: "not_found", Message: detail, Retryable: false}
-	} else if status == http.StatusBadRequest {
+	case http.StatusBadRequest:
 		err = &errors.BaseError{Type: "invalid_argument", Message: detail, Retryable: false}
-	} else {
+	case http.StatusMethodNotAllowed:
+		err = &errors.BaseError{Type: "method_not_allowed", Message: detail, Retryable: false}
+	case http.StatusServiceUnavailable:
+		err = &errors.BaseError{Type: "service_unavailable", Message: detail, Retryable: true}
+	default:
 		err = &errors.BaseError{Type: "internal_error", Message: detail, Retryable: false}
 	}
 	h.writeError(w, r, err)

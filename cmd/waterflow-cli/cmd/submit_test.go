@@ -255,6 +255,26 @@ func TestParseValue(t *testing.T) {
 			input: "123abc",
 			want:  "123abc",
 		},
+		{
+			name:  "invalid JSON object",
+			input: `{"broken":`,
+			want:  `{"broken":`,
+		},
+		{
+			name:  "invalid JSON array",
+			input: `[1,2,`,
+			want:  `[1,2,`,
+		},
+		{
+			name:  "quoted string",
+			input: `"hello world"`,
+			want:  "hello world",
+		},
+		{
+			name:  "negative float",
+			input: "-3.14",
+			want:  -3.14,
+		},
 	}
 
 	for _, tt := range tests {
@@ -396,4 +416,30 @@ func TestIsTerminalStatusInSubmit(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestExitError tests the ExitError type
+func TestExitError(t *testing.T) {
+	err := &ExitError{Code: 1}
+	assert.Contains(t, err.Error(), "1")
+
+	err2 := &ExitError{Code: 42}
+	assert.Contains(t, err2.Error(), "42")
+}
+
+// TestNewSubmitCmd tests submit command creation
+func TestNewSubmitCmd(t *testing.T) {
+	cmd := newSubmitCmd()
+	require.NotNil(t, cmd)
+
+	assert.Equal(t, "submit <workflow-file>", cmd.Use)
+	assert.Contains(t, cmd.Short, "Submit")
+
+	// Check flags exist
+	assert.NotNil(t, cmd.Flags().Lookup("wait"))
+	assert.NotNil(t, cmd.Flags().Lookup("follow"))
+	assert.NotNil(t, cmd.Flags().Lookup("validate"))
+	assert.NotNil(t, cmd.Flags().Lookup("quiet"))
+	assert.NotNil(t, cmd.Flags().Lookup("format"))
+	assert.NotNil(t, cmd.Flags().Lookup("var"))
 }

@@ -37,6 +37,132 @@ func TestBuildEvalContext(t *testing.T) {
 	assert.Equal(t, "job", ctx.Env["JOB_VAR"]) // Job env should override
 }
 
+func TestBuildEvalContext_WithMatrixInstance(t *testing.T) {
+	wf := &dsl.Workflow{
+		Name: "test-workflow",
+	}
+
+	job := &dsl.Job{
+		Name:   "test-job",
+		RunsOn: "test-queue",
+	}
+
+	instance := &dsl.MatrixInstance{
+		Index: 0,
+		Matrix: map[string]interface{}{
+			"os":      "linux",
+			"version": "1.0",
+		},
+	}
+
+	ctx := buildEvalContext(wf, job, instance)
+
+	assert.NotNil(t, ctx)
+	assert.NotNil(t, ctx.Matrix)
+	assert.Equal(t, "linux", ctx.Matrix["os"])
+	assert.Equal(t, "1.0", ctx.Matrix["version"])
+}
+
+func TestGetMaxParallel(t *testing.T) {
+	tests := []struct {
+		name           string
+		job            *dsl.Job
+		totalInstances int
+		expected       int
+	}{
+		{
+			name:           "nil strategy",
+			job:            &dsl.Job{},
+			totalInstances: 10,
+			expected:       10,
+		},
+		{
+			name: "max_parallel not set",
+			job: &dsl.Job{
+				Strategy: &dsl.Strategy{},
+			},
+			totalInstances: 10,
+			expected:       10,
+		},
+		{
+			name: "max_parallel set to 0",
+			job: &dsl.Job{
+				Strategy: &dsl.Strategy{MaxParallel: 0},
+			},
+			totalInstances: 10,
+			expected:       10,
+		},
+		{
+			name: "max_parallel set to 3",
+			job: &dsl.Job{
+				Strategy: &dsl.Strategy{MaxParallel: 3},
+			},
+			totalInstances: 10,
+			expected:       3,
+		},
+		{
+			name: "max_parallel greater than total",
+			job: &dsl.Job{
+				Strategy: &dsl.Strategy{MaxParallel: 20},
+			},
+			totalInstances: 10,
+			expected:       20,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := getMaxParallel(tc.job, tc.totalInstances)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestGetFailFast(t *testing.T) {
+	falseVal := false
+	trueVal := true
+
+	tests := []struct {
+		name     string
+		job      *dsl.Job
+		expected bool
+	}{
+		{
+			name:     "nil strategy",
+			job:      &dsl.Job{},
+			expected: true,
+		},
+		{
+			name: "fail_fast nil",
+			job: &dsl.Job{
+				Strategy: &dsl.Strategy{},
+			},
+			expected: true,
+		},
+		{
+			name: "fail_fast true",
+			job: &dsl.Job{
+				Strategy: &dsl.Strategy{FailFast: &trueVal},
+			},
+			expected: true,
+		},
+		{
+			name: "fail_fast false",
+			job: &dsl.Job{
+				Strategy: &dsl.Strategy{FailFast: &falseVal},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := getFailFast(tc.job)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
 // TODO: Workflow retry strategy integration tests require proper Temporal SDK
 // test environment setup with activity mocking. These tests are deferred to
 // integration tests (test/integration/) where we can use a real Temporal server.

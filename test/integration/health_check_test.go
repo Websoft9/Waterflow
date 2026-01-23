@@ -32,8 +32,16 @@ func TestHealthCheckIntegration(t *testing.T) {
 	})
 
 	t.Run("Ready endpoint with healthy Temporal", func(t *testing.T) {
-		// Wait for services to be ready
-		time.Sleep(5 * time.Second)
+		// Wait for services to be ready using condition-based waiting
+		client := &http.Client{Timeout: 2 * time.Second}
+		require.Eventually(t, func() bool {
+			resp, err := client.Get(serverURL + "/ready")
+			if err != nil {
+				return false
+			}
+			defer resp.Body.Close()
+			return resp.StatusCode == http.StatusOK
+		}, 30*time.Second, 500*time.Millisecond, "services should become ready")
 
 		resp, err := http.Get(serverURL + "/ready")
 		require.NoError(t, err)

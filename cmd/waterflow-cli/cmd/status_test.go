@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateWorkflowID(t *testing.T) {
@@ -114,4 +115,32 @@ func TestIsTerminalStatusState(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestNewStatusCmd tests status command creation
+func TestNewStatusCmd(t *testing.T) {
+	cmd := newStatusCmd()
+	require.NotNil(t, cmd)
+
+	assert.Equal(t, "status <workflow-id>", cmd.Use)
+	assert.Contains(t, cmd.Short, "status")
+
+	// Check flags exist
+	assert.NotNil(t, cmd.Flags().Lookup("watch"))
+	assert.NotNil(t, cmd.Flags().Lookup("compact"))
+	assert.NotNil(t, cmd.Flags().Lookup("format"))
+	assert.NotNil(t, cmd.Flags().Lookup("interval"))
+}
+
+// TestClearScreen tests clearScreen doesn't panic
+func TestClearScreen(t *testing.T) {
+	// Should not panic
+	clearScreen()
+}
+
+// TestIsTerminal tests isTerminal function
+func TestIsTerminal(t *testing.T) {
+	// Just ensure it doesn't panic and returns a bool
+	result := isTerminal()
+	_ = result // result will vary depending on test environment
 }

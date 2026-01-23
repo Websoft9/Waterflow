@@ -1,0 +1,55 @@
+# Job Dependencies Workflow
+# Tests job needs (dependencies) and data passing
+name: job-dependencies
+on: workflow_dispatch
+
+jobs:
+  setup:
+    name: Setup Environment
+    runs-on: linux-amd64
+    steps:
+      - name: Initialize
+        id: init
+        uses: shell@v1
+        with:
+          command: |
+            echo "version=1.0.0"
+            echo "build_id=$(date +%Y%m%d%H%M%S)"
+
+  build:
+    name: Build Application
+    runs-on: linux-amd64
+    needs: setup
+    steps:
+      - name: Build
+        id: build
+        uses: shell@v1
+        with:
+          command: |
+            echo "Building version: ${{ needs.setup.outputs.version }}"
+            echo "Build ID: ${{ needs.setup.outputs.build_id }}"
+            echo "artifact=app-${{ needs.setup.outputs.version }}.tar.gz"
+
+  test:
+    name: Run Tests
+    runs-on: linux-amd64
+    needs: build
+    steps:
+      - name: Test
+        uses: shell@v1
+        with:
+          command: |
+            echo "Testing artifact: ${{ needs.build.outputs.artifact }}"
+            echo "All tests passed"
+
+  deploy:
+    name: Deploy
+    runs-on: linux-amd64
+    needs: [build, test]
+    steps:
+      - name: Deploy
+        uses: shell@v1
+        with:
+          command: |
+            echo "Deploying ${{ needs.build.outputs.artifact }}"
+            echo "Deployment successful"

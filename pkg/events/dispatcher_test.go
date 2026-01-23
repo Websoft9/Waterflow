@@ -8,6 +8,7 @@ import (
 
 	"github.com/Websoft9/waterflow/pkg/events"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -75,8 +76,11 @@ func TestEventDispatcher_DispatchWorkflowStart(t *testing.T) {
 		WorkflowName: "test-workflow",
 	})
 
-	// Wait for async dispatch
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async dispatch using condition-based waiting
+	require.Eventually(t, func() bool {
+		start, _, _ := mockHandler.GetCalls()
+		return start > 0
+	}, time.Second, 10*time.Millisecond, "handler should be called")
 
 	start, complete, failed := mockHandler.GetCalls()
 	assert.Equal(t, 1, start, "Should have called OnWorkflowStart once")
@@ -102,8 +106,11 @@ func TestEventDispatcher_DispatchWorkflowComplete(t *testing.T) {
 		DurationSeconds: 300,
 	})
 
-	// Wait for async dispatch
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async dispatch using condition-based waiting
+	require.Eventually(t, func() bool {
+		_, complete, _ := mockHandler.GetCalls()
+		return complete > 0
+	}, time.Second, 10*time.Millisecond, "handler should be called")
 
 	start, complete, failed := mockHandler.GetCalls()
 	assert.Equal(t, 0, start, "Should not have called OnWorkflowStart")
@@ -133,8 +140,11 @@ func TestEventDispatcher_DispatchWorkflowFailed(t *testing.T) {
 		},
 	})
 
-	// Wait for async dispatch
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async dispatch using condition-based waiting
+	require.Eventually(t, func() bool {
+		_, _, failed := mockHandler.GetCalls()
+		return failed > 0
+	}, time.Second, 10*time.Millisecond, "handler should be called")
 
 	start, complete, failed := mockHandler.GetCalls()
 	assert.Equal(t, 0, start, "Should not have called OnWorkflowStart")
@@ -158,8 +168,11 @@ func TestEventDispatcher_HandlerError(t *testing.T) {
 		Timestamp:  time.Now(),
 	})
 
-	// Wait for async dispatch
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async dispatch using condition-based waiting
+	require.Eventually(t, func() bool {
+		start, _, _ := mockHandler.GetCalls()
+		return start > 0
+	}, time.Second, 10*time.Millisecond, "handler should be called")
 
 	start, _, _ := mockHandler.GetCalls()
 	assert.Equal(t, 1, start, "Should still call handler even if it fails")
@@ -197,8 +210,11 @@ func TestEventDispatcher_Async(t *testing.T) {
 		})
 	}
 
-	// Wait for all async dispatches
-	time.Sleep(200 * time.Millisecond)
+	// Wait for all async dispatches using condition-based waiting
+	require.Eventually(t, func() bool {
+		start, _, _ := mockHandler.GetCalls()
+		return start >= 10
+	}, 2*time.Second, 10*time.Millisecond, "all events should be dispatched")
 
 	start, _, _ := mockHandler.GetCalls()
 	assert.Equal(t, 10, start, "Should have dispatched all 10 events")

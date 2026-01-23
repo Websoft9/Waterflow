@@ -1,0 +1,235 @@
+# Acceptance Test: Distributed Stack Deployment
+# PRD Scenario 2: Deploy Database → Application with dependency order
+# Expected completion time: < 10 minutes
+
+name: acceptance-distributed-deploy
+on: workflow_dispatch
+
+vars:
+  app_name: myapp
+  app_version: "1.0.0"
+  db_name: myapp_db
+  db_user: myapp_user
+
+jobs:
+  # Phase 1: Database Deployment (runs on db-server)
+  deploy-database:
+    runs-on: db-server
+    steps:
+      - name: Prepare Database Server
+        id: prepare-db
+        uses: shell@v1
+        timeout-minutes: 2
+        with:
+          command: |
+            echo "=== Database Preparation ==="
+            echo "Server: $(hostname)"
+            echo "Preparing database deployment environment..."
+            
+            # Simulate preparation
+            sleep 1
+            echo "Environment ready"
+            echo "prepared=true" >> $WATERFLOW_OUTPUT
+
+      - name: Deploy Database
+        id: deploy-db
+        uses: shell@v1
+        timeout-minutes: 3
+        retry:
+          max-attempts: 3
+          backoff:
+            initial: 2s
+            multiplier: 2
+        with:
+          command: |
+            echo "=== Database Deployment ==="
+            echo "Database: ${{ vars.db_name }}"
+            echo "User: ${{ vars.db_user }}"
+            
+            # Simulate database deployment
+            echo "Creating database..."
+            sleep 1
+            echo "Creating user..."
+            sleep 1
+            echo "Setting permissions..."
+            sleep 1
+            
+            echo "Database deployed successfully"
+            echo "db_deployed=true" >> $WATERFLOW_OUTPUT
+
+      - name: Verify Database
+        id: verify-db
+        uses: shell@v1
+        timeout-minutes: 1
+        with:
+          command: |
+            echo "=== Database Verification ==="
+            
+            # Simulate database health check
+            echo "Checking database connection..."
+            sleep 1
+            echo "Connection: OK"
+            
+            echo "Checking tables..."
+            echo "Tables: Ready"
+            
+            echo "Database verification: PASSED"
+            echo "db_healthy=true" >> $WATERFLOW_OUTPUT
+
+  # Phase 2: Application Deployment (depends on database)
+  deploy-application:
+    runs-on: linux-amd64
+    needs: deploy-database
+    steps:
+      - name: Prepare Application Server
+        id: prepare-app
+        uses: shell@v1
+        timeout-minutes: 2
+        with:
+          command: |
+            echo "=== Application Preparation ==="
+            echo "Server: $(hostname)"
+            echo "Preparing application deployment..."
+            
+            # Wait for database dependency
+            echo "Database dependency satisfied"
+            
+            sleep 1
+            echo "Environment ready"
+            echo "prepared=true" >> $WATERFLOW_OUTPUT
+
+      - name: Deploy Application
+        id: deploy-app
+        uses: shell@v1
+        timeout-minutes: 3
+        retry:
+          max-attempts: 3
+          backoff:
+            initial: 2s
+            multiplier: 2
+        with:
+          command: |
+            echo "=== Application Deployment ==="
+            echo "Application: ${{ vars.app_name }}"
+            echo "Version: ${{ vars.app_version }}"
+            
+            # Simulate application deployment
+            echo "Downloading application..."
+            sleep 1
+            echo "Installing dependencies..."
+            sleep 1
+            echo "Starting application..."
+            sleep 1
+            
+            echo "Application deployed successfully"
+            echo "app_deployed=true" >> $WATERFLOW_OUTPUT
+
+      - name: Health Check
+        id: health-check
+        uses: shell@v1
+        timeout-minutes: 1
+        retry:
+          max-attempts: 5
+          backoff:
+            initial: 1s
+        with:
+          command: |
+            echo "=== Application Health Check ==="
+            
+            # Simulate health check
+            echo "Checking HTTP endpoint..."
+            sleep 1
+            echo "HTTP: OK (200)"
+            
+            echo "Checking database connection..."
+            echo "Database: Connected"
+            
+            echo "Checking service status..."
+            echo "Service: Running"
+            
+            echo "Health check: PASSED"
+            echo "app_healthy=true" >> $WATERFLOW_OUTPUT
+
+  # Phase 3: Verification (depends on both database and application)
+  verify-deployment:
+    runs-on: linux-amd64
+    needs: [deploy-database, deploy-application]
+    steps:
+      - name: Integration Test
+        uses: shell@v1
+        timeout-minutes: 2
+        with:
+          command: |
+            echo "=== Integration Test ==="
+            
+            # Simulate integration testing
+            echo "Testing database connectivity from app..."
+            sleep 1
+            echo "Result: PASS"
+            
+            echo "Testing API endpoints..."
+            sleep 1
+            echo "Result: PASS"
+            
+            echo "Integration tests: ALL PASSED"
+
+      - name: Generate Deployment Report
+        uses: shell@v1
+        with:
+          command: |
+            echo ""
+            echo "============================================"
+            echo "   DISTRIBUTED DEPLOYMENT REPORT"
+            echo "============================================"
+            echo ""
+            echo "Deployment Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "Components Deployed:"
+            echo "  ✅ Database: ${{ vars.db_name }}"
+            echo "  ✅ Application: ${{ vars.app_name }} v${{ vars.app_version }}"
+            echo ""
+            echo "Verification Status:"
+            echo "  ✅ Database Health: OK"
+            echo "  ✅ Application Health: OK"
+            echo "  ✅ Integration Tests: PASSED"
+            echo ""
+            echo "Overall Deployment Status: SUCCESS"
+            echo "============================================"
+
+  # Rollback job (only runs if deployment fails)
+  rollback:
+    runs-on: linux-amd64
+    needs: [deploy-database, deploy-application, verify-deployment]
+    if: failure()
+    steps:
+      - name: Rollback Application
+        uses: shell@v1
+        continue-on-error: true
+        with:
+          command: |
+            echo "=== Rollback Application ==="
+            echo "Rolling back ${{ vars.app_name }}..."
+            sleep 1
+            echo "Application rollback completed"
+
+      - name: Rollback Database
+        uses: shell@v1
+        continue-on-error: true
+        with:
+          command: |
+            echo "=== Rollback Database ==="
+            echo "Rolling back ${{ vars.db_name }}..."
+            sleep 1
+            echo "Database rollback completed"
+
+      - name: Notify Rollback
+        uses: shell@v1
+        with:
+          command: |
+            echo ""
+            echo "============================================"
+            echo "   ROLLBACK COMPLETED"
+            echo "============================================"
+            echo "Rollback performed due to deployment failure"
+            echo "All changes have been reverted"
+            echo "============================================"

@@ -8,9 +8,13 @@ on:
 permissions:
   contents: write
 
+env:
+  GO_VERSION: '1.24'
+
 jobs:
-  release:
-    name: Create Release
+  # Pre-release validation
+  validate:
+    name: Pre-release Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -21,37 +25,249 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: 'go.mod'
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: Build binaries
+      - name: Run tests
+        run: make test
+
+      - name: Run lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  # Build binaries for all platforms
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: validate
+    strategy:
+      matrix:
+        include:
+          # Server binaries
+          - goos: linux
+            goarch: amd64
+            binary: server
+            artifact: waterflow-server-linux-amd64
+          - goos: linux
+            goarch: arm64
+            binary: server
+            artifact: waterflow-server-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            binary: server
+            artifact: waterflow-server-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            binary: server
+            artifact: waterflow-server-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            binary: server
+            artifact: waterflow-server-windows-amd64.exe
+          # Agent binaries
+          - goos: linux
+            goarch: amd64
+            binary: agent
+            artifact: waterflow-agent-linux-amd64
+          - goos: linux
+            goarch: arm64
+            binary: agent
+            artifact: waterflow-agent-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            binary: agent
+            artifact: waterflow-agent-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            binary: agent
+            artifact: waterflow-agent-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            binary: agent
+            artifact: waterflow-agent-windows-amd64.exe
+          # CLI binaries
+          - goos: linux
+            goarch: amd64
+            binary: cli
+            artifact: waterflow-cli-linux-amd64
+          - goos: linux
+            goarch: arm64
+            binary: cli
+            artifact: waterflow-cli-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            binary: cli
+            artifact: waterflow-cli-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            binary: cli
+            artifact: waterflow-cli-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            binary: cli
+            artifact: waterflow-cli-windows-amd64.exe
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Get version info
+        id: version
         run: |
-          mkdir -p dist
-          
-          # Build server binaries
-          GOOS=linux GOARCH=amd64 make build
-          mv bin/server dist/waterflow-server-linux-amd64
-          
-          GOOS=darwin GOARCH=amd64 make build
-          mv bin/server dist/waterflow-server-darwin-amd64
-          
-          GOOS=windows GOARCH=amd64 make build
-          mv bin/server dist/waterflow-server-windows-amd64.exe
-          
-          # Build agent binaries
-          GOOS=linux GOARCH=amd64 make build-agent
-          mv bin/agent dist/waterflow-agent-linux-amd64
-          
-          GOOS=darwin GOARCH=amd64 make build-agent
-          mv bin/agent dist/waterflow-agent-darwin-amd64
-          
-          GOOS=windows GOARCH=amd64 make build-agent
-          mv bin/agent dist/waterflow-agent-windows-amd64.exe
+          VERSION=${GITHUB_REF_NAME}
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
 
-      - name: Create Release
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-X main.Version=${{ steps.version.outputs.version }} -X main.Commit=${{ steps.version.outputs.commit }} -X main.BuildTime=${{ steps.version.outputs.build_time }}"
+          
+          if [ "${{ matrix.binary }}" = "server" ]; then
+            go build -ldflags "${LDFLAGS}" -o ${{ matrix.artifact }} cmd/server/main.go
+          elif [ "${{ matrix.binary }}" = "agent" ]; then
+            go build -ldflags "${LDFLAGS}" -o ${{ matrix.artifact }} cmd/agent/main.go
+          else
+            go build -ldflags "${LDFLAGS}" -o ${{ matrix.artifact }} ./cmd/waterflow-cli
+          fi
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          retention-days: 1
+
+  # Create checksums and release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          
+          # Move all binaries to release directory
+          find dist -type f -name 'waterflow-*' -exec mv {} release/ \;
+          
+          # Make binaries executable
+          chmod +x release/waterflow-*-linux-* release/waterflow-*-darwin-* 2>/dev/null || true
+          
+          # List release contents
+          echo "Release contents:"
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum waterflow-* > checksums.txt
+          echo "Checksums:"
+          cat checksums.txt
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --abbrev=0 --tags HEAD^ 2>/dev/null || echo "")
+          CURRENT_TAG=${GITHUB_REF_NAME}
+          
+          echo "## Waterflow ${CURRENT_TAG}" > release_notes.md
+          echo "" >> release_notes.md
+          echo "### Changes" >> release_notes.md
+          echo "" >> release_notes.md
+          
+          if [ -n "${PREV_TAG}" ]; then
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" >> release_notes.md
+          else
+            git log --pretty=format:"- %s (%h)" -n 20 >> release_notes.md
+          fi
+          
+          echo "" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Binaries" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "| Platform | Server | Agent | CLI |" >> release_notes.md
+          echo "|----------|--------|-------|-----|" >> release_notes.md
+          echo "| Linux (amd64) | \`waterflow-server-linux-amd64\` | \`waterflow-agent-linux-amd64\` | \`waterflow-cli-linux-amd64\` |" >> release_notes.md
+          echo "| Linux (arm64) | \`waterflow-server-linux-arm64\` | \`waterflow-agent-linux-arm64\` | \`waterflow-cli-linux-arm64\` |" >> release_notes.md
+          echo "| macOS (amd64) | \`waterflow-server-darwin-amd64\` | \`waterflow-agent-darwin-amd64\` | \`waterflow-cli-darwin-amd64\` |" >> release_notes.md
+          echo "| macOS (arm64) | \`waterflow-server-darwin-arm64\` | \`waterflow-agent-darwin-arm64\` | \`waterflow-cli-darwin-arm64\` |" >> release_notes.md
+          echo "| Windows (amd64) | \`waterflow-server-windows-amd64.exe\` | \`waterflow-agent-windows-amd64.exe\` | \`waterflow-cli-windows-amd64.exe\` |" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Docker Images" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "\`\`\`bash" >> release_notes.md
+          echo "# Docker Hub" >> release_notes.md
+          echo "docker pull waterflow/server:${CURRENT_TAG}" >> release_notes.md
+          echo "docker pull waterflow/agent:${CURRENT_TAG}" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "# GitHub Container Registry" >> release_notes.md
+          echo "docker pull ghcr.io/\${{ github.repository }}-server:${CURRENT_TAG}" >> release_notes.md
+          echo "docker pull ghcr.io/\${{ github.repository }}-agent:${CURRENT_TAG}" >> release_notes.md
+          echo "\`\`\`" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Verification" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "Verify binary integrity with checksums:" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "\`\`\`bash" >> release_notes.md
+          echo "sha256sum -c checksums.txt" >> release_notes.md
+          echo "\`\`\`" >> release_notes.md
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/*
-          generate_release_notes: true
+          files: |
+            release/waterflow-*
+            release/checksums.txt
+          body_path: release_notes.md
           draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Notify on completion (optional)
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: release
+    if: always()
+    
+    steps:
+      - name: Send notification on success
+        if: needs.release.result == 'success'
+        run: |
+          echo "🎉 Release ${{ github.ref_name }} published successfully!"
+          # Add Slack/Discord/Email notification here if configured
+
+      - name: Send notification on failure
+        if: needs.release.result == 'failure'
+        run: |
+          echo "❌ Release ${{ github.ref_name }} failed!"
+          # Add failure notification here if configured

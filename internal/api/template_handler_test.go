@@ -393,25 +393,25 @@ func TestSendError(t *testing.T) {
 			name:         "Not Found Error",
 			statusCode:   http.StatusNotFound,
 			detail:       "Template not found: test",
-			expectedType: "https://waterflow.io/errors/template-not-found",
+			expectedType: "not_found",
 		},
 		{
 			name:         "Bad Request Error",
 			statusCode:   http.StatusBadRequest,
 			detail:       "Invalid template name",
-			expectedType: "https://waterflow.io/errors/invalid-request",
+			expectedType: "invalid_argument",
 		},
 		{
 			name:         "Payload Too Large Error",
 			statusCode:   http.StatusRequestEntityTooLarge,
 			detail:       "Template file too large",
-			expectedType: "https://waterflow.io/errors/payload-too-large",
+			expectedType: "payload_too_large",
 		},
 		{
 			name:         "Internal Server Error",
 			statusCode:   http.StatusInternalServerError,
 			detail:       "Failed to read template",
-			expectedType: "https://waterflow.io/errors/internal-error",
+			expectedType: "internal_error",
 		},
 	}
 

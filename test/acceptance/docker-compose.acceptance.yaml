@@ -1,0 +1,208 @@
+# Docker Compose configuration for acceptance testing
+# Multi-agent environment simulating distributed server deployment
+# Usage: docker compose -f test/acceptance/docker-compose.acceptance.yaml up -d
+
+services:
+  # PostgreSQL Database (Temporal dependency)
+  postgres:
+    image: postgres:15-alpine
+    container_name: acceptance-postgres
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - acceptance-network
+    tmpfs:
+      - /var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # Temporal Server
+  temporal:
+    image: temporalio/auto-setup:1.22.0
+    container_name: acceptance-temporal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgres
+      SKIP_DB_CREATE: "false"
+      SKIP_DEFAULT_NAMESPACE_CREATION: "false"
+      ENABLE_ES: "false"
+      LOG_LEVEL: warn
+    ports:
+      - "17233:7233"
+    healthcheck:
+      test: [ "CMD", "sh", "-c", "nc -z $(hostname -i) 7233" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    networks:
+      - acceptance-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Waterflow Server
+  waterflow-server:
+    build:
+      context: ../..
+      dockerfile: build/Dockerfile.server
+    image: waterflow/server:acceptance
+    container_name: acceptance-server
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      WATERFLOW_SERVER_HOST: 0.0.0.0
+      WATERFLOW_SERVER_PORT: 8080
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: default
+      WATERFLOW_TEMPORAL_TASKQUEUE: waterflow-acceptance
+      WATERFLOW_LOG_LEVEL: info
+      WATERFLOW_LOG_FORMAT: json
+    ports:
+      - "18080:8080"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+    networks:
+      - acceptance-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+
+  # Agent 1: Web Server 1 (linux-amd64 task queue)
+  agent-web-1:
+    build:
+      context: ../..
+      dockerfile: build/Dockerfile.agent
+    image: waterflow/agent:acceptance
+    container_name: acceptance-agent-web-1
+    hostname: web-server-1
+    depends_on:
+      waterflow-server:
+        condition: service_healthy
+    environment:
+      WATERFLOW_AGENT_ID: agent-web-1
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: default
+      WATERFLOW_TEMPORAL_TASKQUEUE: linux-amd64
+      WATERFLOW_LOG_LEVEL: info
+      WATERFLOW_LOG_FORMAT: json
+      # Simulate server metrics
+      SERVER_CPU_PERCENT: "45"
+      SERVER_MEMORY_PERCENT: "62"
+      SERVER_DISK_PERCENT: "58"
+    networks:
+      - acceptance-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  # Agent 2: Web Server 2 (linux-amd64 task queue)
+  agent-web-2:
+    build:
+      context: ../..
+      dockerfile: build/Dockerfile.agent
+    image: waterflow/agent:acceptance
+    container_name: acceptance-agent-web-2
+    hostname: web-server-2
+    depends_on:
+      waterflow-server:
+        condition: service_healthy
+    environment:
+      WATERFLOW_AGENT_ID: agent-web-2
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: default
+      WATERFLOW_TEMPORAL_TASKQUEUE: linux-amd64
+      WATERFLOW_LOG_LEVEL: info
+      WATERFLOW_LOG_FORMAT: json
+      # Simulate server metrics
+      SERVER_CPU_PERCENT: "78"
+      SERVER_MEMORY_PERCENT: "85"
+      SERVER_DISK_PERCENT: "72"
+    networks:
+      - acceptance-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  # Agent 3: DB Server (db-server task queue)
+  agent-db-1:
+    build:
+      context: ../..
+      dockerfile: build/Dockerfile.agent
+    image: waterflow/agent:acceptance
+    container_name: acceptance-agent-db-1
+    hostname: db-server-1
+    depends_on:
+      waterflow-server:
+        condition: service_healthy
+    environment:
+      WATERFLOW_AGENT_ID: agent-db-1
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: default
+      WATERFLOW_TEMPORAL_TASKQUEUE: db-server
+      WATERFLOW_LOG_LEVEL: info
+      WATERFLOW_LOG_FORMAT: json
+      # Simulate server metrics
+      SERVER_CPU_PERCENT: "32"
+      SERVER_MEMORY_PERCENT: "55"
+      SERVER_DISK_PERCENT: "48"
+    networks:
+      - acceptance-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  # Mock App for deployment testing
+  mock-app:
+    build:
+      context: ./testdata/mock-app
+      dockerfile: Dockerfile
+    image: waterflow/mock-app:acceptance
+    container_name: acceptance-mock-app
+    ports:
+      - "18081:8080"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+    networks:
+      - acceptance-network
+    profiles:
+      - deploy-test
+
+networks:
+  acceptance-network:
+    name: acceptance-network
+    driver: bridge

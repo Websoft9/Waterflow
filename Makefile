@@ -112,10 +112,59 @@ test-quick:
 	@echo "Running unit tests..."
 	go test -race -short ./...
 
+## test-p0: Run only P0 (critical) tests
+test-p0:
+	@echo "Running P0 (critical) tests..."
+	TEST_PRIORITY=p0 go test -v -race -short ./...
+
+## test-p1: Run P0 and P1 (high priority) tests
+test-p1:
+	@echo "Running P0 and P1 tests..."
+	TEST_PRIORITY=p0,p1 go test -v -race -short ./...
+
+## test-fast: Run P0 tests for quick CI feedback
+test-fast: test-p0
+	@echo "Fast test cycle complete"
+
 ## test-integration: Run all tests including integration tests (requires Temporal server)
 test-integration:
 	@echo "Running all tests including integration tests..."
 	go test -v -race ./...
+
+## integration-test: Run E2E integration tests with docker-compose environment
+integration-test:
+	@echo "Running E2E integration tests..."
+	./scripts/run-integration-tests.sh
+
+## integration-test-only: Run integration tests without environment setup (assumes env is running)
+integration-test-only:
+	@echo "Running integration tests (env must be running)..."
+	go test -v -tags integration ./test/integration/...
+
+## integration-test-report: Run integration tests with JUnit report generation (requires gotestsum)
+integration-test-report:
+	@echo "Running integration tests with report generation..."
+	@if ! command -v gotestsum &> /dev/null; then \
+		echo "Installing gotestsum..."; \
+		go install gotest.tools/gotestsum@latest; \
+	fi
+	gotestsum --format testname --junitfile integration-test-report.xml -- -v -tags integration ./test/integration/...
+
+## acceptance-test: Run acceptance tests with full environment setup
+acceptance-test:
+	@echo "Running acceptance tests..."
+	./scripts/run-acceptance-tests.sh
+
+## acceptance-test-only: Run acceptance tests without environment setup (assumes env is running)
+acceptance-test-only:
+	@echo "Running acceptance tests (env must be running)..."
+	SERVER_URL=http://localhost:18080 go test -v -tags acceptance -timeout 15m ./test/acceptance/...
+
+## acceptance-test-scenario: Run specific acceptance test scenario
+acceptance-test-scenario:
+	@echo "Running acceptance test scenario: $(SCENARIO)..."
+	./scripts/run-acceptance-tests.sh --scenario $(SCENARIO)
+	gotestsum --format testname --junitfile integration-test-report.xml -- -v -tags integration ./test/integration/...
 
 ## coverage: Generate test coverage report (unit tests only)
 coverage:

@@ -1,0 +1,33 @@
+# Multi-Step Workflow with Output Passing
+# Tests step output references and data flow
+name: multi-step-outputs
+on: workflow_dispatch
+
+jobs:
+  process:
+    name: Data Processing
+    runs-on: linux-amd64
+    steps:
+      - name: Generate Data
+        id: generate
+        uses: shell@v1
+        with:
+          command: |
+            echo "timestamp=$(date +%s)"
+            echo "random=$RANDOM"
+      
+      - name: Process Data
+        id: process
+        uses: shell@v1
+        with:
+          command: |
+            echo "Received timestamp: ${{ steps.generate.outputs.timestamp }}"
+            echo "Received random: ${{ steps.generate.outputs.random }}"
+            echo "processed=true"
+      
+      - name: Final Report
+        uses: shell@v1
+        with:
+          command: |
+            echo "Processing status: ${{ steps.process.outputs.processed }}"
+            echo "Workflow completed successfully"

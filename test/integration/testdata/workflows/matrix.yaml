@@ -1,0 +1,33 @@
+# Matrix Strategy Workflow
+# Tests parallel execution with matrix expansion
+name: matrix-test
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: linux-amd64
+    strategy:
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+      fail-fast: false
+      max-parallel: 2
+    steps:
+      - name: Build Info
+        uses: shell@v1
+        with:
+          command: |
+            echo "Building for OS: ${{ matrix.os }}"
+            echo "Architecture: ${{ matrix.arch }}"
+            echo "combination=${{ matrix.os }}-${{ matrix.arch }}"
+      
+      - name: Simulate Build
+        uses: sleep@v1
+        with:
+          duration: 1s
+      
+      - name: Build Complete
+        uses: shell@v1
+        with:
+          command: echo "Build completed for ${{ matrix.os }}-${{ matrix.arch }}"

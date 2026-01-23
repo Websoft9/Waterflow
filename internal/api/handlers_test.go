@@ -93,8 +93,9 @@ func TestHandlers_NotFound(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&response)
 	require.NoError(t, err)
 
-	assert.Equal(t, "about:blank", response.Type)
-	assert.Equal(t, "Not Found", response.Title)
+	// Implementation uses error type as RFC 7807 type field
+	assert.Equal(t, "not_found", response.Type)
+	assert.Equal(t, "Resource Not Found", response.Title)
 	assert.Equal(t, http.StatusNotFound, response.Status)
 	assert.Equal(t, "/nonexistent", response.Instance)
 }
@@ -115,7 +116,8 @@ func TestHandlers_MethodNotAllowed(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&response)
 	require.NoError(t, err)
 
-	assert.Equal(t, "about:blank", response.Type)
+	// Implementation uses error type as RFC 7807 type field
+	assert.Equal(t, "method_not_allowed", response.Type)
 	assert.Equal(t, "Method Not Allowed", response.Title)
 	assert.Equal(t, http.StatusMethodNotAllowed, response.Status)
 	assert.Equal(t, "/health", response.Instance)
@@ -134,4 +136,26 @@ func TestHandlers_Metrics(t *testing.T) {
 	// Prometheus metrics contain HELP and TYPE comments
 	assert.Contains(t, w.Body.String(), "# HELP")
 	assert.Contains(t, w.Body.String(), "# TYPE")
+}
+
+func TestHandlers_GetWorkflowSchema(t *testing.T) {
+	logger := zap.NewNop()
+	h := NewHandlers(logger, "v1.0.0", "abc123", "2025-12-19")
+
+	req := httptest.NewRequest(http.MethodGet, "/schema/workflow.json", nil)
+	w := httptest.NewRecorder()
+
+	h.GetWorkflowSchema(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+
+	// Verify it's valid JSON
+	var schema map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&schema)
+	require.NoError(t, err)
+
+	// Basic schema validation
+	assert.Contains(t, schema, "$schema")
 }

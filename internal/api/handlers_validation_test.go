@@ -152,7 +152,8 @@ func TestRenderWorkflow_InvalidYAML(t *testing.T) {
 	h.RenderWorkflow(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "Parse Error")
+	// RFC 7807 format contains "Failed to parse workflow YAML" in detail field
+	assert.Contains(t, w.Body.String(), "Failed to parse workflow YAML")
 }
 
 func TestWriteError_RFC7807Format(t *testing.T) {
@@ -171,9 +172,9 @@ func TestWriteError_RFC7807Format(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&errResp)
 	require.NoError(t, err)
 
-	// Verify RFC 7807 format
-	assert.Equal(t, "about:blank", errResp.Type)
-	assert.Equal(t, "Test Error", errResp.Title)
+	// Verify RFC 7807 format - implementation uses error type as Type field
+	assert.Equal(t, "invalid_argument", errResp.Type)
+	assert.Equal(t, "Invalid Argument", errResp.Title)
 	assert.Equal(t, 400, errResp.Status)
 	assert.Equal(t, "Detailed error message", errResp.Detail)
 	assert.Equal(t, "/test/path", errResp.Instance)
@@ -181,13 +182,13 @@ func TestWriteError_RFC7807Format(t *testing.T) {
 
 func TestWriteError_DifferentStatusCodes(t *testing.T) {
 	tests := []struct {
-		name       string
-		statusCode int
-		title      string
+		name          string
+		statusCode    int
+		expectedTitle string
 	}{
-		{"BadRequest", http.StatusBadRequest, "Bad Request"},
-		{"NotFound", http.StatusNotFound, "Not Found"},
-		{"InternalError", http.StatusInternalServerError, "Internal Error"},
+		{"BadRequest", http.StatusBadRequest, "Invalid Argument"},
+		{"NotFound", http.StatusNotFound, "Resource Not Found"},
+		{"InternalError", http.StatusInternalServerError, "Internal Server Error"},
 		{"ServiceUnavailable", http.StatusServiceUnavailable, "Service Unavailable"},
 	}
 
@@ -199,7 +200,7 @@ func TestWriteError_DifferentStatusCodes(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			w := httptest.NewRecorder()
 
-			h.writeErrorLegacy(w, req, tt.statusCode, tt.title, "Test detail")
+			h.writeErrorLegacy(w, req, tt.statusCode, tt.name, "Test detail")
 
 			assert.Equal(t, tt.statusCode, w.Code)
 
@@ -207,7 +208,7 @@ func TestWriteError_DifferentStatusCodes(t *testing.T) {
 			err := json.NewDecoder(w.Body).Decode(&errResp)
 			require.NoError(t, err)
 			assert.Equal(t, tt.statusCode, errResp.Status)
-			assert.Equal(t, tt.title, errResp.Title)
+			assert.Equal(t, tt.expectedTitle, errResp.Title)
 		})
 	}
 }
