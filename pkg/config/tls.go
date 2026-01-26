@@ -140,9 +140,11 @@ func (h *HTTPSConfig) GetMinTLSVersion() uint16 {
 }
 
 // BuildTLSConfig creates a *tls.Config with secure defaults.
+//
+//nolint:gosec // G402: MinVersion is configurable via HTTPSConfig, validated by ValidateTLS
 func (h *HTTPSConfig) BuildTLSConfig() *tls.Config {
 	return &tls.Config{
-		MinVersion: h.GetMinTLSVersion(), //nolint:gosec // MinVersion is configurable
+		MinVersion: h.GetMinTLSVersion(),
 		// Recommended cipher suites (disable weak ciphers)
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,

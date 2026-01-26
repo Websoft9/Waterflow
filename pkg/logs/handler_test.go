@@ -16,7 +16,7 @@ func TestStdoutLogHandler(t *testing.T) {
 		BufferSize: 2,
 		Pretty:     false,
 	})
-	defer handler.Close()
+	defer func() { _ = handler.Close() }()
 
 	ctx := context.Background()
 
@@ -43,8 +43,8 @@ func TestStdoutLogHandler(t *testing.T) {
 
 func TestFileLogHandler(t *testing.T) {
 	tmpFile := "/tmp/waterflow-test-logs.jsonl"
-	defer os.Remove(tmpFile)
-	defer os.Remove(tmpFile + ".old")
+	defer func() { _ = os.Remove(tmpFile) }()
+	defer func() { _ = os.Remove(tmpFile + ".old") }()
 
 	handler, err := logs.NewFileLogHandler(logs.FileConfig{
 		Path:       tmpFile,
@@ -52,7 +52,7 @@ func TestFileLogHandler(t *testing.T) {
 		MaxSizeMB:  1,
 	})
 	require.NoError(t, err)
-	defer handler.Close()
+	defer func() { _ = handler.Close() }()
 
 	ctx := context.Background()
 

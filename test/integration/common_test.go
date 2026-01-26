@@ -17,9 +17,23 @@ import (
 
 // WorkflowSubmitResponse represents the response from workflow submission
 type WorkflowSubmitResponse struct {
-	WorkflowID string `json:"workflow_id"`
-	Status     string `json:"status"`
-	Message    string `json:"message"`
+	ID        string `json:"id"`         // API returns "id" not "workflow_id"
+	RunID     string `json:"run_id"`     // Temporal run ID
+	Name      string `json:"name"`       // Workflow name
+	Status    string `json:"status"`     // Workflow status
+	CreatedAt string `json:"created_at"` // Creation timestamp
+	URL       string `json:"url"`        // Workflow URL
+	// Legacy field for compatibility
+	WorkflowID string `json:"workflow_id,omitempty"` // Deprecated: use ID
+	Message    string `json:"message,omitempty"`     // Optional message
+}
+
+// GetID returns the workflow ID, supporting both new (id) and legacy (workflow_id) fields
+func (r *WorkflowSubmitResponse) GetID() string {
+	if r.ID != "" {
+		return r.ID
+	}
+	return r.WorkflowID
 }
 
 // WorkflowStatus represents the workflow status response
@@ -54,16 +68,29 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
+// submitWorkflowRequest represents the JSON request body for workflow submission
+type submitWorkflowRequestBody struct {
+	YAML string                 `json:"yaml"`
+	Vars map[string]interface{} `json:"vars,omitempty"`
+}
+
 // submitWorkflow submits a workflow YAML to the server
 func submitWorkflow(ctx context.Context, serverURL, yamlContent string) (*WorkflowSubmitResponse, error) {
+	// API expects JSON with yaml field, not raw YAML
+	reqBody := submitWorkflowRequestBody{YAML: yamlContent}
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		serverURL+"/v1/workflows",
-		bytes.NewBufferString(yamlContent))
+		bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/x-yaml")
+	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)

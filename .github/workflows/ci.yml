@@ -103,11 +103,11 @@ jobs:
           coverage.html
           coverage.out
 
-  # Stage 2: Build (parallel with unit tests)
+  # Stage 2: Build (parallel with unit tests, after lint and security pass)
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [lint, security]
     
     steps:
     - name: Checkout code
@@ -261,8 +261,13 @@ jobs:
         # Wait for PostgreSQL
         timeout 60 bash -c 'until docker compose -f test/acceptance/docker-compose.acceptance.yaml exec -T postgres pg_isready; do sleep 2; done'
         
-        # Wait for Temporal
-        timeout 120 bash -c 'until curl -sf http://localhost:17233/health > /dev/null 2>&1; do sleep 3; done' || true
+        # Wait for Temporal (with explicit failure on timeout)
+        echo "Waiting for Temporal..."
+        if ! timeout 120 bash -c 'until curl -sf http://localhost:17233/health > /dev/null 2>&1; do sleep 3; done'; then
+          echo "ERROR: Temporal failed to become healthy within 120s"
+          docker compose -f test/acceptance/docker-compose.acceptance.yaml logs temporal
+          exit 1
+        fi
         
         # Wait for Server
         timeout 90 bash -c 'until curl -sf http://localhost:18080/health > /dev/null 2>&1; do sleep 3; done'

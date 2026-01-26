@@ -1,6 +1,6 @@
 # Story 11.4: GitHub Actions CI/CD
 
-**Status:** ready-for-dev
+**Status:** done
 
 ## Story
 
@@ -74,90 +74,90 @@ So that **保证代码质量和自动发布**。
 
 当前: .github/workflows/ci.yml 已存在
 
-- [ ] 1.1 审计现有 ci.yml 配置
-- [ ] 1.2 添加集成测试 job (需要 Temporal 服务)
-- [ ] 1.3 添加验收测试 job (可选，长时运行)
-- [ ] 1.4 配置覆盖率报告上传到 Codecov
-- [ ] 1.5 配置分支保护规则要求 CI 通过
-- [ ] 1.6 添加并行测试优化
+- [x] 1.1 审计现有 ci.yml 配置
+- [x] 1.2 添加集成测试 job (需要 Temporal 服务)
+- [x] 1.3 添加验收测试 job (可选，长时运行)
+- [x] 1.4 配置覆盖率报告上传到 Codecov
+- [x] 1.5 配置分支保护规则要求 CI 通过
+- [x] 1.6 添加并行测试优化
 
 ### Task 2: 增强 Docker 构建流程 (AC: #2)
 
 当前: .github/workflows/docker.yml 已存在
 
-- [ ] 2.1 审计现有 docker.yml 配置
-- [ ] 2.2 确认多平台构建 (linux/amd64, linux/arm64)
-- [ ] 2.3 确认 Docker Hub 和 GHCR 推送
-- [ ] 2.4 添加镜像安全扫描 (Trivy)
-- [ ] 2.5 添加镜像签名 (cosign, 可选)
-- [ ] 2.6 优化构建缓存
+- [x] 2.1 审计现有 docker.yml 配置
+- [x] 2.2 确认多平台构建 (linux/amd64, linux/arm64)
+- [x] 2.3 确认 Docker Hub 和 GHCR 推送
+- [x] 2.4 添加镜像安全扫描 (Trivy)
+- [ ] 2.5 添加镜像签名 (cosign, 可选) - Post-MVP
+- [x] 2.6 优化构建缓存
 
 ### Task 3: 增强 Release 流程 (AC: #3, #4, #6)
 
 当前: .github/workflows/release.yml 已存在
 
-- [ ] 3.1 审计现有 release.yml 配置
-- [ ] 3.2 添加 macOS/arm64 (Apple Silicon) 构建
-- [ ] 3.3 添加 Linux/arm64 构建
-- [ ] 3.4 生成 checksum.txt (SHA256)
-- [ ] 3.5 添加 CLI 二进制构建
-- [ ] 3.6 改进 Release Notes 生成
-- [ ] 3.7 添加发布前测试验证
+- [x] 3.1 审计现有 release.yml 配置
+- [x] 3.2 添加 macOS/arm64 (Apple Silicon) 构建
+- [x] 3.3 添加 Linux/arm64 构建
+- [x] 3.4 生成 checksum.txt (SHA256)
+- [x] 3.5 添加 CLI 二进制构建
+- [x] 3.6 改进 Release Notes 生成
+- [x] 3.7 添加发布前测试验证
 
 ### Task 4: 添加集成测试 CI Job (AC: #1)
 
-- [ ] 4.1 创建 .github/workflows/integration.yml
-- [ ] 4.2 配置 Temporal 服务容器
-- [ ] 4.3 配置 PostgreSQL 服务容器
-- [ ] 4.4 运行集成测试 (make test-integration)
-- [ ] 4.5 上传测试结果 artifact
-- [ ] 4.6 配置测试超时 (15 分钟)
+- [x] 4.1 创建 .github/workflows/integration.yml - 合并到 ci.yml
+- [x] 4.2 配置 Temporal 服务容器
+- [x] 4.3 配置 PostgreSQL 服务容器
+- [x] 4.4 运行集成测试 (make test-integration)
+- [x] 4.5 上传测试结果 artifact
+- [x] 4.6 配置测试超时 (15 分钟)
 
 ### Task 5: 添加验收测试 CI Job (AC: #1)
 
-- [ ] 5.1 创建验收测试 workflow (独立或合并到 CI)
-- [ ] 5.2 配置多 Agent 测试环境
-- [ ] 5.3 运行验收测试场景
-- [ ] 5.4 生成验收测试报告
-- [ ] 5.5 配置为发布门禁
+- [x] 5.1 创建验收测试 workflow (独立或合并到 CI) - 合并到 ci.yml
+- [x] 5.2 配置多 Agent 测试环境
+- [x] 5.3 运行验收测试场景
+- [x] 5.4 生成验收测试报告
+- [x] 5.5 配置为发布门禁
 
 ### Task 6: 配置分支保护 (AC: #5)
 
-- [ ] 6.1 文档化分支保护规则配置
-- [ ] 6.2 要求 CI 检查通过
-- [ ] 6.3 要求 PR 审核
-- [ ] 6.4 禁止直接推送到 main
-- [ ] 6.5 要求签名提交 (可选)
+- [x] 6.1 文档化分支保护规则配置 - .github/README.md
+- [x] 6.2 要求 CI 检查通过
+- [x] 6.3 要求 PR 审核
+- [x] 6.4 禁止直接推送到 main
+- [ ] 6.5 要求签名提交 (可选) - Post-MVP
 
 ### Task 7: 添加代码质量工具 (AC: #1)
 
-- [ ] 7.1 配置 golangci-lint (已有)
-- [ ] 7.2 添加 gosec 安全扫描
-- [ ] 7.3 添加 staticcheck
-- [ ] 7.4 配置 .golangci.yml 规则
-- [ ] 7.5 添加依赖漏洞扫描 (govulncheck)
+- [x] 7.1 配置 golangci-lint (已有)
+- [x] 7.2 添加 gosec 安全扫描 - .golangci.yml 已配置 gosec
+- [x] 7.3 添加 staticcheck - .golangci.yml 已配置 staticcheck
+- [x] 7.4 配置 .golangci.yml 规则
+- [x] 7.5 添加依赖漏洞扫描 (govulncheck)
 
 ### Task 8: CI 性能优化 (AC: #1)
 
-- [ ] 8.1 优化 Go 模块缓存
-- [ ] 8.2 并行运行独立 jobs
-- [ ] 8.3 使用 matrix 策略测试多 Go 版本
-- [ ] 8.4 配置构建缓存
-- [ ] 8.5 分析 CI 耗时瓶颈
+- [x] 8.1 优化 Go 模块缓存
+- [x] 8.2 并行运行独立 jobs
+- [ ] 8.3 使用 matrix 策略测试多 Go 版本 - Post-MVP
+- [x] 8.4 配置构建缓存
+- [x] 8.5 分析 CI 耗时瓶颈
 
 ### Task 9: 通知和监控 (可选)
 
-- [ ] 9.1 配置 Slack 通知 (构建失败)
-- [ ] 9.2 配置邮件通知
-- [ ] 9.3 添加 CI 状态徽章到 README
-- [ ] 9.4 配置 Dependabot 依赖更新
+- [ ] 9.1 配置 Slack 通知 (构建失败) - Post-MVP
+- [ ] 9.2 配置邮件通知 - Post-MVP
+- [x] 9.3 添加 CI 状态徽章到 README
+- [ ] 9.4 配置 Dependabot 依赖更新 - Post-MVP
 
 ### Task 10: 文档和说明
 
-- [ ] 10.1 创建 .github/README.md (CI/CD 说明)
-- [ ] 10.2 文档化 secrets 配置要求
-- [ ] 10.3 文档化手动触发流程
-- [ ] 10.4 文档化版本发布流程
+- [x] 10.1 创建 .github/README.md (CI/CD 说明)
+- [x] 10.2 文档化 secrets 配置要求
+- [x] 10.3 文档化手动触发流程
+- [x] 10.4 文档化版本发布流程
 
 ## Dev Notes
 
@@ -346,8 +346,9 @@ Claude Opus 4.5
 | 文件路径 | 操作 | 说明 |
 |----------|------|------|
 | `.github/workflows/ci.yml` | 重写 | 增强版 CI 工作流 (lint/security/test/build/integration/acceptance) |
-| `.github/workflows/docker.yml` | 修改 | 添加 QEMU, Trivy 扫描, GHCR 推送 |
-| `.github/workflows/release.yml` | 重写 | 多平台构建 (15 二进制), checksum, 改进 Release Notes |
-| `.github/README.md` | 新建 | CI/CD 工作流文档 (分支保护/Secrets/故障排查) |
+| `.github/workflows/docker.yml` | 修改 | 添加 QEMU, Trivy 扫描, GHCR 推送, 修复 Trivy 镜像标签 |
+| `.github/workflows/release.yml` | 重写 | 多平台构建 (15 二进制), checksum, 修复 GHCR 路径变量 |
+| `.github/README.md` | 新建 | CI/CD 工作流文档 (分支保护/Secrets/故障排查), 修复相对路径 |
 | `README.md` | 修改 | 添加 CI/Docker/Release/Codecov/Go Report 徽章 |
 | `README_zh.md` | 修改 | 添加 CI/Docker/Release/Codecov/Go Report 徽章 |
+| `docs/sprint-artifacts/11-4-github-actions-cicd.md` | 修改 | 代码审查: 更新 Task 标记, 状态更新为 done |

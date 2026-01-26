@@ -420,10 +420,8 @@ func (c *Config) ValidateAgent() error {
 	}
 
 	// 5. Metrics port validation (if set)
-	if c.Agent.MetricsPort != "" {
-		// MetricsPort is a string to allow "" (disabled) or port number
-		// We don't validate the actual port number format here as it will fail on Listen anyway
-	}
+	// MetricsPort is a string to allow "" (disabled) or port number
+	// We don't validate the actual port number format here as it will fail on Listen anyway
 
 	// 6. Log config validation
 	validLogLevels := []string{"debug", "info", "warn", "error"}

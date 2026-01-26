@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 	"github.com/Websoft9/waterflow/pkg/errors"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
@@ -12,13 +13,19 @@ import (
 
 // NodeHandlers handles node-related requests
 type NodeHandlers struct {
-	logger *zap.Logger
+	logger       *zap.Logger
+	nodeRegistry *node.Registry
 }
 
 // NewNodeHandlers creates a new NodeHandlers instance
-func NewNodeHandlers(logger *zap.Logger) *NodeHandlers {
+// If nodeRegistry is nil, an empty registry is created for graceful degradation
+func NewNodeHandlers(logger *zap.Logger, nodeRegistry *node.Registry) *NodeHandlers {
+	if nodeRegistry == nil {
+		nodeRegistry = node.NewRegistry() // Empty registry for graceful degradation
+	}
 	return &NodeHandlers{
-		logger: logger,
+		logger:       logger,
+		nodeRegistry: nodeRegistry,
 	}
 }
 
@@ -30,8 +37,8 @@ func (h *NodeHandlers) ListNodes(w http.ResponseWriter, r *http.Request) {
 	category := query.Get("category")
 	search := query.Get("search")
 
-	// Get all known nodes (hardcoded for now, will be dynamic in future)
-	nodes := getKnownNodes()
+	// Get all known nodes from NodeRegistry (dynamic loading)
+	nodes := h.getKnownNodes()
 
 	// Filter nodes if needed
 	filtered := filterNodeList(nodes, category, search)
@@ -61,8 +68,8 @@ func (h *NodeHandlers) GetNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find node in known nodes
-	nodes := getKnownNodes()
+	// Find node in registry
+	nodes := h.getKnownNodes()
 	var foundNode map[string]interface{}
 	for _, node := range nodes {
 		if name, ok := node["name"].(string); ok {
@@ -119,166 +126,35 @@ func (h *NodeHandlers) writeErrorLegacy(w http.ResponseWriter, r *http.Request, 
 	h.writeError(w, r, err)
 }
 
-// getKnownNodes returns hardcoded list of known nodes
-// TODO: In future, this should query NodeRegistry or database
-func getKnownNodes() []map[string]interface{} {
-	return []map[string]interface{}{
-		{
-			"name":        "exec/shell",
-			"version":     "v1",
-			"category":    "exec",
-			"description": "Execute shell commands",
-			"input_schema": map[string]interface{}{
-				"command": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Shell command to execute",
-				},
-				"shell": map[string]interface{}{
-					"type":        "string",
-					"required":    false,
-					"default":     "/bin/bash",
-					"description": "Shell interpreter",
-				},
-				"timeout": map[string]interface{}{
-					"type":        "string",
-					"required":    false,
-					"default":     "5m",
-					"description": "Maximum execution time",
-				},
-			},
-			"output_schema": map[string]interface{}{
-				"stdout":    "string",
-				"stderr":    "string",
-				"exit_code": "int",
-			},
-		},
-		{
-			"name":        "exec/script",
-			"version":     "v1",
-			"category":    "exec",
-			"description": "Run script files (bash, python, node)",
-			"input_schema": map[string]interface{}{
-				"script_path": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Path to script file",
-				},
-				"interpreter": map[string]interface{}{
-					"type":        "string",
-					"required":    false,
-					"description": "Script interpreter",
-				},
-			},
-			"output_schema": map[string]interface{}{
-				"stdout":    "string",
-				"exit_code": "int",
-			},
-		},
-		{
-			"name":        "flow/sleep",
-			"version":     "v1",
-			"category":    "flow",
-			"description": "Delay execution for specified duration",
-			"input_schema": map[string]interface{}{
-				"duration": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Sleep duration (e.g., 5s, 1m, 2h)",
-				},
-			},
-			"output_schema": map[string]interface{}{
-				"slept": "duration",
-			},
-		},
-		{
-			"name":        "http/request",
-			"version":     "v1",
-			"category":    "http",
-			"description": "Make HTTP requests (GET, POST, PUT, DELETE)",
-			"input_schema": map[string]interface{}{
-				"url": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Request URL",
-				},
-				"method": map[string]interface{}{
-					"type":        "string",
-					"required":    false,
-					"default":     "GET",
-					"description": "HTTP method",
-				},
-				"headers": map[string]interface{}{
-					"type":        "map",
-					"required":    false,
-					"description": "HTTP headers",
-				},
-			},
-			"output_schema": map[string]interface{}{
-				"status_code": "int",
-				"body":        "string",
-				"headers":     "map",
-			},
-		},
-		{
-			"name":        "file/transfer",
-			"version":     "v1",
-			"category":    "file",
-			"description": "Transfer files via SCP/SFTP",
-			"input_schema": map[string]interface{}{
-				"source": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Source file path",
-				},
-				"destination": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Destination path",
-				},
-			},
-			"output_schema": map[string]interface{}{
-				"bytes_transferred": "int",
-			},
-		},
-		{
-			"name":        "docker/exec",
-			"version":     "v1",
-			"category":    "docker",
-			"description": "Execute Docker commands",
-			"input_schema": map[string]interface{}{
-				"command": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Docker command",
-				},
-			},
-			"output_schema": map[string]interface{}{
-				"stdout": "string",
-			},
-		},
-		{
-			"name":        "docker/compose",
-			"version":     "v1",
-			"category":    "docker",
-			"description": "Manage Docker Compose services",
-			"input_schema": map[string]interface{}{
-				"action": map[string]interface{}{
-					"type":        "string",
-					"required":    true,
-					"description": "Compose action (up, down, restart)",
-				},
-				"file": map[string]interface{}{
-					"type":        "string",
-					"required":    false,
-					"description": "Compose file path",
-				},
-			},
-			"output_schema": map[string]interface{}{
-				"status": "string",
-			},
-		},
+// getKnownNodes retrieves all registered nodes from NodeRegistry
+// Converts Node interface to API response format
+func (h *NodeHandlers) getKnownNodes() []map[string]interface{} {
+	// Get all registered nodes from registry
+	nodeKeys := h.nodeRegistry.List()
+	result := make([]map[string]interface{}, 0, len(nodeKeys))
+
+	for _, nodeKey := range nodeKeys {
+		node, err := h.nodeRegistry.Get(nodeKey)
+		if err != nil {
+			h.logger.Warn("Failed to get node from registry", zap.String("key", nodeKey), zap.Error(err))
+			continue
+		}
+
+		metadata := node.Metadata()
+
+		// Convert to API response format (backward compatible)
+		nodeInfo := map[string]interface{}{
+			"name":          nodeKey, // name@version format
+			"version":       node.Version(),
+			"category":      metadata.Category,
+			"description":   metadata.Description,
+			"input_schema":  metadata.InputSchema,
+			"output_schema": metadata.OutputSchema,
+		}
+		result = append(result, nodeInfo)
 	}
+
+	return result
 }
 
 // filterNodeList filters nodes by category and search term

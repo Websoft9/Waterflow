@@ -29,7 +29,7 @@ func TestRemoteValidator_Validate_Success(t *testing.T) {
 			},
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -49,7 +49,7 @@ jobs:
           repository: https://github.com/test/repo
 `
 	tmpFile := createTempFile(t, content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -78,7 +78,7 @@ func TestRemoteValidator_Validate_ServerError(t *testing.T) {
 			},
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -86,7 +86,7 @@ func TestRemoteValidator_Validate_ServerError(t *testing.T) {
 	v := NewRemoteValidator(server.Client(), server.URL, logger)
 
 	tmpFile := createTempFile(t, "name: Test")
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -105,7 +105,7 @@ func TestRemoteValidator_Validate_NetworkError(t *testing.T) {
 	v := NewRemoteValidator(http.DefaultClient, "http://localhost:99999", logger)
 
 	tmpFile := createTempFile(t, "name: Test")
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -196,7 +196,7 @@ func TestRemoteValidator_ParseServerErrors(t *testing.T) {
 
 func createTempFile(t *testing.T, content string) string {
 	tmpFile := filepath.Join(t.TempDir(), "test.yaml")
-	err := os.WriteFile(tmpFile, []byte(content), 0644)
+	err := os.WriteFile(tmpFile, []byte(content), 0600) //nolint:gosec // Test file
 	require.NoError(t, err)
 	return tmpFile
 }

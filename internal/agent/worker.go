@@ -117,6 +117,8 @@ func (w *Worker) Start() error {
 
 		// Register workflows (Workflow executor from Server)
 		workerInstance.RegisterWorkflow(temporal.RunWorkflowExecutor)
+		// Register job instance workflow for matrix execution
+		workerInstance.RegisterWorkflow(temporal.ExecuteJobInstance)
 
 		// Register activities (Step executor)
 		activities := temporal.NewActivities(w.logger, w.nodeRegistry)

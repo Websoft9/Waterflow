@@ -40,10 +40,10 @@ jobs:
 `
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err, "Should be able to submit workflow")
-		assert.NotEmpty(t, resp.WorkflowID, "Should receive workflow ID")
+		assert.NotEmpty(t, resp.GetID(), "Should receive workflow ID")
 
 		// If workflow completes successfully, agent is connected
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err, "Workflow should complete")
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
 			"Agent should execute workflow successfully, proving it's connected")
@@ -79,7 +79,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
@@ -108,7 +108,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
@@ -136,7 +136,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
@@ -173,7 +173,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err)
 		assert.Equal(t, "completed", strings.ToLower(status.Status))
 
@@ -181,7 +181,7 @@ jobs:
 		time.Sleep(2 * time.Second)
 
 		// Query logs
-		logs, err := getWorkflowLogs(ctx, serverURL, resp.WorkflowID)
+		logs, err := getWorkflowLogs(ctx, serverURL, resp.GetID())
 		require.NoError(t, err)
 
 		// Logs should contain the output
@@ -219,7 +219,7 @@ jobs:
 `
 			resp, err := submitWorkflow(ctx, serverURL, yaml)
 			require.NoError(t, err)
-			workflowIDs[i] = resp.WorkflowID
+			workflowIDs[i] = resp.GetID()
 		}
 
 		// Wait for all to complete

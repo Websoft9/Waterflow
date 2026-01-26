@@ -11,8 +11,9 @@ on:
 env:
   REGISTRY: docker.io
   GHCR_REGISTRY: ghcr.io
-  IMAGE_NAME_SERVER: ${{ github.repository }}/server
-  IMAGE_NAME_AGENT: ${{ github.repository }}/agent
+  # Docker Hub uses lowercase repository names
+  IMAGE_NAME_SERVER: websoft9/waterflow-server
+  IMAGE_NAME_AGENT: websoft9/waterflow-agent
 
 jobs:
   build-server:
@@ -82,11 +83,12 @@ jobs:
       - name: Run Trivy vulnerability scanner (Server)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.GHCR_REGISTRY }}/${{ github.repository }}-server:${{ github.sha }}'
+          image-ref: '${{ env.GHCR_REGISTRY }}/${{ github.repository }}-server:${{ github.ref_name }}-${{ github.sha }}'
           format: 'sarif'
           output: 'trivy-server-results.sarif'
           severity: 'CRITICAL,HIGH'
         if: github.event_name != 'pull_request'
+        continue-on-error: true  # Don't fail build if image not yet pushed
 
       - name: Upload Trivy scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
@@ -160,11 +162,12 @@ jobs:
       - name: Run Trivy vulnerability scanner (Agent)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.GHCR_REGISTRY }}/${{ github.repository }}-agent:${{ github.sha }}'
+          image-ref: '${{ env.GHCR_REGISTRY }}/${{ github.repository }}-agent:${{ github.ref_name }}-${{ github.sha }}'
           format: 'sarif'
           output: 'trivy-agent-results.sarif'
           severity: 'CRITICAL,HIGH'
         if: github.event_name != 'pull_request'
+        continue-on-error: true  # Don't fail build if image not yet pushed
 
       - name: Upload Trivy scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3

@@ -37,6 +37,28 @@ func TestConcurrentWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify server is reachable before running stress test
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	healthCheck := []byte(`name: health-check
+jobs:
+  test:
+    runs-on: linux-amd64
+    steps:
+      - name: Health check
+        uses: run@v1
+        with:
+          command: echo "ok"
+`)
+
+	_, err = client.SubmitWorkflow(ctx, &sdk.SubmitWorkflowRequest{
+		YAML: string(healthCheck),
+	})
+	if err != nil {
+		t.Skipf("Skipping stress test: server not ready (health check failed: %v). Ensure Temporal Server is running and accessible.", err)
+	}
+
 	concurrency := 1000
 	if c := os.Getenv("CONCURRENT_WORKFLOWS"); c != "" {
 		_, _ = fmt.Sscanf(c, "%d", &concurrency)
@@ -84,7 +106,7 @@ jobs:
 			mu.Lock()
 			if err != nil {
 				failed++
-				if failed <= 10 { // Log first 10 failures
+				if failed <= 10 { // Log first 10 failures with detailed error
 					t.Logf("Workflow %d failed: %v", id, err)
 				}
 			} else {

@@ -146,7 +146,7 @@ func TestReadyEndpoint_WithDatabase(t *testing.T) {
 		},
 	}
 
-	router := NewRouterWithDB(logger, nil, nil, db, cfg, "v1.0.0", "abc123", "2025-12-19", nil)
+	router := NewRouterWithDB(logger, nil, nil, db, cfg, "v1.0.0", "abc123", "2025-12-19", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
@@ -170,7 +170,7 @@ func TestReadyEndpoint_WithClosedDatabase(t *testing.T) {
 		t.Fatalf("Failed to close database: %v", err)
 	}
 
-	router := NewRouterWithDB(logger, nil, nil, db, nil, "v1.0.0", "abc123", "2025-12-19", nil)
+	router := NewRouterWithDB(logger, nil, nil, db, nil, "v1.0.0", "abc123", "2025-12-19", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
@@ -205,7 +205,7 @@ func TestReadyEndpoint_ConfigurableTimeouts(t *testing.T) {
 		},
 	}
 
-	router := NewRouterWithDB(logger, nil, nil, db, cfg, "v1.0.0", "abc123", "2025-12-19", nil)
+	router := NewRouterWithDB(logger, nil, nil, db, cfg, "v1.0.0", "abc123", "2025-12-19", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()

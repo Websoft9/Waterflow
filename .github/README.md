@@ -249,6 +249,6 @@ git push origin v1.2.3
 
 ## 相关文档
 
-- [开发指南](../../docs/development.md)
-- [部署文档](../../docs/deployment.md)
-- [故障排查](../../docs/troubleshooting.md)
+- [开发指南](/docs/development.md)
+- [部署文档](/docs/deployment.md)
+- [故障排查](/docs/troubleshooting.md)

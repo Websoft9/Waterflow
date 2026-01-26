@@ -1,10 +1,11 @@
+//go:build integration
+
 package integration
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
@@ -142,12 +143,4 @@ func TestHealthCheckFailureScenarios(t *testing.T) {
 	// 3. Restart Temporal -> /ready returns 200
 }
 
-// getServerURL returns the Waterflow server URL for testing
-func getServerURL() string {
-	// Default to localhost:8080, can be overridden by env var
-	url := os.Getenv("WATERFLOW_TEST_URL")
-	if url == "" {
-		url = "http://localhost:8080"
-	}
-	return url
-}
+// Note: getServerURL is defined in common_test.go

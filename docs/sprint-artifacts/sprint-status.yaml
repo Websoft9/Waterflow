@@ -155,6 +155,6 @@ development_status:
   11-1-unit-testing-framework: in-progress
   11-2-integration-testing: done  # ✅代码审查完成(2026-01-23),12个问题已修复(4 HIGH+5 MEDIUM+3 LOW):H1重复定义删除,H2 API路径统一,H4 Agent测试修复,M1-M5环境变量/CI配置修复,10个Task全部完成
   11-3-acceptance-testing-scenarios: done  # ✅代码审查完成(2026-01-23),4个问题已修复(1 CRITICAL+2 MEDIUM+1 LOW):mock-app main.go重写,report.go百分比计算,helpers.go API路径,README示例,AC1-AC5 100%达成,编译通过
-  11-4-github-actions-cicd: code-complete  # ✅完成:CI增强(lint/security/test/build/integration/acceptance并行),Docker Trivy扫描,Release 15平台+checksum,分支保护文档,README徽章,待代码审查
-  11-5-release-and-distribution: code-complete  # ✅完成:CHANGELOG.md/install.sh安装脚本/installation.md/RELEASING.md发布指南/README安装部分,待代码审查
+  11-4-github-actions-cicd: done  # ✅代码审查完成(2026-01-23),6个问题已修复(1 CRITICAL+3 MEDIUM+2 LOW):Task标记更新,Trivy镜像标签修复,Temporal健康检查修复,Release Notes GHCR路径修复,README相对路径修复,security job依赖修复,AC1-AC6 100%达成,完成日期2026-01-23
+  11-5-release-and-distribution: done  # ✅代码审查完成(2026-01-23),5个问题已修复(1 CRITICAL+2 MEDIUM+2 LOW):Task标记更新,install.sh Windows arm64警告,Docker镜像名称小写化,AC1-AC6达成(MVP范围),完成日期2026-01-23
   epic-11-retrospective: optional

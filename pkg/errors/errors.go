@@ -180,7 +180,7 @@ func WrapError(err error, errType, message string) *BaseError {
 		}
 		// Collect stack trace if in debug mode
 		if shouldCollectStackTrace() {
-			wrapped.WithStackTrace()
+			_ = wrapped.WithStackTrace()
 		}
 		return wrapped
 	}
@@ -198,7 +198,7 @@ func WrapError(err error, errType, message string) *BaseError {
 
 	// Collect stack trace if in debug mode
 	if shouldCollectStackTrace() {
-		wrapped.WithStackTrace()
+		_ = wrapped.WithStackTrace()
 	}
 
 	return wrapped

@@ -113,7 +113,7 @@ func executeMatrixInstancesParallel(ctx workflow.Context, wf *dsl.Workflow, job 
 			TaskQueue: job.RunsOn,
 		})
 		logger.Info("Starting matrix instance", "job", job.Name, "instance", i, "matrix", instance.Matrix)
-		futures[i] = workflow.ExecuteChildWorkflow(childCtx, executeJobInstance, wf, job, instance)
+		futures[i] = workflow.ExecuteChildWorkflow(childCtx, ExecuteJobInstance, wf, job, instance)
 	}
 
 	// Wait for all instances
@@ -159,7 +159,7 @@ func executeMatrixInstancesWithLimit(ctx workflow.Context, wf *dsl.Workflow, job
 			})
 			logger.Info("Starting matrix instance", "job", job.Name, "instance", idx, "matrix", instance.Matrix)
 
-			future := workflow.ExecuteChildWorkflow(childCtx, executeJobInstance, wf, job, instance)
+			future := workflow.ExecuteChildWorkflow(childCtx, ExecuteJobInstance, wf, job, instance)
 
 			// Add future to selector for deterministic waiting
 			selector.AddFuture(future, func(f workflow.Future) {
@@ -205,8 +205,9 @@ func getFailFast(job *dsl.Job) bool {
 	return *job.Strategy.FailFast
 }
 
-// executeJobInstance executes a single job instance (matrix or regular job).
-func executeJobInstance(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instance *dsl.MatrixInstance) error {
+// ExecuteJobInstance executes a single job instance (matrix or regular job).
+// This function is exported for Temporal worker registration.
+func ExecuteJobInstance(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instance *dsl.MatrixInstance) error {
 	logger := workflow.GetLogger(ctx)
 
 	// Defensive check: validate runs-on is not empty

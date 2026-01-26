@@ -102,7 +102,7 @@ func RequireNetwork(t *testing.T, hostPort string) {
 	if err != nil {
 		t.Skipf("Network endpoint %s not reachable: %v", hostPort, err)
 	}
-	conn.Close()
+	_ = conn.Close()
 }
 
 // RequireEnv skips the test if the specified environment variable is not set.

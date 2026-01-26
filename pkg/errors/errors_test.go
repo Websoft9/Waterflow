@@ -91,7 +91,7 @@ func TestBaseError_WithContext(t *testing.T) {
 	}
 
 	// Add context (chainable)
-	err.WithContext("workflow_id", "wf-123").
+	_ = err.WithContext("workflow_id", "wf-123").
 		WithContext("job_id", "job-456").
 		WithContext("step_name", "deploy")
 
@@ -108,7 +108,7 @@ func TestBaseError_WithCause(t *testing.T) {
 		Message: "Wrapped error",
 	}
 
-	err.WithCause(originalErr)
+	_ = err.WithCause(originalErr)
 
 	assert.Equal(t, originalErr, err.Cause)
 	assert.True(t, errors.Is(err, originalErr))
@@ -162,7 +162,7 @@ func TestBaseError_WithStackTrace(t *testing.T) {
 		Message: "Test error with stack trace",
 	}
 
-	err.WithStackTrace()
+	_ = err.WithStackTrace()
 
 	assert.NotEmpty(t, err.StackTrace)
 	// Stack trace should contain test runner or runtime frames
@@ -175,7 +175,7 @@ func TestBaseError_StackTrace_InJSON(t *testing.T) {
 		Type:    "test_error",
 		Message: "Test error",
 	}
-	err.WithStackTrace()
+	_ = err.WithStackTrace()
 
 	data, jsonErr := err.ToJSON()
 	require.NoError(t, jsonErr)
@@ -187,19 +187,19 @@ func TestBaseError_StackTrace_InJSON(t *testing.T) {
 // TestShouldCollectStackTrace tests debug mode detection
 func TestShouldCollectStackTrace(t *testing.T) {
 	// Test DEBUG=true
-	os.Setenv("DEBUG", "true")
+	_ = os.Setenv("DEBUG", "true")
 	assert.True(t, shouldCollectStackTrace())
 
 	// Test DEBUG=1
-	os.Setenv("DEBUG", "1")
+	_ = os.Setenv("DEBUG", "1")
 	assert.True(t, shouldCollectStackTrace())
 
 	// Test DEBUG=false
-	os.Setenv("DEBUG", "false")
+	_ = os.Setenv("DEBUG", "false")
 	assert.False(t, shouldCollectStackTrace())
 
 	// Test DEBUG not set
-	os.Unsetenv("DEBUG")
+	_ = os.Unsetenv("DEBUG")
 	assert.False(t, shouldCollectStackTrace())
 }
 

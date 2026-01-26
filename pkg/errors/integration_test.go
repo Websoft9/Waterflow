@@ -52,7 +52,7 @@ func TestRFC7807Integration(t *testing.T) {
 
 				w.Header().Set("Content-Type", "application/problem+json")
 				w.WriteHeader(rfc7807.Status)
-				json.NewEncoder(w).Encode(rfc7807)
+				_ = json.NewEncoder(w).Encode(rfc7807)
 			})
 
 			// Create request

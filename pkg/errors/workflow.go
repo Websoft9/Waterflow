@@ -63,7 +63,7 @@ func NewWorkflowExecutionError(workflowID, jobID, stepName string, cause error) 
 
 	// Collect stack trace if in debug mode
 	if shouldCollectStackTrace() {
-		err.WithStackTrace()
+		_ = err.WithStackTrace()
 	}
 
 	return err

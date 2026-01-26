@@ -69,6 +69,8 @@ func (c *ErrorClassifier) IsRetryable(errType string) bool {
 // 1. WaterflowError interface (most accurate)
 // 2. Type assertion for known error types
 // 3. Heuristic pattern matching on error message (fallback)
+//
+//nolint:gocyclo // Complexity inherent to comprehensive error classification
 func (c *ErrorClassifier) ClassifyError(err error) string {
 	if err == nil {
 		return "unknown_error"

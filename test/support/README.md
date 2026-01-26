@@ -214,6 +214,149 @@ mockNode.WithExecuteFunc(func(ctx context.Context, params map[string]interface{}
 mockNode.WithValidateError(errors.New("invalid params"))
 ```
 
+### Temporal Client Mock
+
+模拟 Temporal Client 进行单元测试（无需真实 Temporal Server）：
+
+```go
+import "github.com/Websoft9/waterflow/test/support/mocks"
+
+func TestTemporalWorkflow(t *testing.T) {
+    // 创建 Mock Client
+    mockClient := mocks.NewTemporalClient()
+    
+    // 配置健康状态
+    mockClient.SetHealthy(true)
+    
+    // 配置 Workflow 执行结果
+    mockRun := mocks.NewMockWorkflowRun("wf-123", "run-456")
+    mockRun.SetResult("workflow completed")
+    mockClient.SetWorkflowRun(mockRun)
+    
+    // 执行 Workflow
+    ctx := context.Background()
+    options := client.StartWorkflowOptions{
+        ID:        "wf-123",
+        TaskQueue: "my-queue",
+    }
+    run, err := mockClient.ExecuteWorkflow(ctx, options, "MyWorkflow", "arg1")
+    require.NoError(t, err)
+    
+    // 获取结果
+    var result string
+    err = run.Get(ctx, &result)
+    require.NoError(t, err)
+    assert.Equal(t, "workflow completed", result)
+    
+    // 验证执行记录
+    executed := mockClient.GetExecutedWorkflows()
+    assert.Len(t, executed, 1)
+    assert.Equal(t, "wf-123", executed[0].WorkflowID)
+}
+```
+
+### Temporal Worker Mock
+
+模拟 Temporal Worker 进行注册和生命周期测试：
+
+```go
+func TestTemporalWorker(t *testing.T) {
+    // 创建 Mock Worker
+    worker := mocks.NewTemporalWorker("my-queue")
+    
+    // 注册 Workflow 和 Activity
+    worker.RegisterWorkflow(MyWorkflowFunc)
+    worker.RegisterActivity(MyActivityFunc)
+    
+    // 验证注册
+    workflows := worker.GetRegisteredWorkflows()
+    assert.Len(t, workflows, 1)
+    
+    activities := worker.GetRegisteredActivities()
+    assert.Len(t, activities, 1)
+    
+    // 测试生命周期
+    err := worker.Start()
+    require.NoError(t, err)
+    assert.True(t, worker.IsRunning())
+    
+    worker.Stop()
+    assert.False(t, worker.IsRunning())
+}
+```
+
+### Temporal Test Environment
+
+完整的 Temporal 测试环境，支持 Activity 模拟：
+
+```go
+func TestCompleteWorkflow(t *testing.T) {
+    // 创建测试环境
+    env := mocks.NewTemporalTestEnvironment("test-queue")
+    
+    // Mock Activity 返回值
+    env.MockActivity("ProcessOrder", map[string]interface{}{
+        "orderId": "order-123",
+        "status":  "processed",
+    }, nil)
+    
+    // Mock 带延迟的 Activity
+    env.MockActivityWithDelay("SendEmail", "sent", nil, 100*time.Millisecond)
+    
+    // 执行测试
+    run, err := env.ExecuteWorkflow(ctx, "test-wf", MyWorkflow, input)
+    require.NoError(t, err)
+    
+    // 重置环境
+    env.Reset()
+}
+```
+
+### 测试 Health Check
+
+```go
+func TestHealthCheck(t *testing.T) {
+    mockClient := mocks.NewTemporalClient()
+    ctx := context.Background()
+    
+    // 健康状态
+    mockClient.SetHealthy(true)
+    _, err := mockClient.CheckHealth(ctx, nil)
+    require.NoError(t, err)
+    
+    // 不健康状态
+    mockClient.SetHealthy(false)
+    _, err = mockClient.CheckHealth(ctx, nil)
+    require.Error(t, err)
+}
+```
+
+### 使用 Testify Mock 期望
+
+对于需要精确验证调用参数的场景：
+
+```go
+func TestWithExpectations(t *testing.T) {
+    mockClient := mocks.NewTemporalClient()
+    
+    // 设置期望
+    expectedRun := mocks.NewMockWorkflowRun("wf-1", "run-1")
+    mockClient.On("ExecuteWorkflow", mock.Anything,
+        client.StartWorkflowOptions{ID: "wf-1", TaskQueue: "queue"},
+        "SpecificWorkflow",
+        []interface{}{"arg1"},
+    ).Return(expectedRun, nil)
+    
+    // 执行并验证
+    run, err := mockClient.ExecuteWorkflow(ctx, 
+        client.StartWorkflowOptions{ID: "wf-1", TaskQueue: "queue"},
+        "SpecificWorkflow", "arg1")
+    
+    require.NoError(t, err)
+    mockClient.AssertExpectations(t)
+}
+```
+
 ## 4. API 测试辅助 (apitest)
 
 参见 `test/support/apitest/` 目录中的实现。

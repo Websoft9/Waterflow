@@ -30,7 +30,7 @@ func TestIntegration_RetryMechanism(t *testing.T) {
 		require.NoError(t, err)
 
 		// Retry workflows need more time
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 180*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 180*time.Second)
 		require.NoError(t, err)
 
 		// The retry.yaml may complete or fail depending on configuration
@@ -67,7 +67,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 120*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 120*time.Second)
 		require.NoError(t, err)
 
 		// Workflow should eventually succeed after retries
@@ -103,7 +103,7 @@ jobs:
 		require.NoError(t, err)
 
 		// Wait for timeout + buffer
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 120*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 120*time.Second)
 		require.NoError(t, err)
 
 		// Should fail due to timeout
@@ -128,7 +128,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 90*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 90*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "failed", strings.ToLower(status.Status),
@@ -167,7 +167,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "failed", strings.ToLower(status.Status),
@@ -199,7 +199,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "failed", strings.ToLower(status.Status),
@@ -241,7 +241,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err)
 
 		// With continue-on-error, workflow should complete

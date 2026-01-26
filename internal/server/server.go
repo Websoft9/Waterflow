@@ -11,6 +11,8 @@ import (
 	"github.com/Websoft9/waterflow/internal/api"
 	"github.com/Websoft9/waterflow/pkg/audit"
 	"github.com/Websoft9/waterflow/pkg/config"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
+	"github.com/Websoft9/waterflow/pkg/dsl/node/builtin"
 	"github.com/Websoft9/waterflow/pkg/events"
 	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
@@ -79,6 +81,8 @@ type Server struct {
 	eventDispatcher *events.EventDispatcher
 	// auditLogger records audit logs (Story 9-3)
 	auditLogger audit.AuditLogger
+	// nodeRegistry manages registered workflow nodes (Tech Debt: Node Handler Registry)
+	nodeRegistry *node.Registry
 }
 
 // New creates a new Server instance.
@@ -120,6 +124,31 @@ func New(cfg *config.Config, logger *zap.Logger, version, commit, buildTime stri
 		Timeout: 10 * time.Second,
 	})
 
+	// Initialize NodeRegistry and register builtin nodes
+	nodeRegistry := node.NewRegistry()
+	builtinNodes := []node.Node{
+		&builtin.CheckoutNode{},
+		&builtin.RunNode{},
+	}
+
+	for _, n := range builtinNodes {
+		if err := nodeRegistry.Register(n); err != nil {
+			logger.Fatal("Failed to register builtin node",
+				zap.String("node", fmt.Sprintf("%s@%s", n.Name(), n.Version())),
+				zap.Error(err),
+			)
+			return nil
+		}
+		logger.Info("Registered builtin node",
+			zap.String("node", fmt.Sprintf("%s@%s", n.Name(), n.Version())),
+		)
+	}
+
+	logger.Info("NodeRegistry initialized",
+		zap.Int("builtin_count", len(builtinNodes)),
+		zap.Int("total_nodes", len(nodeRegistry.List())),
+	)
+
 	return &Server{
 		config:          cfg,
 		logger:          logger,
@@ -129,6 +158,7 @@ func New(cfg *config.Config, logger *zap.Logger, version, commit, buildTime stri
 		temporalClient:  nil, // Will be initialized asynchronously in Start()
 		eventDispatcher: eventDispatcher,
 		auditLogger:     nil, // Will be initialized in Start()
+		nodeRegistry:    nodeRegistry,
 	}
 }
 
@@ -168,40 +198,37 @@ func (s *Server) Start() error {
 		s.logger.Info("Audit logging disabled")
 	}
 
-	// Initialize Temporal client asynchronously to avoid blocking HTTP server startup
-	// This allows health checks to pass while Temporal connection is being established
+	// Initialize Temporal client synchronously before creating router
+	// This ensures workflow API endpoints are registered when Temporal is available
 	if s.config.Temporal.Host != "" {
-		go func() {
-			s.logger.Info("Initializing Temporal client asynchronously",
+		s.logger.Info("Initializing Temporal client",
+			zap.String("temporal_host", s.config.Temporal.Host),
+		)
+		temporalClient, err := temporal.NewClient(&s.config.Temporal, s.logger)
+		if err != nil {
+			s.logger.Warn("Failed to connect to Temporal, workflow API will be disabled",
+				zap.Error(err),
 				zap.String("temporal_host", s.config.Temporal.Host),
 			)
-			temporalClient, err := temporal.NewClient(&s.config.Temporal, s.logger)
-			if err != nil {
-				s.logger.Warn("Failed to connect to Temporal, workflow API will be disabled",
-					zap.Error(err),
-					zap.String("temporal_host", s.config.Temporal.Host),
-				)
-			} else {
-				s.temporalClient = temporalClient
-				s.logger.Info("Temporal client connected successfully",
-					zap.String("temporal_host", s.config.Temporal.Host),
-					zap.String("namespace", s.config.Temporal.Namespace),
-				)
-
-				// Start AgentMonitor after Temporal is available
-				s.agentMonitor = NewAgentMonitor(s.temporalClient, s.logger, 30*time.Second)
-				s.agentMonitor.Start()
-			}
-		}()
+		} else {
+			s.temporalClient = temporalClient
+			s.logger.Info("Temporal client connected successfully",
+				zap.String("temporal_host", s.config.Temporal.Host),
+				zap.String("namespace", s.config.Temporal.Namespace),
+			)
+		}
 	} else {
 		s.logger.Info("Temporal not configured, workflow API will be disabled")
 	}
 
-	// Start AgentMonitor if Temporal is available
-	// Note: Removed from here as it's now in the async goroutine above
-
 	// Create router with all API endpoints (Story 8-4 AC6: pass config for health check timeouts)
-	router := api.NewRouterWithDB(s.logger, s.temporalClient, s.eventDispatcher, nil, s.config, s.version, s.commit, s.buildTime, s.auditLogger)
+	router := api.NewRouterWithDB(s.logger, s.temporalClient, s.eventDispatcher, nil, s.config, s.version, s.commit, s.buildTime, s.auditLogger, s.nodeRegistry)
+
+	// Start AgentMonitor after router is created (if Temporal is available)
+	if s.temporalClient != nil {
+		s.agentMonitor = NewAgentMonitor(s.temporalClient, s.logger, 30*time.Second)
+		s.agentMonitor.Start()
+	}
 
 	// Apply middleware chain: RequestID -> Logger -> Recovery -> Metrics -> Audit -> CORS -> Version -> Router
 	// Order follows AC7: RequestID first for tracing, Logger for request logging,

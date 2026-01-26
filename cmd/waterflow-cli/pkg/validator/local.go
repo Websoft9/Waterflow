@@ -28,7 +28,7 @@ func (v *LocalValidator) Validate(filepath string) (*ValidationResult, error) {
 	start := time.Now()
 
 	// Read file
-	content, err := os.ReadFile(filepath)
+	content, err := os.ReadFile(filepath) //nolint:gosec // File path from user input
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("file not found: %s", filepath)

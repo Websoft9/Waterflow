@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -330,5 +331,237 @@ func TestPluginManager_GetNode_Success(t *testing.T) {
 
 	if retrievedNode.Name() != "test/mock" {
 		t.Errorf("Expected node name 'test/mock', got '%s'", retrievedNode.Name())
+	}
+}
+func TestPluginManager_LoadPlugin_RegisterFunctionWrongSignature(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "waterflow-plugins-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	pluginPath := filepath.Join(tmpDir, "wrongsig.so")
+	if err := os.WriteFile(pluginPath, []byte("dummy"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mock loader that returns wrong type for Register function
+	mockLoader := &mockPluginLoader{
+		openFunc: func(path string) (*plugin.Plugin, error) {
+			return &plugin.Plugin{}, nil
+		},
+		lookupFunc: func(p *plugin.Plugin, symbol string) (plugin.Symbol, error) {
+			// Return a function with wrong signature
+			wrongFunc := func(x int) string { return "wrong" }
+			return plugin.Symbol(wrongFunc), nil
+		},
+	}
+
+	logger, _ := zap.NewDevelopment()
+	registry := node.NewRegistry()
+	pm := NewPluginManagerWithLoader(tmpDir, registry, mockLoader, logger)
+
+	err = pm.LoadPlugins()
+	if err != nil {
+		t.Errorf("LoadPlugins should not fail on wrong signature, got: %v", err)
+	}
+
+	// Registry should be empty
+	if len(registry.List()) != 0 {
+		t.Errorf("Expected 0 registered nodes, got %d", len(registry.List()))
+	}
+}
+
+func TestPluginManager_LoadPlugin_InvalidNode(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "waterflow-plugins-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	pluginPath := filepath.Join(tmpDir, "invalid.so")
+	if err := os.WriteFile(pluginPath, []byte("dummy"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mock loader returns node with empty name (invalid)
+	invalidNode := &mockNode{name: "", version: "v1"}
+	mockLoader := &mockPluginLoader{
+		openFunc: func(path string) (*plugin.Plugin, error) {
+			return &plugin.Plugin{}, nil
+		},
+		lookupFunc: func(p *plugin.Plugin, symbol string) (plugin.Symbol, error) {
+			registerFunc := func() node.Node {
+				return invalidNode
+			}
+			return plugin.Symbol(registerFunc), nil
+		},
+	}
+
+	logger, _ := zap.NewDevelopment()
+	registry := node.NewRegistry()
+	pm := NewPluginManagerWithLoader(tmpDir, registry, mockLoader, logger)
+
+	err = pm.LoadPlugins()
+	if err != nil {
+		t.Errorf("LoadPlugins should not fail on invalid node, got: %v", err)
+	}
+
+	// Registry should be empty due to validation failure
+	if len(registry.List()) != 0 {
+		t.Errorf("Expected 0 registered nodes, got %d", len(registry.List()))
+	}
+}
+
+func TestPluginManager_LoadPlugin_HotReload(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "waterflow-plugins-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	pluginPath := filepath.Join(tmpDir, "hotreload.so")
+	if err := os.WriteFile(pluginPath, []byte("dummy"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use same version to trigger hot-reload update path
+	mockLoader := &mockPluginLoader{
+		openFunc: func(path string) (*plugin.Plugin, error) {
+			return &plugin.Plugin{}, nil
+		},
+		lookupFunc: func(p *plugin.Plugin, symbol string) (plugin.Symbol, error) {
+			registerFunc := func() node.Node {
+				return &mockNode{name: "test/hotreload", version: "v1"}
+			}
+			return plugin.Symbol(registerFunc), nil
+		},
+	}
+
+	logger, _ := zap.NewDevelopment()
+	registry := node.NewRegistry()
+	pm := NewPluginManagerWithLoader(tmpDir, registry, mockLoader, logger)
+
+	// Initial load
+	err = pm.LoadPlugins()
+	if err != nil {
+		t.Fatalf("LoadPlugins failed: %v", err)
+	}
+
+	if len(registry.List()) != 1 {
+		t.Errorf("Expected 1 registered node, got %d", len(registry.List()))
+	}
+
+	// Simulate hot-reload by loading the same plugin again with same name+version
+	// This should trigger the Update path (node already registered)
+	err = pm.LoadPlugin(pluginPath)
+	if err != nil {
+		t.Errorf("Hot-reload failed: %v", err)
+	}
+
+	// Should still have 1 node (updated in place)
+	if len(registry.List()) != 1 {
+		t.Errorf("Expected 1 registered node after hot-reload, got %d", len(registry.List()))
+	}
+}
+
+func TestPluginManager_LoadPlugin_FileNotExists(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	registry := node.NewRegistry()
+	pm := NewPluginManager("/tmp", registry, logger)
+
+	err := pm.LoadPlugin("/nonexistent/path/plugin.so")
+	if err == nil {
+		t.Error("LoadPlugin should fail for nonexistent file")
+	}
+
+	var notFound *node.PluginNotFoundError
+	if !errors.As(err, &notFound) {
+		t.Errorf("Expected PluginNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestPluginManager_LoadPlugin_EmptyFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "waterflow-plugins-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	emptyPath := filepath.Join(tmpDir, "empty.so")
+	if err := os.WriteFile(emptyPath, []byte(""), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	logger, _ := zap.NewDevelopment()
+	registry := node.NewRegistry()
+	pm := NewPluginManager(tmpDir, registry, logger)
+
+	err = pm.LoadPlugin(emptyPath)
+	if err == nil {
+		t.Error("LoadPlugin should fail for empty file")
+	}
+
+	var loadErr *node.PluginLoadError
+	if !errors.As(err, &loadErr) {
+		t.Errorf("Expected PluginLoadError, got %T: %v", err, err)
+	}
+}
+
+func TestPluginManager_GetNode_NotFound(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	registry := node.NewRegistry()
+	pm := NewPluginManager("/tmp", registry, logger)
+
+	_, err := pm.GetNode("nonexistent@v1")
+	if err == nil {
+		t.Error("GetNode should fail for nonexistent node")
+	}
+}
+
+func TestPluginManager_MultiplePlugins_Success(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "waterflow-plugins-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create multiple plugin files
+	plugins := []string{"plugin1.so", "plugin2.so", "plugin3.so"}
+	for _, p := range plugins {
+		path := filepath.Join(tmpDir, p)
+		if err := os.WriteFile(path, []byte("dummy"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Counter for unique node names
+	counter := 0
+	mockLoader := &mockPluginLoader{
+		openFunc: func(path string) (*plugin.Plugin, error) {
+			return &plugin.Plugin{}, nil
+		},
+		lookupFunc: func(p *plugin.Plugin, symbol string) (plugin.Symbol, error) {
+			counter++
+			nodeName := fmt.Sprintf("test/plugin%d", counter)
+			registerFunc := func() node.Node {
+				return &mockNode{name: nodeName, version: "v1"}
+			}
+			return plugin.Symbol(registerFunc), nil
+		},
+	}
+
+	logger, _ := zap.NewDevelopment()
+	registry := node.NewRegistry()
+	pm := NewPluginManagerWithLoader(tmpDir, registry, mockLoader, logger)
+
+	err = pm.LoadPlugins()
+	if err != nil {
+		t.Errorf("LoadPlugins failed: %v", err)
+	}
+
+	// Should have 3 registered nodes
+	if len(registry.List()) != 3 {
+		t.Errorf("Expected 3 registered nodes, got %d", len(registry.List()))
 	}
 }

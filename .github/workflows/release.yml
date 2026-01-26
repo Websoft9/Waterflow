@@ -228,8 +228,8 @@ jobs:
           echo "docker pull waterflow/agent:${CURRENT_TAG}" >> release_notes.md
           echo "" >> release_notes.md
           echo "# GitHub Container Registry" >> release_notes.md
-          echo "docker pull ghcr.io/\${{ github.repository }}-server:${CURRENT_TAG}" >> release_notes.md
-          echo "docker pull ghcr.io/\${{ github.repository }}-agent:${CURRENT_TAG}" >> release_notes.md
+          echo "docker pull ghcr.io/${{ github.repository }}-server:${CURRENT_TAG}" >> release_notes.md
+          echo "docker pull ghcr.io/${{ github.repository }}-agent:${CURRENT_TAG}" >> release_notes.md
           echo "\`\`\`" >> release_notes.md
           echo "" >> release_notes.md
           echo "### Verification" >> release_notes.md

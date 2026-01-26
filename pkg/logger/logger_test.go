@@ -234,8 +234,8 @@ func TestSetAndGetLevel(t *testing.T) {
 // TestEnvironmentVariableSensitiveFields 测试环境变量敏感字段
 func TestEnvironmentVariableSensitiveFields(t *testing.T) {
 	// 设置环境变量
-	os.Setenv("WATERFLOW_LOG_SENSITIVE_FIELDS", "env_secret,env_token")
-	defer os.Unsetenv("WATERFLOW_LOG_SENSITIVE_FIELDS")
+	require.NoError(t, os.Setenv("WATERFLOW_LOG_SENSITIVE_FIELDS", "env_secret,env_token"))
+	defer func() { _ = os.Unsetenv("WATERFLOW_LOG_SENSITIVE_FIELDS") }()
 
 	var buf bytes.Buffer
 

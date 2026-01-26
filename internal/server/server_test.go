@@ -41,9 +41,9 @@ func newTestConfig(port int) *config.Config {
 func waitForServerReady(url string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
+		resp, err := http.Get(url) //nolint:gosec // Test URL
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -55,7 +55,7 @@ func waitForServerReady(url string, timeout time.Duration) error {
 func waitForHTTPSServerReady(url string, timeout time.Duration) error {
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Test client
 		},
 		Timeout: 1 * time.Second,
 	}
@@ -63,7 +63,7 @@ func waitForHTTPSServerReady(url string, timeout time.Duration) error {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -99,19 +99,19 @@ func generateTestCerts(t *testing.T) (certFile, keyFile string) {
 
 	// Write certificate to temp file
 	certPath := filepath.Join(t.TempDir(), "cert.pem")
-	certOut, err := os.Create(certPath)
+	certOut, err := os.Create(certPath) //nolint:gosec // Test file
 	require.NoError(t, err)
 	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	require.NoError(t, err)
-	certOut.Close()
+	_ = certOut.Close()
 
 	// Write private key to temp file
 	keyPath := filepath.Join(t.TempDir(), "key.pem")
-	keyOut, err := os.Create(keyPath)
+	keyOut, err := os.Create(keyPath) //nolint:gosec // Test file
 	require.NoError(t, err)
 	err = pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
 	require.NoError(t, err)
-	keyOut.Close()
+	_ = keyOut.Close()
 
 	return certPath, keyPath
 }
@@ -304,14 +304,14 @@ func TestReadyEndpoint(t *testing.T) {
 
 	resp, err := http.Get("http://localhost:18086/ready")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }
 
 // TestVersionEndpoint tests the version endpoint
@@ -332,13 +332,13 @@ func TestVersionEndpoint(t *testing.T) {
 
 	resp, err := http.Get("http://localhost:18087/version")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }
 
 // TestShutdownWithNilComponents tests graceful shutdown when components are nil
@@ -388,11 +388,11 @@ func TestServerWithAuditLogging(t *testing.T) {
 	// Make a request to trigger audit
 	resp, err := http.Get("http://localhost:18089/health")
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }
 
 // TestMultipleEndpoints tests multiple API endpoints
@@ -426,7 +426,7 @@ func TestMultipleEndpoints(t *testing.T) {
 		t.Run(tc.path, func(t *testing.T) {
 			resp, err := http.Get("http://localhost:18090" + tc.path)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tc.wantStatus, resp.StatusCode)
 		})
@@ -434,7 +434,7 @@ func TestMultipleEndpoints(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }
 
 // TestServerStartWithAuditLoggerError tests server start when audit logger fails
@@ -459,7 +459,7 @@ func TestServerStartWithAuditLoggerError(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }
 
 // TestHTTPSServer tests HTTPS server functionality
@@ -494,19 +494,19 @@ func TestHTTPSServer(t *testing.T) {
 	// Create client that skips TLS verification (self-signed cert)
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Test client
 		},
 	}
 
 	resp, err := client.Get("https://localhost:18492/health")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }
 
 // TestHTTPSWithHTTPRedirect tests HTTP to HTTPS redirect
@@ -551,7 +551,7 @@ func TestHTTPSWithHTTPRedirect(t *testing.T) {
 	// Test that HTTP redirects to HTTPS
 	resp, err := client.Get("http://localhost:18193/health")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusMovedPermanently, resp.StatusCode)
 	location := resp.Header.Get("Location")
@@ -560,7 +560,7 @@ func TestHTTPSWithHTTPRedirect(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }
 
 // TestHTTPParallelWithHTTPS tests HTTP running parallel with HTTPS (no redirect)
@@ -598,11 +598,11 @@ func TestHTTPParallelWithHTTPS(t *testing.T) {
 	// Test HTTP serves content directly
 	resp, err := http.Get("http://localhost:18194/health")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	srv.Shutdown(ctx)
+	_ = srv.Shutdown(ctx)
 }

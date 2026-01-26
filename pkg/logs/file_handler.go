@@ -35,18 +35,18 @@ func NewFileLogHandler(config FileConfig) (*FileLogHandler, error) {
 	}
 
 	dir := filepath.Dir(config.Path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil { //nolint:gosec // Log directory permissions
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	file, err := os.OpenFile(config.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(config.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) //nolint:gosec // Log file permissions
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
 	stat, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("failed to stat log file: %w", err)
 	}
 
@@ -78,7 +78,7 @@ func (h *FileLogHandler) Close() error {
 	defer h.mu.Unlock()
 
 	if err := h.flushLocked(); err != nil {
-		h.file.Close()
+		_ = h.file.Close()
 		return err
 	}
 
@@ -123,7 +123,7 @@ func (h *FileLogHandler) rotateLocked() error {
 		return fmt.Errorf("failed to rotate log file: %w", err)
 	}
 
-	file, err := os.OpenFile(h.config.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(h.config.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) //nolint:gosec // Log file permissions
 	if err != nil {
 		return fmt.Errorf("failed to open new log file: %w", err)
 	}

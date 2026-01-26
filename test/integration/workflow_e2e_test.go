@@ -35,12 +35,12 @@ func TestIntegration_WorkflowSubmitAndComplete(t *testing.T) {
 		// Submit workflow
 		resp, err := submitWorkflow(ctx, serverURL, workflowYAML)
 		require.NoError(t, err, "Failed to submit workflow")
-		assert.NotEmpty(t, resp.WorkflowID, "Workflow ID should not be empty")
+		assert.NotEmpty(t, resp.GetID(), "Workflow ID should not be empty")
 
-		t.Logf("Submitted workflow: %s", resp.WorkflowID)
+		t.Logf("Submitted workflow: %s", resp.GetID())
 
 		// Wait for completion
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 		require.NoError(t, err, "Workflow failed to complete")
 		assert.Equal(t, "completed", strings.ToLower(status.Status), "Workflow should complete successfully")
 
@@ -66,12 +66,12 @@ func TestIntegration_WorkflowStatusQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Query workflow status", func(t *testing.T) {
-		status, err := getWorkflowStatus(ctx, serverURL, resp.WorkflowID)
+		status, err := getWorkflowStatus(ctx, serverURL, resp.GetID())
 		require.NoError(t, err)
 
-		assert.Equal(t, resp.WorkflowID, status.WorkflowID)
+		assert.Equal(t, resp.GetID(), status.WorkflowID)
 		assert.NotEmpty(t, status.Status)
-		assert.NotEmpty(t, status.RunID)
+		// Note: RunID is not exposed in current WorkflowStatus struct
 	})
 
 	t.Run("Query non-existent workflow", func(t *testing.T) {
@@ -112,12 +112,12 @@ jobs:
 	time.Sleep(2 * time.Second)
 
 	t.Run("Cancel running workflow", func(t *testing.T) {
-		err := cancelWorkflow(ctx, serverURL, resp.WorkflowID)
+		err := cancelWorkflow(ctx, serverURL, resp.GetID())
 		require.NoError(t, err, "Failed to cancel workflow")
 
 		// Verify workflow is cancelled
 		time.Sleep(2 * time.Second)
-		status, err := getWorkflowStatus(ctx, serverURL, resp.WorkflowID)
+		status, err := getWorkflowStatus(ctx, serverURL, resp.GetID())
 		require.NoError(t, err)
 
 		// Status should be cancelled or terminated
@@ -145,11 +145,11 @@ func TestIntegration_WorkflowLogs(t *testing.T) {
 	resp, err := submitWorkflow(ctx, serverURL, workflowYAML)
 	require.NoError(t, err)
 
-	_, err = waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+	_, err = waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 	require.NoError(t, err)
 
 	t.Run("Get workflow logs", func(t *testing.T) {
-		logs, err := getWorkflowLogs(ctx, serverURL, resp.WorkflowID)
+		logs, err := getWorkflowLogs(ctx, serverURL, resp.GetID())
 		require.NoError(t, err)
 
 		assert.NotEmpty(t, logs, "Logs should not be empty")

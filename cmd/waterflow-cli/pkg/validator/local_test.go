@@ -32,7 +32,7 @@ jobs:
           repository: https://github.com/test/repo
 `
 	tmpFile := createTempYAML(t, content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -63,7 +63,7 @@ jobs:
     runs-on: linux
 `
 	tmpFile := createTempYAML(t, content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -100,7 +100,7 @@ func TestLocalValidator_Validate_EmptyFile(t *testing.T) {
 
 	// Create empty file
 	tmpFile := createTempYAML(t, "")
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -124,9 +124,9 @@ func TestLocalValidator_Validate_FileTooLarge(t *testing.T) {
 	// Create large file (11MB)
 	tmpFile := filepath.Join(t.TempDir(), "large.yaml")
 	largeContent := make([]byte, 11*1024*1024)
-	err = os.WriteFile(tmpFile, largeContent, 0644)
+	err = os.WriteFile(tmpFile, largeContent, 0600) //nolint:gosec // Test file
 	require.NoError(t, err)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -155,7 +155,7 @@ jobs:
     runs-on: linux
 `
 	tmpFile := createTempYAML(t, content)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Validate
 	result, err := v.Validate(tmpFile)
@@ -280,7 +280,7 @@ func TestLocalValidator_ConvertValidationError(t *testing.T) {
 // createTempYAML creates a temporary YAML file for testing
 func createTempYAML(t *testing.T, content string) string {
 	tmpFile := filepath.Join(t.TempDir(), "test.yaml")
-	err := os.WriteFile(tmpFile, []byte(content), 0644)
+	err := os.WriteFile(tmpFile, []byte(content), 0600) //nolint:gosec // Test file
 	require.NoError(t, err)
 	return tmpFile
 }

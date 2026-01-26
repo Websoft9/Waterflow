@@ -10,7 +10,7 @@ import (
 // BenchmarkStructuredLog 基准测试结构化日志 (无脱敏)
 func BenchmarkStructuredLog(b *testing.B) {
 	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -32,7 +32,7 @@ func BenchmarkStructuredLogWithSanitization(b *testing.B) {
 	logger, _ := zapCfg.Build(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
 		return NewSanitizingCore(core, DefaultSensitiveFields)
 	}))
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -51,7 +51,7 @@ func BenchmarkStructuredLogWithSanitization(b *testing.B) {
 func BenchmarkFormattedLog(b *testing.B) {
 	logger, _ := zap.NewProduction()
 	sugar := logger.Sugar()
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -79,7 +79,7 @@ func BenchmarkWithContext(b *testing.B) {
 // BenchmarkCheckedEntry 基准测试 CheckedEntry (避免无效日志构造)
 func BenchmarkCheckedEntry(b *testing.B) {
 	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	b.ResetTimer()
 	b.ReportAllocs()

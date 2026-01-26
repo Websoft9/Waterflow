@@ -35,7 +35,7 @@ func NewNodeExecutionError(nodeType, stepName string, cause error) *NodeExecutio
 
 	// Collect stack trace if in debug mode
 	if shouldCollectStackTrace() {
-		err.WithStackTrace()
+		_ = err.WithStackTrace()
 	}
 
 	return err

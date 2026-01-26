@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
+	"github.com/Websoft9/waterflow/pkg/dsl/node/builtin"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,7 +17,11 @@ import (
 
 func TestNodeHandlers_ListNodes(t *testing.T) {
 	logger := zap.NewNop()
-	h := NewNodeHandlers(logger)
+	registry := node.NewRegistry()
+	// Register some test nodes
+	_ = registry.Register(&builtin.CheckoutNode{})
+	_ = registry.Register(&builtin.RunNode{})
+	h := NewNodeHandlers(logger, registry)
 
 	t.Run("list all nodes", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/nodes", nil)
@@ -56,7 +63,7 @@ func TestNodeHandlers_ListNodes(t *testing.T) {
 	})
 
 	t.Run("filter by search term", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/nodes?search=shell", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/nodes?search=checkout", nil)
 		w := httptest.NewRecorder()
 
 		h.ListNodes(w, req)
@@ -69,22 +76,22 @@ func TestNodeHandlers_ListNodes(t *testing.T) {
 
 		nodes := response["nodes"].([]interface{})
 		assert.Greater(t, len(nodes), 0)
-		// At least one should contain "shell" in name
+		// At least one should contain "checkout" in name
 		found := false
 		for _, n := range nodes {
 			node := n.(map[string]interface{})
 			if name, ok := node["name"].(string); ok {
-				if contains(name, "shell") {
+				if strings.Contains(name, "checkout") {
 					found = true
 					break
 				}
 			}
 		}
-		assert.True(t, found, "Expected at least one node containing 'shell' in name")
+		assert.True(t, found, "Expected at least one node containing 'checkout' in name")
 	})
 
 	t.Run("filter by category and search", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/nodes?category=docker&search=compose", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/nodes?category=exec&search=run", nil)
 		w := httptest.NewRecorder()
 
 		h.ListNodes(w, req)
@@ -98,7 +105,7 @@ func TestNodeHandlers_ListNodes(t *testing.T) {
 		nodes := response["nodes"].([]interface{})
 		for _, n := range nodes {
 			node := n.(map[string]interface{})
-			assert.Equal(t, "docker", node["category"])
+			assert.Equal(t, "exec", node["category"])
 		}
 	})
 
@@ -121,14 +128,18 @@ func TestNodeHandlers_ListNodes(t *testing.T) {
 
 func TestNodeHandlers_GetNode(t *testing.T) {
 	logger := zap.NewNop()
-	h := NewNodeHandlers(logger)
+	registry := node.NewRegistry()
+	// Register test nodes
+	_ = registry.Register(&builtin.CheckoutNode{})
+	_ = registry.Register(&builtin.RunNode{})
+	h := NewNodeHandlers(logger, registry)
 
 	t.Run("get existing node by name", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/nodes/exec/shell", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/nodes/checkout@v1", nil)
 		w := httptest.NewRecorder()
 
 		// Need to set mux vars
-		req = mux.SetURLVars(req, map[string]string{"name": "exec/shell"})
+		req = mux.SetURLVars(req, map[string]string{"name": "checkout@v1"})
 
 		h.GetNode(w, req)
 
@@ -139,7 +150,7 @@ func TestNodeHandlers_GetNode(t *testing.T) {
 		err := json.NewDecoder(w.Body).Decode(&response)
 		require.NoError(t, err)
 
-		assert.Equal(t, "exec/shell", response["name"])
+		assert.Equal(t, "checkout@v1", response["name"])
 		assert.Equal(t, "v1", response["version"])
 		assert.Equal(t, "exec", response["category"])
 		assert.NotNil(t, response["input_schema"])
@@ -147,10 +158,10 @@ func TestNodeHandlers_GetNode(t *testing.T) {
 	})
 
 	t.Run("get existing node with version", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/nodes/exec/shell@v1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/nodes/run@v1", nil)
 		w := httptest.NewRecorder()
 
-		req = mux.SetURLVars(req, map[string]string{"name": "exec/shell@v1"})
+		req = mux.SetURLVars(req, map[string]string{"name": "run@v1"})
 
 		h.GetNode(w, req)
 
@@ -160,7 +171,7 @@ func TestNodeHandlers_GetNode(t *testing.T) {
 		err := json.NewDecoder(w.Body).Decode(&response)
 		require.NoError(t, err)
 
-		assert.Equal(t, "exec/shell", response["name"])
+		assert.Equal(t, "run@v1", response["name"])
 	})
 
 	t.Run("node not found", func(t *testing.T) {
@@ -188,67 +199,4 @@ func TestNodeHandlers_GetNode(t *testing.T) {
 	})
 }
 
-func TestGetKnownNodes(t *testing.T) {
-	nodes := getKnownNodes()
-
-	// Verify we have expected nodes
-	assert.Greater(t, len(nodes), 0)
-
-	// Each node should have required fields
-	for _, node := range nodes {
-		assert.NotEmpty(t, node["name"], "Node should have name")
-		assert.NotEmpty(t, node["version"], "Node should have version")
-		assert.NotEmpty(t, node["category"], "Node should have category")
-		assert.NotEmpty(t, node["description"], "Node should have description")
-		assert.NotNil(t, node["input_schema"], "Node should have input_schema")
-	}
-}
-
-func TestFilterNodeList(t *testing.T) {
-	nodes := getKnownNodes()
-
-	t.Run("no filter", func(t *testing.T) {
-		filtered := filterNodeList(nodes, "", "")
-		assert.Equal(t, len(nodes), len(filtered))
-	})
-
-	t.Run("filter by category", func(t *testing.T) {
-		filtered := filterNodeList(nodes, "exec", "")
-		for _, node := range filtered {
-			assert.Equal(t, "exec", node["category"])
-		}
-	})
-
-	t.Run("filter by search", func(t *testing.T) {
-		filtered := filterNodeList(nodes, "", "http")
-		assert.Greater(t, len(filtered), 0)
-	})
-
-	t.Run("filter by both", func(t *testing.T) {
-		filtered := filterNodeList(nodes, "docker", "exec")
-		for _, node := range filtered {
-			assert.Equal(t, "docker", node["category"])
-		}
-	})
-
-	t.Run("search case insensitive", func(t *testing.T) {
-		filtered1 := filterNodeList(nodes, "", "SHELL")
-		filtered2 := filterNodeList(nodes, "", "shell")
-		assert.Equal(t, len(filtered1), len(filtered2))
-	})
-}
-
-// Helper function
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
+// Removed TestGetKnownNodes and TestFilterNodeList - now covered by TestNodeHandlers_GetKnownNodes_*

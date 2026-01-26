@@ -162,6 +162,13 @@ detect_platform() {
     esac
     
     log_info "Detected platform: ${OS}/${ARCH}"
+    
+    # Warn about unsupported platform combinations
+    if [[ "$OS" == "windows" && "$ARCH" == "arm64" ]]; then
+        log_warn "Windows arm64 binaries are not available. Falling back to amd64."
+        log_warn "Consider using WSL2 for better arm64 support."
+        ARCH="amd64"
+    fi
 }
 
 # Get latest version from GitHub

@@ -160,7 +160,7 @@ func WaitForHTTPReady(t *testing.T, url string, timeout time.Duration) {
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode >= 500 {
 			return fmt.Errorf("server returned %d", resp.StatusCode)
 		}

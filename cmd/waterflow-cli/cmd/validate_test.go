@@ -371,6 +371,8 @@ func TestNewValidateCmd(t *testing.T) {
 }
 
 // TestCaptureOutput helper to capture stdout for testing print functions
+//
+//nolint:unused // Reserved for future print function tests
 func captureOutput(f func()) string {
 	var buf bytes.Buffer
 	// Note: In real tests, we would need to redirect os.Stdout
@@ -384,16 +386,16 @@ func TestCollectValidationFiles(t *testing.T) {
 	// Create temp directory with test files
 	tmpDir, err := os.MkdirTemp("", "validate_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create test YAML files
 	yamlFile1 := filepath.Join(tmpDir, "test1.yaml")
 	yamlFile2 := filepath.Join(tmpDir, "test2.yml")
 	txtFile := filepath.Join(tmpDir, "test.txt")
 
-	require.NoError(t, os.WriteFile(yamlFile1, []byte("name: test1"), 0o644))
-	require.NoError(t, os.WriteFile(yamlFile2, []byte("name: test2"), 0o644))
-	require.NoError(t, os.WriteFile(txtFile, []byte("not yaml"), 0o644))
+	require.NoError(t, os.WriteFile(yamlFile1, []byte("name: test1"), 0o600)) //nolint:gosec // Test file
+	require.NoError(t, os.WriteFile(yamlFile2, []byte("name: test2"), 0o600)) //nolint:gosec // Test file
+	require.NoError(t, os.WriteFile(txtFile, []byte("not yaml"), 0o600))      //nolint:gosec // Test file
 
 	tests := []struct {
 		name      string
@@ -450,16 +452,16 @@ func TestScanDirectory(t *testing.T) {
 	// Create temp directory with nested structure
 	tmpDir, err := os.MkdirTemp("", "scan_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create nested directories
 	subDir := filepath.Join(tmpDir, "subdir")
-	require.NoError(t, os.MkdirAll(subDir, 0o755))
+	require.NoError(t, os.MkdirAll(subDir, 0o750)) //nolint:gosec // Test directory
 
 	// Create test files
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "root.yaml"), []byte("name: root"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(subDir, "nested.yaml"), []byte("name: nested"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "ignored.txt"), []byte("not yaml"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "root.yaml"), []byte("name: root"), 0o600))     //nolint:gosec // Test file
+	require.NoError(t, os.WriteFile(filepath.Join(subDir, "nested.yaml"), []byte("name: nested"), 0o600)) //nolint:gosec // Test file
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "ignored.txt"), []byte("not yaml"), 0o600))     //nolint:gosec // Test file
 
 	files, err := scanDirectory(tmpDir)
 	require.NoError(t, err)

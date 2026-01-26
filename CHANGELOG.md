@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflow templates (single-server, multi-server, distributed-stack)
 
 ### Changed
+- **API:** Node list endpoint now dynamically loads from NodeRegistry instead of hardcoded list
+- **Server:** Initialize NodeRegistry at startup with builtin nodes
 - Enhanced CI workflow with lint, security, test, and build stages
 - Improved Docker build with QEMU multi-platform support
 - Updated README with CI/CD status badges
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Various test coverage improvements
 - Documentation updates for consistency
+- Resolved technical debt: Node Handler now uses NodeRegistry (eliminates hardcoded node list)
 
 ## [0.1.0] - 2026-01-23
 

@@ -245,11 +245,11 @@ jobs:
 	require.NoError(t, err)
 
 	// Wait for completion
-	_, err = waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
+	_, err = waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 60*time.Second)
 	require.NoError(t, err)
 
 	t.Run("Rerun completed workflow", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(ctx, "POST", serverURL+"/v1/workflows/"+resp.WorkflowID+"/rerun", nil)
+		req, err := http.NewRequestWithContext(ctx, "POST", serverURL+"/v1/workflows/"+resp.GetID()+"/rerun", nil)
 		require.NoError(t, err)
 
 		rerunResp, err := http.DefaultClient.Do(req)

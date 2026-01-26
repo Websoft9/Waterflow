@@ -48,7 +48,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 90*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 90*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status))
@@ -61,7 +61,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, workflowYAML)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 90*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 90*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
@@ -86,7 +86,7 @@ func TestIntegration_ConditionalExecution(t *testing.T) {
 		resp, err := submitWorkflow(ctx, serverURL, workflowYAML)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 90*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 90*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
@@ -115,7 +115,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 90*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 90*time.Second)
 		require.NoError(t, err)
 
 		// Workflow should complete (not fail) because continue-on-error is set
@@ -142,7 +142,7 @@ func TestIntegration_MatrixStrategy(t *testing.T) {
 		require.NoError(t, err)
 
 		// Matrix workflows take longer
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 180*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 180*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
@@ -168,7 +168,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 120*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 120*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status))
@@ -192,7 +192,7 @@ func TestIntegration_JobDependencies(t *testing.T) {
 		resp, err := submitWorkflow(ctx, serverURL, workflowYAML)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 120*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 120*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status),
@@ -224,7 +224,7 @@ jobs:
 		resp, err := submitWorkflow(ctx, serverURL, yaml)
 		require.NoError(t, err)
 
-		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 90*time.Second)
+		status, err := waitForWorkflowCompletion(ctx, serverURL, resp.GetID(), 90*time.Second)
 		require.NoError(t, err)
 
 		assert.Equal(t, "completed", strings.ToLower(status.Status))

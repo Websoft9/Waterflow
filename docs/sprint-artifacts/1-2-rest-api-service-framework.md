@@ -1003,7 +1003,10 @@ waterflow/
 
 **关键成果**:
 - ✅ 所有 8 个任务完成 (49 个子任务全部完成)
-- ✅ 测试覆盖率: internal/api 84.3%, pkg/middleware 98.3%
+- ✅ 测试覆盖率: 
+  - pkg/middleware 94.4% (Story 1-2 范围)
+  - internal/api/handlers.go 75-100% (Story 1-2 范围)
+  - internal/api 整体 56.2% (包含后续 Story 的 workflow/node/audit handlers)
 - ✅ 所有测试通过: 32 个测试用例
 - ✅ 代码质量: golangci-lint 零警告
 - ✅ 版本信息正确注入 (从 Story 1.1 的构建变量)
@@ -1081,6 +1084,31 @@ waterflow/
 - 可以开始实现业务 API (Story 1.3+ 的 DSL 解析、工作流管理)
 - 建立了 REST API 开发模式 (中间件、错误处理、测试)
 
+**技术债务和未来改进:**
+
+> **说明:** "技术债务"是指为了快速实现功能而采用的临时方案或简化实现，这些方案虽然当前可用，但未来需要优化。记录技术债务可以帮助团队追踪哪些代码需要改进，避免被遗忘。
+
+1. **Node Handler 硬编码问题** ~~(来源: internal/api/node_handler.go#L123 TODO)~~ - ✅ **已解决 (2026-01-26)**
+   - ~~**当前实现:** 节点列表硬编码在代码中 (checkout, run, sleep 等)~~
+   - ~~**未来改进:** 应从 NodeRegistry 或数据库动态获取节点列表~~
+   - ~~**影响:** 每次添加新节点都需要修改代码并重新部署~~
+   - ~~**优先级:** 中 (Story 4-1 插件管理器实现后再优化)~~
+   - **🎯 重构 Story:** [tech-debt-1-node-handler-registry.md](tech-debt-1-node-handler-registry.md) - ✅ **已完成**
+   - **解决方案:** Server 启动时初始化 NodeRegistry，API Handler 通过依赖注入使用动态节点列表
+   - **技术债务已清除:** 硬编码节点列表已删除，现在使用 NodeRegistry.List() 动态获取
+
+2. **测试覆盖率待补充** (来源: 代码审查发现)
+   - **问题:** internal/api 包整体覆盖率 56.2%，低于目标 80%
+   - **原因:** 后续 Story 添加的 workflow_handler/node_handler/audit 文件测试不足
+   - **影响:** 这些文件的 bug 可能在生产环境才被发现
+   - **优先级:** 高 (应在对应 Story 的代码审查中修复)
+
+3. **认证功能架构决策** (来源: 2026-01-26 架构审查)
+   - **决策:** 不实现独立的认证中间件
+   - **原因:** Waterflow 定位为组件，服务于父应用 (如 Websoft9 平台)
+   - **说明:** 认证和授权由父应用统一管理，避免重复实现
+   - **未来:** 如果需要独立部署，可在新 Story 中实现认证功能
+
 **后续 Story 依赖:**
 - Story 1.3+ 将在此 HTTP 框架上添加业务端点
 - Story 1.9 (工作流管理 API) 将复用中间件和错误处理
@@ -1108,6 +1136,10 @@ waterflow/
 - internal/api/router_test.go (路由集成测试)
 - internal/api/workflow_test.go (工作流 API 测试)
 
+**已移除的文件 (2026-01-26):**
+- pkg/middleware/auth.go (认证中间件 - Story 7-2 引入后移除)
+- pkg/middleware/auth_test.go (原因: Waterflow 作为组件服务，认证由父应用负责)
+
 **实际修改的文件:**
 - internal/server/server.go (集成路由框架和中间件链,添加版本字段)
 - cmd/server/main.go (传递版本信息到 Server)
@@ -1117,6 +1149,37 @@ waterflow/
 ---
 
 **Story 创建时间:** 2025-12-18  
-**Story 状态:** ready-for-dev  
+**Story 状态:** done  
 **预估工作量:** 3-4 天 (1 名开发者)  
+**实际工作量:** 2 天开发 + 2 次代码审查迭代  
 **质量评分:** 9.8/10 ⭐⭐⭐⭐⭐
+
+---
+
+## Change Log
+
+**2025-12-18** - Story 初始实现完成
+- 完成所有 8 个任务和 49 个子任务
+- 实现完整的 HTTP API 框架、中间件链、监控系统
+
+**2025-12-19** - 第一次代码审查修复
+- 版本信息注入修复
+- 中间件链顺序调整
+- Prometheus 指标标签顺序修复
+
+**2025-12-23** - 第二次代码审查修复
+- 工作流指标定义完善
+- Temporal 健康检查实现
+- IP 提取逻辑改进
+
+**2026-01-26** - 第三次代码审查修复 (对抗性审查)
+- **架构决策**: 删除认证中间件 (pkg/middleware/auth.go)
+  - 原因: Waterflow 作为组件服务于父应用,认证由父应用负责
+  - 移除 internal/api/router.go 中的 RequireAuth 引用
+- **测试覆盖率说明完善**:
+  - 明确 Story 1-2 范围覆盖率: middleware 94.4%, handlers 75-100%
+  - 说明整体 api 包 56.2% 包含后续 Story 的未测试代码
+- **技术债务追踪**:
+  - 记录 Node Handler TODO (未来应查询 NodeRegistry)
+  - 标记后续 Story 需补充测试覆盖率
+- **文档一致性**: 更新文件列表,记录已删除的认证中间件

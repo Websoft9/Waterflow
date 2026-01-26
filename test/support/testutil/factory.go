@@ -4,12 +4,12 @@ package testutil
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand" //nolint:gosec // Test data generation only
 	"time"
 )
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano()) //nolint:staticcheck,gosec // Test randomization
 }
 
 // ========================================
@@ -30,8 +30,8 @@ type WorkflowInputOption func(*WorkflowInputs)
 // NewWorkflowInputs creates workflow inputs with defaults and options
 func NewWorkflowInputs(opts ...WorkflowInputOption) *WorkflowInputs {
 	w := &WorkflowInputs{
-		Name:      fmt.Sprintf("test-workflow-%d", rand.Intn(10000)),
-		ID:        fmt.Sprintf("wf-%d-%d", time.Now().Unix(), rand.Intn(1000)),
+		Name:      fmt.Sprintf("test-workflow-%d", rand.Intn(10000)),           //nolint:gosec // Test data
+		ID:        fmt.Sprintf("wf-%d-%d", time.Now().Unix(), rand.Intn(1000)), //nolint:gosec // Test data
 		TaskQueue: "linux-amd64",
 		YAML: `name: test-workflow
 jobs:
@@ -261,7 +261,7 @@ func NewDockerComposeInputs(opts ...DockerComposeInputOption) *DockerComposeInpu
 	d := &DockerComposeInputs{
 		Action:      "up",
 		File:        "docker-compose.yml",
-		ProjectName: fmt.Sprintf("test-%d", rand.Intn(10000)),
+		ProjectName: fmt.Sprintf("test-%d", rand.Intn(10000)), //nolint:gosec // Test data
 		Detach:      true,
 		Build:       false,
 		Volumes:     false,
@@ -330,7 +330,7 @@ type WorkflowEventOption func(*WorkflowEventInputs)
 func NewWorkflowEventInputs(opts ...WorkflowEventOption) *WorkflowEventInputs {
 	e := &WorkflowEventInputs{
 		EventType:    "workflow.started",
-		WorkflowID:   fmt.Sprintf("wf-event-%d", rand.Intn(10000)),
+		WorkflowID:   fmt.Sprintf("wf-event-%d", rand.Intn(10000)), //nolint:gosec // Test data
 		WorkflowName: "test-workflow",
 		Timestamp:    time.Now(),
 	}
@@ -373,7 +373,7 @@ const (
 func RandomString(n int) string {
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+		b[i] = letterBytes[rand.Intn(len(letterBytes))] //nolint:gosec // Test data
 	}
 	return string(b)
 }
@@ -385,7 +385,7 @@ func RandomEmail() string {
 
 // RandomInt generates a random integer between min and max
 func RandomInt(min, max int) int {
-	return min + rand.Intn(max-min+1)
+	return min + rand.Intn(max-min+1) //nolint:gosec // Test data
 }
 
 // RandomPort generates a random port number

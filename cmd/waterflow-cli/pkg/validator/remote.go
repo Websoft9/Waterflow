@@ -34,7 +34,7 @@ func (v *RemoteValidator) Validate(filepath string) (*ValidationResult, error) {
 	start := time.Now()
 
 	// Read file
-	content, err := os.ReadFile(filepath)
+	content, err := os.ReadFile(filepath) //nolint:gosec // File path from user input
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("file not found: %s", filepath)
@@ -71,7 +71,7 @@ func (v *RemoteValidator) Validate(filepath string) (*ValidationResult, error) {
 		// Return network error for fallback handling
 		return nil, fmt.Errorf("failed to connect to server: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	duration := time.Since(start)
 

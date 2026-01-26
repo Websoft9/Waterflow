@@ -10,6 +10,7 @@ import (
 	"github.com/Websoft9/waterflow/internal/api/handlers"
 	"github.com/Websoft9/waterflow/pkg/audit"
 	"github.com/Websoft9/waterflow/pkg/config"
+	"github.com/Websoft9/waterflow/pkg/dsl/node"
 	"github.com/Websoft9/waterflow/pkg/events"
 	"github.com/Websoft9/waterflow/pkg/metrics"
 	"github.com/Websoft9/waterflow/pkg/middleware"
@@ -22,11 +23,11 @@ import (
 // db parameter is optional - if provided, database health check will be included in /ready endpoint
 // cfg parameter is optional - if provided, uses configured health check timeouts; otherwise uses defaults
 func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, version, commit, buildTime string) http.Handler {
-	return NewRouterWithDB(logger, temporalClient, eventDispatcher, nil, nil, version, commit, buildTime, nil)
+	return NewRouterWithDB(logger, temporalClient, eventDispatcher, nil, nil, version, commit, buildTime, nil, nil)
 }
 
 // NewRouterWithDB creates router with optional database health check support and configurable timeouts
-func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, db *sql.DB, cfg *config.Config, version, commit, buildTime string, auditLogger audit.AuditLogger) http.Handler {
+func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, db *sql.DB, cfg *config.Config, version, commit, buildTime string, auditLogger audit.AuditLogger, nodeRegistry *node.Registry) http.Handler {
 	router := mux.NewRouter()
 
 	// Apply global middleware (AC7 - Request ID and Server Version headers)
@@ -169,8 +170,8 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 		auditHandler.RegisterRoutes(router)
 	}
 
-	// Node management endpoints (Story 5.6)
-	nh := NewNodeHandlers(logger)
+	// Node management endpoints (Story 5.6, Tech Debt: Node Handler Registry)
+	nh := NewNodeHandlers(logger, nodeRegistry)
 	router.HandleFunc("/v1/nodes", nh.ListNodes).Methods(http.MethodGet)
 	router.HandleFunc("/v1/nodes/{name}", nh.GetNode).Methods(http.MethodGet)
 
@@ -180,8 +181,9 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 	router.HandleFunc("/v1/templates/{name}", th.GetTemplate).Methods(http.MethodGet)
 
 	// Admin endpoints (Story 7.2 - AC3)
+	// Note: Authentication middleware removed as Waterflow serves as a component,
+	// authentication is handled by the parent application
 	adminRouter := router.PathPrefix("/admin").Subrouter()
-	adminRouter.Use(middleware.RequireAuth)
 	ah := handlers.NewAdminHandler(logger)
 	adminRouter.HandleFunc("/log-level", ah.GetLogLevel).Methods(http.MethodGet)
 	adminRouter.HandleFunc("/log-level", ah.SetLogLevel).Methods(http.MethodPut)
