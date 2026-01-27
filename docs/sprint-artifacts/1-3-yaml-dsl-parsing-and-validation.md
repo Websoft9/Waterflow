@@ -34,7 +34,6 @@ so that **能使用声明式配置而非编写代码,并在提交前发现错误
 **And** 支持完整的 YAML 语法:
 ```yaml
 name: Build and Test
-on: push
 jobs:
   build:
     runs-on: linux-amd64
@@ -51,10 +50,12 @@ jobs:
 ```
 
 **And** 解析结果包含:
-- Workflow 元数据 (name, on)
+- Workflow 元数据 (name)
 - Jobs 列表 (key-value map)
 - 每个 Job 的配置 (runs-on, timeout-minutes, steps)
 - 每个 Step 的配置 (name, uses, with, timeout-minutes)
+
+**设计说明:** 采用 API 驱动架构，YAML 专注工作流逻辑定义，触发方式通过独立 REST API 配置（Story 1.10 Schedule API, Story 1.11 Webhook API）。这实现了关注点分离，允许同一工作流支持多种触发方式。
 
 **And** 保留原始 YAML 行号和列号用于错误提示  
 **And** 支持 YAML 注释 (解析时忽略)  
@@ -100,7 +101,6 @@ jobs:
 **When** Validator 验证结构  
 **Then** 检查必填字段:
 - workflow.name (必填,string)
-- workflow.on (必填,string 或 object)
 - workflow.jobs (必填,map, 至少 1 个 job)
 - job.runs-on (可选,string, 默认 'default')
 - job.steps (必填,array, 至少 1 个 step)
@@ -263,34 +263,10 @@ jobs:
 **And** 单次验证最多返回 20 个错误 (避免信息过载)  
 **And** 语法错误时跳过后续验证 (无法解析时无法验证语义)
 
-### AC6: JSON Schema 定义和 IDE 集成
-**Given** Waterflow 提供 JSON Schema 文件  
-**When** 用户在 VS Code/IntelliJ 编辑 YAML  
-**Then** IDE 提供自动补全:
-- 顶层字段提示 (name, on, jobs, env)
-- 节点名称提示 (checkout@v1, run@v1)
-- 参数提示 (with.repository, with.command)
-
-**And** 实时验证错误提示  
-**And** Hover 显示字段文档
-
-**JSON Schema 文件位置:**
-```
-waterflow/
-├── schema/
-│   └── workflow-schema.json  # JSON Schema v7
-└── docs/
-    └── schema-integration.md  # IDE 集成指南
-```
-
-**VS Code 配置示例:**
-```json
-{
-  "yaml.schemas": {
-    "https://waterflow.dev/schema/workflow.json": ["*.waterflow.yaml", ".waterflow/*.yaml"]
-  }
-}
-```
+### AC6: JSON Schema 结构验证
+**Given** YAML 解析成功  
+**When** Validator 使用 JSON Schema 验证  
+**Then** 通过 Schema 文件验证工作流结构
 
 ### AC7: 解析性能要求
 **Given** YAML 文件大小和复杂度  
@@ -341,7 +317,6 @@ package dsl
 // Workflow 工作流定义
 type Workflow struct {
     Name string                `yaml:"name" json:"name"`
-    On   interface{}           `yaml:"on" json:"on"` // string 或 TriggerConfig
     Env  map[string]string     `yaml:"env,omitempty" json:"env,omitempty"`
     Jobs map[string]*Job       `yaml:"jobs" json:"jobs"`
     
@@ -377,25 +352,6 @@ type Step struct {
     // 内部字段
     Index   int `yaml:"-" json:"index"`
     LineNum int `yaml:"-" json:"-"`
-}
-
-// TriggerConfig 触发器配置 (简化版)
-type TriggerConfig struct {
-    Push     *PushTrigger     `yaml:"push,omitempty" json:"push,omitempty"`
-    Schedule *ScheduleTrigger `yaml:"schedule,omitempty" json:"schedule,omitempty"`
-    Webhook  *WebhookTrigger  `yaml:"webhook,omitempty" json:"webhook,omitempty"`
-}
-
-type PushTrigger struct {
-    Branches []string `yaml:"branches,omitempty" json:"branches,omitempty"`
-}
-
-type ScheduleTrigger struct {
-    Cron string `yaml:"cron" json:"cron"`
-}
-
-type WebhookTrigger struct {
-    Events []string `yaml:"events" json:"events"`
 }
 ```
 
@@ -483,29 +439,22 @@ func (p *Parser) extractLineNumbers(workflow *Workflow, node *yaml.Node) error {
 ### Task 2: JSON Schema 验证器 (AC3)
 - [x] 定义完整的 JSON Schema
 
-**JSON Schema 定义:**
+**JSON Schema 定义 (API 驱动架构):**
 ```json
 // schema/workflow-schema.json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://waterflow.dev/schema/workflow.json",
   "title": "Waterflow Workflow Schema",
-  "description": "Schema for Waterflow YAML workflow definitions",
+  "description": "Schema for Waterflow YAML workflow definitions (API-driven architecture)",
   "type": "object",
-  "required": ["name", "on", "jobs"],
+  "required": ["name", "jobs"],
   "properties": {
     "name": {
       "type": "string",
       "description": "Workflow name",
       "minLength": 1,
       "maxLength": 255
-    },
-    "on": {
-      "description": "Trigger configuration",
-      "oneOf": [
-        {"type": "string", "enum": ["push", "pull_request", "schedule", "webhook"]},
-        {"$ref": "#/definitions/triggerConfig"}
-      ]
     },
     "env": {
       "type": "object",
@@ -527,12 +476,13 @@ func (p *Parser) extractLineNumbers(workflow *Workflow, node *yaml.Node) error {
   "definitions": {
     "job": {
       "type": "object",
-      "required": ["runs-on", "steps"],
+      "required": ["steps"],
       "properties": {
         "runs-on": {
           "type": "string",
-          "description": "Task queue name (server group)",
-          "pattern": "^[a-z0-9-]+$"
+          "description": "Task queue name (optional, defaults to 'default')",
+          "pattern": "^[a-z0-9-]+$",
+          "default": "default"
         },
         "timeout-minutes": {
           "type": "integer",
@@ -592,40 +542,16 @@ func (p *Parser) extractLineNumbers(workflow *Workflow, node *yaml.Node) error {
         }
       },
       "additionalProperties": false
-    },
-    "triggerConfig": {
-      "type": "object",
-      "properties": {
-        "push": {
-          "type": "object",
-          "properties": {
-            "branches": {
-              "type": "array",
-              "items": {"type": "string"}
-            }
-          }
-        },
-        "schedule": {
-          "type": "object",
-          "required": ["cron"],
-          "properties": {
-            "cron": {"type": "string"}
-          }
-        },
-        "webhook": {
-          "type": "object",
-          "required": ["events"],
-          "properties": {
-            "events": {
-              "type": "array",
-              "items": {"type": "string"}
-            }
-          }
-        }
-      }
     }
   }
 }
+```
+
+**说明：**
+- YAML 仅定义工作流逻辑（name, jobs, steps）
+- 触发方式通过独立 REST API 配置（Stories 1.10, 1.11）
+- `runs-on` 改为可选（默认 `"default"`）
+- Job 的 `required` 只保留 `steps`
 ```
 
 - [x] 集成 JSON Schema 验证库:
@@ -1120,46 +1046,9 @@ func (h *WorkflowHandler) ValidateWorkflow(w http.ResponseWriter, r *http.Reques
 - [x] 编写完整验证集成测试
 - [x] 性能测试和优化
 
-### Task 6: JSON Schema 发布和 IDE 集成 (AC6)
-- [x] 创建 schema/workflow-schema.json 文件
-- [x] 编写 IDE 集成文档
-
-**IDE 集成文档:**
-```markdown
-// docs/schema-integration.md
-
-# YAML Schema Integration Guide
-
-## VS Code
-
-1. Install YAML extension: `redhat.vscode-yaml`
-2. Add to workspace settings (`.vscode/settings.json`):
-
-```json
-{
-  "yaml.schemas": {
-    "./schema/workflow-schema.json": ["*.waterflow.yaml", ".waterflow/*.yaml"]
-  }
-}
-```
-
-## IntelliJ IDEA
-
-1. Settings → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings
-2. Add new mapping:
-   - Schema file: `<project>/schema/workflow-schema.json`
-   - File path pattern: `*.waterflow.yaml`
-
-## Online Schema
-
-Production schema URL:
-```
-https://waterflow.dev/schema/v1/workflow.json
-```
-```
-
+### Task 6: JSON Schema 发布 (AC6)
+- [x] 创建 pkg/dsl/schema/workflow-schema.json 文件
 - [x] 配置 schema 嵌入到二进制 (embed.FS)
-- [x] 提供 HTTP 端点 GET /schema/workflow.json
 
 ### Task 7: 性能优化和测试 (AC7)
 - [x] 实现流式解析 (大文件支持)
@@ -1179,7 +1068,6 @@ import (
 func BenchmarkValidateSmallWorkflow(b *testing.B) {
     content := []byte(`
 name: Small Workflow
-on: push
 jobs:
   build:
     runs-on: linux-amd64
@@ -1301,7 +1189,7 @@ waterflow/
 │       └── handlers/
 │           ├── workflow.go       # POST /v1/workflows/validate
 │           └── workflow_test.go
-├── schema/
+├── pkg/dsl/schema/
 │   └── workflow-schema.json     # JSON Schema 定义
 ├── testdata/
 │   ├── valid/
@@ -1351,7 +1239,7 @@ waterflow/
 - [x] 集成测试覆盖所有验证流程
 - [x] 性能基准测试通过 (小/中/大型工作流)
 - [x] 代码通过 golangci-lint 检查,无警告
-- [x] JSON Schema 文件完整,支持 IDE 自动补全
+- [x] JSON Schema 文件完整
 - [x] YAML 语法错误提示友好 (行号、代码片段、建议)
 - [x] Schema 错误包含字段路径和类型信息
 - [x] 语义错误包含可用选项列表
@@ -1359,7 +1247,6 @@ waterflow/
 - [x] 循环依赖检测算法正确
 - [x] 节点注册表线程安全
 - [x] REST API 端点 POST /v1/workflows/validate 正常工作
-- [x] IDE 集成文档完整 (VS Code, IntelliJ)
 - [x] 代码已提交到 main 分支
 - [x] API 文档更新 (新增验证端点)
 - [x] Code Review 通过
@@ -1423,12 +1310,15 @@ waterflow/
 - Waterflow 可以解析和验证 GitHub Actions 风格的 YAML
 - 用户提交工作流时自动验证语法和语义
 - 提供详细的错误提示,提升用户体验
-- 为后续 Story 1.4 (表达式引擎) 提供基础数据结构
+- 采用 API 驱动架构：工作流定义与触发配置分离
+- 为后续 Story 1.4 (表达式引擎) 和 Stories 1.10/1.11 (触发器 API) 提供基础数据结构
 
 **后续 Story 依赖:**
 - Story 1.4 (表达式引擎) 将扩展 Workflow 结构,添加变量求值
 - Story 1.5 (条件执行) 将添加 if、needs 字段的语义验证
 - Story 1.8 (Temporal SDK 集成) 将使用解析后的 Workflow 生成 Temporal 调用
+- **Story 1.10 (Schedule API)** 通过 REST API 创建工作流定时调度
+- **Story 1.11 (Webhook Trigger)** 通过 REST API 配置 Webhook 触发器
 
 ### File List
 
@@ -1446,7 +1336,6 @@ waterflow/
 - ✅ pkg/dsl/node/registry_test.go (注册表测试)
 - ✅ pkg/dsl/node/builtin/builtin_test.go (内置节点测试)
 - ✅ pkg/dsl/schema/workflow-schema.json (JSON Schema)
-- ✅ docs/schema-integration.md (IDE 集成文档)
 - ✅ testdata/valid/simple.yaml (测试数据)
 - ✅ testdata/valid/multi-job.yaml (测试数据)
 - ✅ testdata/invalid/syntax-error.yaml (测试数据)

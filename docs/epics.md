@@ -422,9 +422,9 @@ Waterflow 通过全面测试验证,提供稳定的发布版本和多种分发渠
 
 ## Epic 1: 核心工作流引擎基础
 
-开发者可以部署 Waterflow Server,通过 Temporal Event Sourcing 实现工作流状态 100% 持久化,采用单节点执行模式执行完整的 YAML 工作流（包含变量、表达式、条件执行、并行矩阵、超时重试等 DSL 功能）,通过 REST API 和 Prometheus 指标管理工作流的完整生命周期
+开发者可以部署 Waterflow Server,通过 Temporal Event Sourcing 实现工作流状态 100% 持久化,采用单节点执行模式执行完整的 YAML 工作流（包含变量、表达式、条件执行、并行矩阵、超时重试等 DSL 功能）,通过 REST API 和 Prometheus 指标管理工作流的完整生命周期。支持基于 Temporal Schedules 的定时触发和基于 Webhook 的事件驱动触发。
 
-**10 个 Story**
+**12 个 Story**
 
 ### Story 1.1: Waterflow Server 框架搭建
 
@@ -530,6 +530,13 @@ So that **能在提交时发现配置错误而不是执行时**。
 **And** 验证 timeout-minutes 范围 1-1440 分钟  
 **And** 验证 continue-on-error 为布尔值  
 **And** 验证 matrix 为 map[string][]interface{} 结构  
+
+**设计说明 (API 驱动架构):**  
+本 Story 专注于工作流逻辑定义 (YAML DSL),触发方式通过独立 REST API 配置:  
+- **定时触发**: Story 1.10 提供 Schedule API (基于 Temporal Schedules)  
+- **事件触发**: Story 1.11 提供 Webhook API (HTTP POST 触发)  
+
+这实现了关注点分离,允许同一工作流支持多种触发方式,无需在 YAML 中定义触发配置。
 
 **依赖关系验证:**
 **Given** 工作流包含 Job 依赖  
@@ -757,7 +764,7 @@ So that **可以提交、查询、列表、查看日志、取消和重新运行�
 
 **Acceptance Criteria:**
 
-**工作流提交:**
+**AC1: 工作流提交**
 **Given** REST API 服务和 Temporal 集成已完成  
 **When** POST `/v1/workflows` 请求带有 YAML 内容  
 **Then** 返回工作流 ID 和提交状态  
@@ -766,69 +773,212 @@ So that **可以提交、查询、列表、查看日志、取消和重新运行�
 **And** YAML 验证失败返回 422 和语法错误位置  
 **And** 工作流提交到 Temporal 执行队列  
 **And** 响应时间 <500ms  
+**And** 支持 dry-run 模式 (?dry_run=true 仅验证不执行)  
+**And** 响应包含预估执行时间 (基于历史数据)  
 
-**工作流查询 (单个):**
+**AC2: 工作流查询 (单个)**
 **Given** 工作流已提交并执行  
 **When** GET `/v1/workflows/{id}` 查询工作流  
-**Then** 返回工作流状态 (pending, running, completed, failed, cancelled)  
-**And** 返回执行进度 (当前 Job/Step)  
+**Then** 返回工作流状态 (pending, running, completed, failed, cancelled, terminated)  
+**And** 返回执行进度 - 所有 Job 和 Step 的详细状态 (从 Event History 解析)  
 **And** 返回开始时间、结束时间和持续时间  
 **And** 返回工作流定义的 name 和 vars  
 **And** 工作流不存在返回 404  
-**And** 响应时间 <200ms  
+**And** 响应时间 <200ms (小型工作流), <500ms (大型工作流)  
+**And** 支持 `?include=events` 包含原始 Event History (调试用)  
 
-**工作流列表查询:**
+**AC3: 工作流列表查询**
 **Given** 系统中存在多个工作流  
 **When** GET `/v1/workflows?page=1&limit=20&status=running&name=deploy`  
 **Then** 返回工作流列表 (分页)  
-**And** 支持按状态过滤 (status=running,completed,failed)  
-**And** 支持按名称模糊搜索 (name=deploy)  
-**And** 支持按提交时间范围过滤 (created_after, created_before)  
+**And** 支持按状态过滤 (status=running,completed,failed,cancelled)  
+**And** 支持按名称精确搜索 (workflow_name=Deploy)  
+**And** 支持按提交时间范围过滤 (start_time_from, start_time_to)  
 **And** 返回总数、当前页、总页数  
 **And** 默认按提交时间倒序排列  
+**And** 分页限制: 1 <= limit <= 100, 默认 20  
 **And** 响应时间 <300ms  
 
-**工作流日志查询:**
+**AC4: 工作流日志查询**
 **Given** 工作流正在执行或已完成  
 **When** GET `/v1/workflows/{id}/logs` 请求日志  
 **Then** 返回结构化日志 (JSON Lines 格式)  
 **And** 日志包含时间戳、级别、Job/Step 信息、消息  
+**And** 日志从 Temporal Event History 重建 (ActivityStarted, Completed, Failed, Timeout)  
 **And** 支持日志级别过滤 (?level=error,warn)  
 **And** 支持 Job/Step 过滤 (?job=deploy&step=build)  
-**And** 支持实时日志流 (通过 SSE 或 WebSocket)  
-**And** 历史日志从 Temporal Event History 重建  
-**And** 响应时间 <500ms (历史日志)  
+**And** 支持实时日志流 (?stream=true, 使用 SSE)  
+**And** 历史日志响应时间: <100ms (小型), <500ms (中型), <2s (大型)  
 
-**工作流取消:**
+**AC5: 工作流取消**
 **Given** 工作流正在运行  
 **When** POST `/v1/workflows/{id}/cancel` 请求取消  
 **Then** 工作流标记为 cancelled 状态  
-**And** Temporal Workflow 收到取消信号  
+**And** Temporal Workflow 收到取消信号 (client.CancelWorkflow)  
 **And** 正在执行的 Step 优雅停止 (最多等待 30 秒)  
+**And** 取消传播到所有子工作流和 Activity  
 **And** 取消已完成的工作流返回 409 Conflict  
 **And** 取消不存在的工作流返回 404  
 **And** 取消成功返回 202 Accepted  
+**And** 记录取消操作到审计日志 (用户、时间、原因)  
 
-**工作流重新运行:**
+**AC6: 工作流重新运行**
 **Given** 工作流已完成 (成功或失败)  
 **When** POST `/v1/workflows/{id}/rerun` 请求重新运行  
 **Then** 使用相同的 YAML 定义创建新的工作流实例  
 **And** 支持覆盖 vars 参数 (body: {vars: {env: "staging"}})  
+**And** 支持跳过成功的 Step (body: {skip_successful: true})  
+**And** 支持从特定 Job 开始 (body: {from_job: "deploy"})  
 **And** 返回新的工作流 ID  
+**And** 新工作流包含 original_workflow_id 字段 (追踪重新运行关系)  
 **And** 原工作流保持不变  
 **And** 正在运行的工作流不能重新运行,返回 409  
 **And** 响应时间 <500ms  
 
-**通用 API 规范:**
+**AC7: 通用 API 规范**
 **Given** 所有 API 端点  
 **When** 发生错误时  
 **Then** 返回统一的错误格式: `{error: {code, message, details}}`  
-**And** 使用标准 HTTP 状态码 (400, 404, 409, 422, 500)  
-**And** 所有响应包含 Request-ID header (用于追踪)  
+**And** 使用标准 HTTP 状态码 (400, 404, 409, 422, 500, 503)  
+**And** 所有响应包含 X-Request-ID header (用于追踪)  
 **And** 支持 CORS (开发环境)  
 **And** API 版本通过 URL 前缀 `/v1/` 管理  
+**And** 支持 API 限流 (默认 100 req/min per IP)  
 
-### Story 1.10: Docker Compose 部署方案
+**AC8: 强制终止工作流**
+**Given** 工作流正在运行或卡住  
+**When** POST `/v1/workflows/{id}/terminate` 请求终止  
+**Then** 返回 204 No Content  
+**And** 工作流立即终止，不执行清理逻辑 (client.TerminateWorkflow)  
+**And** 工作流状态变为 terminated  
+**And** Terminate vs Cancel 区别明确：Cancel=优雅停止，Terminate=强制终止  
+**And** 记录终止原因到 Event History  
+**And** 终止已完成的工作流返回 409 Conflict  
+**And** 响应时间 <200ms  
+
+**技术约束 (基于 Temporal 和 Event Sourcing 架构):**
+- ⚠️ 不支持删除工作流记录 (Event History 不可变)
+- ⚠️ 不支持修改运行中工作流的定义 (需取消后重新提交)
+- ⚠️ 不支持 Activity 中间重试 (需重新运行整个工作流)
+- ⚠️ Event History 大小限制 50MB (可配置到 500MB)
+- ℹ️ 详细 Job/Step 状态通过解析 Event History 获取
+- ℹ️ 重新运行通过创建新工作流实例实现
+
+**Post-MVP 功能 (Story 1.9.1 或后续 Epic):**
+-  POST `/v1/workflows/{id}/archive` - 归档工作流 (不删除,仅隐藏)
+- 🟡 GET `/v1/workflows/{id}/events` - 获取原始 Event History (高级调试)
+- 🔴 POST `/v1/workflows/{id}/pause` - 暂停工作流 (需 Workflow 代码支持)
+- 🔴 POST `/v1/workflows/{id}/resume` - 恢复工作流 (需 Signal 机制)  
+
+### Story 1.10: Schedule API 实现（基于 Temporal Schedules）
+
+As a **工作流用户**,  
+I want **通过 API 注册定时工作流**,  
+So that **工作流可以按 cron 表达式自动执行，无需配置外部调度器**。
+
+**Acceptance Criteria:**
+
+**创建 Schedule:**
+**Given** 用户已有工作流定义  
+**When** 调用 POST /v1/schedules 配置定时触发  
+**Then** 创建 Temporal Schedule 并返回详情  
+**And** Schedule 成功注册到 Temporal Server  
+**And** 元数据存储到 SQLite  
+**And** 返回 201 Created 状态码  
+
+**列出 Schedules:**
+**Given** 系统中有多个已注册的 Schedules  
+**When** 调用 GET /v1/schedules  
+**Then** 返回 Schedule 列表（分页）  
+**And** 支持按状态过滤（active, paused）  
+**And** 支持按工作流名称过滤  
+
+**查询 Schedule 详情:**
+**Given** Schedule 已创建  
+**When** 调用 GET /v1/schedules/:id  
+**Then** 返回完整的 Schedule 详情  
+**And** 包含 next_run_time、last_run_time、total_runs  
+
+**暂停/恢复 Schedule:**
+**Given** Schedule 正在运行  
+**When** 调用 PATCH /v1/schedules/:id 修改状态  
+**Then** 更新 Temporal Schedule 状态  
+**And** 暂停后不再触发新的执行  
+**And** 恢复后继续按 cron 执行  
+
+**删除 Schedule:**
+**Given** Schedule 已创建  
+**When** 调用 DELETE /v1/schedules/:id  
+**Then** 删除 Temporal Schedule  
+**And** 清理元数据  
+**And** 正在运行的工作流不受影响  
+
+**手动触发:**
+**Given** Schedule 已创建  
+**When** 调用 POST /v1/schedules/:id/trigger  
+**Then** 立即触发一次工作流执行  
+**And** 不影响正常的定时调度  
+
+### Story 1.11: Webhook Trigger 实现
+
+As a **工作流用户**,  
+I want **通过 Webhook 触发工作流**,  
+So that **工作流可以响应外部事件（如 Git Push、第三方通知等）自动执行**。
+
+**Acceptance Criteria:**
+
+**注册 Webhook Trigger:**
+**Given** 用户已有工作流定义  
+**When** 调用 POST /v1/triggers 配置 Webhook 触发  
+**Then** 注册 Webhook Trigger 并返回详情  
+**And** 生成唯一的 Webhook URL  
+**And** 存储 Webhook Secret（用于签名验证）  
+**And** 返回 201 Created 状态码  
+
+**接收 Webhook 请求:**
+**Given** Webhook Trigger 已注册  
+**When** 外部系统发送 POST 请求到 Webhook URL  
+**Then** 验证请求并触发 Workflow  
+**And** 验证 HMAC 签名（X-Hub-Signature-256）  
+**And** 应用过滤规则（分支、路径等）  
+**And** 异步启动 Temporal Workflow  
+**And** 快速响应（< 100ms）避免 Webhook 超时  
+
+**列出 Triggers:**
+**Given** 系统中有多个 Webhook Triggers  
+**When** 调用 GET /v1/triggers  
+**Then** 返回 Trigger 列表（分页）  
+**And** 支持按类型过滤（webhook, schedule）  
+**And** 支持按状态过滤（enabled, disabled）  
+
+**更新 Trigger 配置:**
+**Given** Trigger 已创建  
+**When** 调用 PATCH /v1/triggers/:id  
+**Then** 更新过滤规则或状态  
+**And** 验证新配置的有效性  
+
+**删除 Trigger:**
+**Given** Trigger 已创建  
+**When** 调用 DELETE /v1/triggers/:id  
+**Then** 删除 Trigger 配置  
+**And** Webhook URL 立即失效  
+
+**Webhook 触发历史查询:**
+**Given** 需要查看 Webhook 触发历史  
+**When** 调用工作流列表 API 并按触发源过滤  
+**Then** 通过统一的工作流查询获取触发记录  
+**And** 查询示例: GET /v1/workflows?trigger_type=webhook&trigger_source={trigger_id}  
+**And** 工作流元数据包含: trigger_type, trigger_source, trigger_event (webhook payload)  
+**And** 避免数据冗余，保持单一数据源 (工作流记录)  
+
+**设计说明:**  
+不提供独立的 `GET /v1/triggers/{id}/logs` API，原因：  
+- Webhook 日志本质是"哪些请求触发了哪些工作流"  
+- 这些信息已在工作流元数据中 (Event Sourcing)  
+- 通过工作流 API 查询，保持数据一致性  
+- 与 Schedule API 设计对称 (Schedule 也不提供独立 logs)  
+
+### Story 1.12: Docker Compose 部署方案
 
 As a **开发者**,  
 I want **通过 Docker Compose 一键部署 Waterflow + Temporal**,  
@@ -2082,13 +2232,13 @@ So that **选择最适合的安装方式**。
 
 ## 总结
 
-**共 11 个 Epics, 76 User Stories**
+**共 11 个 Epics, 78 User Stories**
 
 所有需求已完整分解为可执行的 Stories,每个 Story 都包含清晰的验收标准。Stories 按 Epic 组织,体现用户价值和技术实现的平衡。
 
 ### Epic 和 Story 统计
 
-- **Epic 1**: 核心工作流引擎基础 - **10 Stories**
+- **Epic 1**: 核心工作流引擎基础 - **12 Stories**
 - **Epic 2**: 分布式 Agent 系统 - **10 Stories**
 - **Epic 3**: 核心节点插件库 - **10 Stories**
 - **Epic 4**: 节点扩展系统 - **5 Stories**
@@ -2127,8 +2277,9 @@ So that **选择最适合的安装方式**。
   - 新增列表查询API(分页、过滤、搜索)
   - 新增重新运行API(支持覆盖vars参数)
   - 统一错误格式、API版本管理、CORS支持
-- **Story数量**: 14个(原设计) → **10个**(优化后)
-- **优势**: 符合INVEST原则、可测试性提升、生产就绪(监控/配置/版本)
+- **Story数量**: 14个(原设计) → **10个**(优化后) → **12个**(增加 Schedule/Webhook API)
+- **新增功能**: Story 1.10 Schedule API (定时触发)、Story 1.11 Webhook API (事件触发)
+- **优势**: 符合INVEST原则、可测试性提升、生产就绪(监控/配置/版本)、完整触发机制
 
 #### **Epic 3 优化 (核心节点插件库)**
 - **移除控制流节点**: 删除condition和loop节点,控制流由DSL层(if/matrix)处理
@@ -2140,7 +2291,7 @@ So that **选择最适合的安装方式**。
 - ✅ 所有Story编号已验证连续性
 - ✅ FR覆盖映射已更新
 - ✅ Epic描述与Story内容一致
-- ✅ Story总数: **76个**
+- ✅ Story总数: **78个**
 
 ### 优化成果
 

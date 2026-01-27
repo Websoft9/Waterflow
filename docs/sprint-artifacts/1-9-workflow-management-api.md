@@ -525,6 +525,95 @@ func (h *WorkflowHandler) setupCORS(r *gin.Engine) {
 - `/v1/workflows` - 版本 1 API
 - 未来 `/v2/workflows` - 版本 2 API
 
+### AC8: 工作流强制终止 API
+**Given** 工作流正在运行或已卡住  
+**When** POST `/v1/workflows/{id}/terminate` 请求终止  
+**Then** 返回 `204 No Content`  
+**And** 工作流立即终止，不执行清理逻辑  
+**And** Terminate vs Cancel 区别明确:
+- **Terminate**: 立即强制终止，不触发 `defer` 或 cleanup activities
+- **Cancel**: 优雅取消，允许 cleanup logic 执行
+
+**请求示例:**
+```bash
+curl -X POST http://localhost:8080/v1/workflows/wf-abc-123/terminate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Deployment rollback required"
+  }'
+```
+
+**请求参数:**
+```json
+{
+  "reason": "终止原因 (可选)"
+}
+```
+
+**成功响应 (204):**
+```
+HTTP/1.1 204 No Content
+X-Request-ID: req-xyz-789
+```
+
+**实现示例:**
+```go
+type TerminateWorkflowRequest struct {
+    Reason string `json:"reason,omitempty"`
+}
+
+func (h *WorkflowHandler) TerminateWorkflow(c *gin.Context) {
+    workflowID := c.Param("id")
+    requestID := c.GetString("request_id")
+    
+    var req TerminateWorkflowRequest
+    _ = c.ShouldBindJSON(&req) // reason 可选
+    
+    // Terminate workflow (强制终止)
+    err := h.temporalClient.TerminateWorkflow(
+        c.Request.Context(),
+        workflowID,
+        "", // runID 为空表示终止当前运行
+        req.Reason,
+    )
+    
+    if err != nil {
+        if strings.Contains(err.Error(), "not found") {
+            c.JSON(404, gin.H{
+                "error": gin.H{
+                    "code":    "workflow_not_found",
+                    "message": fmt.Sprintf("Workflow %s not found", workflowID),
+                },
+            })
+            return
+        }
+        
+        h.logger.Error("Failed to terminate workflow",
+            zap.String("workflow_id", workflowID),
+            zap.String("request_id", requestID),
+            zap.Error(err))
+        
+        c.JSON(500, gin.H{
+            "error": gin.H{
+                "code":    "terminate_failed",
+                "message": "Failed to terminate workflow",
+            },
+        })
+        return
+    }
+    
+    c.Status(204)
+}
+```
+
+**错误响应:**
+- `404 Not Found` - 工作流不存在
+- `500 Internal Server Error` - 终止失败
+
+**性能要求:**
+- 响应时间: < 500ms (P95)
+- Terminate 操作立即生效，不等待 cleanup
+
 ## Tasks / Subtasks
 
 ### Task 1: 工作流提交 API 实现 (AC1)

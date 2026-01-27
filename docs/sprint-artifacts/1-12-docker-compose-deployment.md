@@ -1,4 +1,4 @@
-# Story 1.10: Docker Compose 部署方案
+# Story 1.12: Docker Compose 部署方案
 
 Status: done
 
@@ -10,7 +10,7 @@ so that **快速搭建开发环境并验证完整功能**。
 
 ## Context
 
-这是 Epic 1 的第十个也是**最后一个 Story**,在 Story 1.1-1.9 完成的基础上,提供完整的 Docker Compose 部署方案。本 Story 让用户能够一键启动 Waterflow + Temporal + PostgreSQL,快速验证系统功能。
+这是 Epic 1 的第十二个也是**最后一个 Story**,在 Story 1.1-1.11 完成的基础上,提供完整的 Docker Compose 部署方案。本 Story 让用户能够一键启动 Waterflow + Temporal + PostgreSQL,快速验证系统功能。
 
 **前置依赖:**
 - Story 1.1 (Server 框架、日志系统) 已完成
@@ -22,6 +22,8 @@ so that **快速搭建开发环境并验证完整功能**。
 - Story 1.7 (超时和重试策略) 已完成
 - Story 1.8 (Temporal SDK 集成、工作流执行引擎) 已完成
 - Story 1.9 (工作流管理 REST API) 已完成
+- Story 1.10 (Schedule API 实现) 已完成
+- Story 1.11 (Webhook Trigger 实现) 已完成
 
 **Epic 背景:**  
 本 Story 是 Epic 1 的收尾 Story,提供开箱即用的部署方案。开发者和用户可以通过 `docker-compose up` 一键启动完整环境,无需手动安装 Temporal、PostgreSQL 等依赖。

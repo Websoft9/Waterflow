@@ -41,18 +41,20 @@ tracking_system: file-system
 story_location: docs/sprint-artifacts
 
 development_status:
-  # Epic 1: 核心工作流引擎基础 (10 stories) - COMPLETED 2025-12-22
-  epic-1: done
+  # Epic 1: 核心工作流引擎基础 (12 stories) - IN PROGRESS
+  epic-1: in-progress
   1-1-waterflow-server-framework: done  # 代码审查通过,所有lint错误已修复
   1-2-rest-api-service-framework: done  # 代码审查通过,版本注入/中间件链/标签顺序已修复,覆盖率84.3%
-  1-3-yaml-dsl-parsing-and-validation: done  # 代码审查通过,pkg/node测试覆盖率100%,pkg/dsl覆盖率86.1%,errcheck已修复,51个任务已完成
+  1-3-yaml-dsl-parsing-and-validation: done  # 代码审查通过,pkg/node测试覆盖率100%,pkg/dsl覆盖率86.1%,errcheck已修复,51个任务已完成,新增API驱动架构设计说明
   1-4-expression-engine-and-variables: done  # 代码审查通过,覆盖率88.6%,14个内置函数,177+测试用例,49个任务已完成,新增4个测试数据文件
   1-5-conditional-execution-and-control-flow: done  # 代码审查通过,覆盖率88.7%,49个测试通过,11个问题全部修复(P0×3,P1×3,P2×5),无race问题,性能优化37%,已达生产就绪标准
   1-6-matrix-parallel-execution: done  # 完成,Matrix策略/上下文/验证/状态追踪已实现,所有Matrix测试通过
   1-7-timeout-and-retry-strategy: done  # 完成,覆盖率>90%,58个测试通过(单元52+集成6),实现超时解析器/重试策略/错误分类器,扩展语义验证器,完成日期2025-12-19
   1-8-temporal-sdk-integration: done  # 完成,Temporal SDK v1.38.0集成,Client/Worker/Workflow/Activity/History Parser全部实现,编译通过,完成日期2025-12-22
-  1-9-workflow-management-api: done  # 完成,REST API实现(提交/查询/列表/日志/取消/重新运行),路由注册,Temporal集成,测试通过,完成日期2025-12-22
-  1-10-docker-compose-deployment: done  # Docker Compose 部署方案完成,服务健康检查通过,工作流提交验证成功,部署文档已更新
+  1-9-workflow-management-api: done  # 完成,7个REST API(提交/列表/查询/日志/取消/终止/重新运行),路由注册,Temporal集成,测试通过,新增terminate API(强制终止),完成日期2025-12-22,优化日期2026-01-27
+  1-10-schedule-api-implementation: not-started  # Schedule API 实现(基于Temporal Schedules),定时工作流触发,6个API端点
+  1-11-webhook-trigger-implementation: not-started  # Webhook Trigger 实现,事件驱动工作流触发,6个API端点(删除logs API,改用工作流查询)
+  1-12-docker-compose-deployment: done  # Docker Compose 部署方案完成,服务健康检查通过,工作流提交验证成功,部署文档已更新
   epic-1-retrospective: optional
 
   # Epic 2: 分布式 Agent 系统 (10 stories) - COMPLETED 2025-12-26
