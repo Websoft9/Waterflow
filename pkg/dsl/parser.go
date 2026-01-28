@@ -30,6 +30,19 @@ func (p *Parser) Parse(content []byte) (*Workflow, error) {
 		return nil, p.wrapYAMLError(err, content)
 	}
 
+	// 检查 YAML 嵌套深度 (防护 YAML Bomb)
+	const maxDepth = 20
+	if depth := p.calculateDepth(&node); depth > maxDepth {
+		return nil, &ValidationError{
+			Type:   "yaml_syntax_error",
+			Detail: "YAML nesting depth exceeds limit",
+			Errors: []FieldError{{
+				Error:      fmt.Sprintf("YAML nesting depth %d exceeds limit %d", depth, maxDepth),
+				Suggestion: "Reduce YAML nesting depth or split into multiple workflows",
+			}},
+		}
+	}
+
 	// 解析为结构体
 	if err := node.Decode(&workflow); err != nil {
 		return nil, p.wrapYAMLError(err, content)
@@ -236,4 +249,21 @@ func (p *Parser) extractStepLineNumbers(workflow *Workflow, jobName string, job 
 			}
 		}
 	}
+}
+
+// calculateDepth 计算 YAML 节点树的最大深度
+func (p *Parser) calculateDepth(node *yaml.Node) int {
+	if node == nil || len(node.Content) == 0 {
+		return 0
+	}
+
+	maxChildDepth := 0
+	for _, child := range node.Content {
+		childDepth := p.calculateDepth(child)
+		if childDepth > maxChildDepth {
+			maxChildDepth = childDepth
+		}
+	}
+
+	return maxChildDepth + 1
 }

@@ -2,7 +2,6 @@
 # This file demonstrates how to use the template with a local test application
 
 name: Test Single Server Deployment
-on: push
 
 vars:
   # Use local test app

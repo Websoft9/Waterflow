@@ -1,5 +1,4 @@
 name: matrix-no-fail-fast
-on: push
 
 jobs:
   test:

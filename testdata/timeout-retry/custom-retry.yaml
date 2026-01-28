@@ -1,5 +1,4 @@
 name: Custom Retry Strategy Example
-on: push
 
 jobs:
   deploy:

@@ -1,5 +1,4 @@
 name: Continue on Error Test
-on: push
 
 jobs:
   optional_checks:

@@ -1,5 +1,4 @@
 name: matrix-max-parallel
-on: push
 
 jobs:
   test:

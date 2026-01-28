@@ -49,7 +49,7 @@ func BenchmarkValidateMediumWorkflow(b *testing.B) {
 }
 
 func BenchmarkValidateLargeWorkflow(b *testing.B) {
-	// 20 jobs, 200 steps, ~2000 lines
+	// 20 jobs, 200 steps, ~2000 lines (验证 AC7 性能要求 <700ms)
 	content, err := os.ReadFile("../../testdata/benchmark/large.yaml")
 	if err != nil {
 		b.Fatal(err)
@@ -61,8 +61,18 @@ func BenchmarkValidateLargeWorkflow(b *testing.B) {
 	}
 
 	b.ResetTimer()
+
+	// 记录时间验证是否满足 AC7 要求
+	start := time.Now()
 	for i := 0; i < b.N; i++ {
 		_, _ = validator.ValidateYAML(content)
+	}
+	elapsed := time.Since(start)
+
+	// 单次验证时间应 <700ms (AC7 要求)
+	avgTime := elapsed / time.Duration(b.N)
+	if avgTime > 700*time.Millisecond {
+		b.Errorf("Large workflow validation too slow: %v (expected <700ms per AC7)", avgTime)
 	}
 }
 

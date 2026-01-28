@@ -1,5 +1,4 @@
 name: Invalid Pattern
-on: push
 jobs:
   build:
     runs-on: linux-amd64

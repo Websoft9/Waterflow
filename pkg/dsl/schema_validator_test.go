@@ -117,7 +117,6 @@ func TestSchemaValidator_ErrorSuggestions(t *testing.T) {
 	// Create a YAML with invalid uses pattern
 	content := []byte(`
 name: Test
-on: push
 jobs:
   test:
     runs-on: linux-amd64

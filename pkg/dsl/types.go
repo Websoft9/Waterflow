@@ -2,10 +2,9 @@ package dsl
 
 import "fmt"
 
-// Workflow 工作流定义
+// Workflow 工作流定义 (API 驱动架构 - 触发方式通过 REST API 配置)
 type Workflow struct {
 	Name string                 `yaml:"name" json:"name"`
-	On   interface{}            `yaml:"on" json:"on"` // string 或 TriggerConfig
 	Vars map[string]interface{} `yaml:"vars,omitempty" json:"vars,omitempty"`
 	Env  map[string]string      `yaml:"env,omitempty" json:"env,omitempty"`
 	Jobs map[string]*Job        `yaml:"jobs" json:"jobs"`
@@ -68,27 +67,8 @@ type RetryStrategy struct {
 	MaxInterval        string  `yaml:"max-interval,omitempty" json:"max_interval,omitempty"`               // 最大间隔 (默认 60s)
 }
 
-// TriggerConfig 触发器配置 (简化版)
-type TriggerConfig struct {
-	Push     *PushTrigger     `yaml:"push,omitempty" json:"push,omitempty"`
-	Schedule *ScheduleTrigger `yaml:"schedule,omitempty" json:"schedule,omitempty"`
-	Webhook  *WebhookTrigger  `yaml:"webhook,omitempty" json:"webhook,omitempty"`
-}
-
-// PushTrigger Push 触发器
-type PushTrigger struct {
-	Branches []string `yaml:"branches,omitempty" json:"branches,omitempty"`
-}
-
-// ScheduleTrigger 定时触发器
-type ScheduleTrigger struct {
-	Cron string `yaml:"cron" json:"cron"`
-}
-
-// WebhookTrigger Webhook 触发器
-type WebhookTrigger struct {
-	Events []string `yaml:"events" json:"events"`
-}
+// Note: 触发器配置 (Schedule, Webhook) 通过独立 REST API 配置 (Stories 1.10, 1.11)
+// YAML 仅定义工作流逻辑，实现关注点分离
 
 // MatrixInstance Matrix 实例
 type MatrixInstance struct {

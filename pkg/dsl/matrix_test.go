@@ -223,7 +223,6 @@ steps:
 func TestWorkflow_WithMatrixJob(t *testing.T) {
 	yamlContent := `
 name: matrix-test
-on: push
 jobs:
   deploy:
     runs-on: linux-amd64

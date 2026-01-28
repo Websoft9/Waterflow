@@ -115,7 +115,6 @@
 #   - Rollback only stops containers, does not delete data volumes
 
 name: Distributed Stack Deployment
-on: workflow_dispatch
 
 vars:
   # Database Configuration

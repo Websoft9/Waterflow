@@ -81,14 +81,20 @@ func (v *Validator) ValidateYAML(content []byte) (*Workflow, error) {
 
 	// 4. 返回收集的错误
 	if len(allErrors) > 0 {
-		// 限制错误数量
+		// 限制错误数量并说明
+		originalCount := len(allErrors)
 		if len(allErrors) > 20 {
 			allErrors = allErrors[:20]
 		}
 
+		detail := fmt.Sprintf("Found %d validation errors", originalCount)
+		if originalCount > 20 {
+			detail += " (showing first 20)"
+		}
+
 		return nil, &ValidationError{
 			Type:   "validation_error",
-			Detail: fmt.Sprintf("Found %d validation errors", len(allErrors)),
+			Detail: detail,
 			Errors: allErrors,
 		}
 	}

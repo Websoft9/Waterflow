@@ -37,7 +37,6 @@ func (r *WorkflowRenderer) RenderWorkflow(workflow *Workflow) (*Workflow, error)
 
 	rendered := &Workflow{
 		Name:       workflow.Name,
-		On:         workflow.On,
 		Vars:       workflow.Vars,
 		Env:        renderedWorkflowEnv,
 		Jobs:       make(map[string]*Job),

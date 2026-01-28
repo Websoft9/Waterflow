@@ -1,5 +1,4 @@
 name: Job Dependencies Test
-on: push
 
 jobs:
   build:

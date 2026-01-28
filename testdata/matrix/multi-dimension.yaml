@@ -1,5 +1,4 @@
 name: matrix-multi-dimension
-on: push
 
 jobs:
   deploy:

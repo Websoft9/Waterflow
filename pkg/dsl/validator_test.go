@@ -67,7 +67,6 @@ func TestValidator_SemanticError(t *testing.T) {
 
 	content := []byte(`
 name: Test
-on: push
 jobs:
   test:
     runs-on: linux-amd64
@@ -90,7 +89,6 @@ func TestValidator_ErrorLimit(t *testing.T) {
 	// Create workflow with multiple errors
 	content := []byte(`
 name: Test
-on: push
 jobs:
   test:
     steps:

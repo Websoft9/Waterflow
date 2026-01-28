@@ -1,5 +1,4 @@
 name: Step Timeout Example
-on: push
 
 jobs:
   build:

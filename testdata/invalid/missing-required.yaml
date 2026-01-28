@@ -1,5 +1,4 @@
 name: Missing Required Fields
-on: push
 jobs:
   build:
     # Missing required field: steps

@@ -13,7 +13,6 @@ func TestWorkflowRenderer_RenderWorkflow(t *testing.T) {
 
 	workflow := &dsl.Workflow{
 		Name: "Test Workflow",
-		On:   "push",
 		Vars: map[string]interface{}{
 			"app":     "myapp",
 			"version": "v1.2.3",

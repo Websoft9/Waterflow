@@ -1,5 +1,4 @@
 name: Conditional Execution Test
-on: push
 
 vars:
   env: production

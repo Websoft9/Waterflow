@@ -2,11 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://waterflow.dev/schema/workflow.json",
   "title": "Waterflow Workflow Schema",
-  "description": "Schema for Waterflow YAML workflow definitions",
+  "description": "Schema for Waterflow YAML workflow definitions (API-driven architecture)",
   "type": "object",
   "required": [
     "name",
-    "on",
     "jobs"
   ],
   "properties": {
@@ -15,23 +14,6 @@
       "description": "Workflow name",
       "minLength": 1,
       "maxLength": 255
-    },
-    "on": {
-      "description": "Trigger configuration",
-      "oneOf": [
-        {
-          "type": "string",
-          "enum": [
-            "push",
-            "pull_request",
-            "schedule",
-            "webhook"
-          ]
-        },
-        {
-          "$ref": "#/definitions/triggerConfig"
-        }
-      ]
     },
     "env": {
       "type": "object",
@@ -194,49 +176,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "triggerConfig": {
-      "type": "object",
-      "properties": {
-        "push": {
-          "type": "object",
-          "properties": {
-            "branches": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        },
-        "schedule": {
-          "type": "object",
-          "required": [
-            "cron"
-          ],
-          "properties": {
-            "cron": {
-              "type": "string",
-              "description": "Cron expression"
-            }
-          }
-        },
-        "webhook": {
-          "type": "object",
-          "required": [
-            "events"
-          ],
-          "properties": {
-            "events": {
-              "type": "array",
-              "description": "Webhook event types",
-              "items": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
     }
   }
 }

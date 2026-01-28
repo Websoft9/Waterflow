@@ -43,7 +43,6 @@ func TestSemanticValidator_NodeNotFound(t *testing.T) {
 
 	content := []byte(`
 name: Test
-on: push
 jobs:
   test:
     runs-on: linux-amd64
@@ -72,7 +71,6 @@ func TestSemanticValidator_MissingRequiredParam(t *testing.T) {
 
 	content := []byte(`
 name: Test
-on: push
 jobs:
   test:
     runs-on: linux-amd64
@@ -106,7 +104,6 @@ func TestSemanticValidator_JobDependencyNotFound(t *testing.T) {
 
 	content := []byte(`
 name: Test
-on: push
 jobs:
   deploy:
     runs-on: linux-amd64
@@ -143,7 +140,6 @@ func TestSemanticValidator_CyclicDependency(t *testing.T) {
 
 	content := []byte(`
 name: Test
-on: push
 jobs:
   a:
     runs-on: linux-amd64

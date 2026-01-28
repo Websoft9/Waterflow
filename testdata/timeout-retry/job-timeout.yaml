@@ -1,5 +1,4 @@
 name: Job Timeout Example
-on: push
 
 jobs:
   # Job显式配置60分钟超时

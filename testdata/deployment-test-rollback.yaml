@@ -3,7 +3,6 @@
 # Expected: Workflow should fail but old version should be restored
 
 name: Test Deployment Rollback
-on: push
 
 vars:
   # Test with local repository

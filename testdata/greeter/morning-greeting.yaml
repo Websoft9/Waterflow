@@ -1,5 +1,4 @@
 name: Morning Greeting Workflow
-on: push
 
 jobs:
   greet:

@@ -3,7 +3,6 @@ name: Multi-Server Deployment
 # 多服务器部署示例
 # 演示如何使用 runs-on 将任务路由到不同的服务器组
 
-on:
   push:
     branches: [main]
 

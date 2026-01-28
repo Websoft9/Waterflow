@@ -1,5 +1,4 @@
 name: Non-Retryable Errors Example
-on: push
 
 jobs:
   validation:

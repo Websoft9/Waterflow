@@ -1,5 +1,4 @@
 name: Small Benchmark Workflow
-on: push
 jobs:
   build:
     runs-on: linux-amd64

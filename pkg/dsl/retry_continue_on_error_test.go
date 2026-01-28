@@ -22,7 +22,6 @@ func TestAC6_RetryWithContinueOnError(t *testing.T) {
 
 	yamlContent := []byte(`
 name: Test Retry with Continue on Error
-on: push
 
 jobs:
   test:
@@ -84,7 +83,6 @@ func TestAC6_RetryWithoutContinueOnError(t *testing.T) {
 
 	yamlContent := []byte(`
 name: Test Retry without Continue on Error
-on: push
 
 jobs:
   test:
@@ -131,7 +129,6 @@ func TestAC6_MultipleStepsWithRetryAndContinue(t *testing.T) {
 
 	yamlContent := []byte(`
 name: Multiple Steps with Retry and Continue
-on: push
 
 jobs:
   deploy:

@@ -1,6 +1,4 @@
 name: Hello Waterflow
-on:
-  workflow_dispatch:
 
 vars:
   greeting: "Hello from Waterflow!"

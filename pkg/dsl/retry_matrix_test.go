@@ -22,7 +22,6 @@ func TestAC7_MatrixIndependentRetry(t *testing.T) {
 
 	yamlContent := []byte(`
 name: Matrix with Retry Strategy
-on: push
 
 jobs:
   deploy:
@@ -92,7 +91,6 @@ func TestAC7_MatrixRetryWithFailFast(t *testing.T) {
 	// fail-fast: true (默认)
 	yamlWithFailFast := []byte(`
 name: Matrix with Retry and Fail Fast
-on: push
 
 jobs:
   deploy:
@@ -137,7 +135,6 @@ func TestAC7_MatrixRetryWithoutFailFast(t *testing.T) {
 
 	yamlWithoutFailFast := []byte(`
 name: Matrix with Retry without Fail Fast
-on: push
 
 jobs:
   deploy:

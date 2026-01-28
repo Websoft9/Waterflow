@@ -26,7 +26,7 @@ func TestParser_Parse_ValidYAML(t *testing.T) {
 			file: "../../testdata/valid/simple.yaml",
 			expected: func(t *testing.T, wf *dsl.Workflow) {
 				assert.Equal(t, "Build and Test", wf.Name)
-				assert.Equal(t, "push", wf.On)
+				// Note: 'on' field removed in API-driven architecture
 				assert.Len(t, wf.Jobs, 1)
 
 				build, exists := wf.Jobs["build"]
@@ -201,7 +201,6 @@ func TestParser_RunsOnDefault(t *testing.T) {
 	// YAML without runs-on
 	yamlContent := `
 name: Test Workflow
-on: push
 jobs:
   test:
     steps:

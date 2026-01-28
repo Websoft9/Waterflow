@@ -1,5 +1,4 @@
 name: Retry Strategy Test
-on: push
 
 jobs:
   retry-test:

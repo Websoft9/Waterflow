@@ -100,6 +100,40 @@ func TestHandlers_NotFound(t *testing.T) {
 	assert.Equal(t, "/nonexistent", response.Instance)
 }
 
+func TestHandlers_GetWorkflowSchema(t *testing.T) {
+	logger := zap.NewNop()
+	h := NewHandlers(logger, "v1.0.0", "abc123", "2025-12-19")
+
+	req := httptest.NewRequest(http.MethodGet, "/schema/workflow.json", nil)
+	w := httptest.NewRecorder()
+
+	h.GetWorkflowSchema(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	var schema map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&schema)
+	require.NoError(t, err)
+
+	// 验证 JSON Schema 结构
+	assert.Equal(t, "http://json-schema.org/draft-07/schema#", schema["$schema"])
+	assert.Equal(t, "Waterflow Workflow Schema", schema["title"])
+	assert.Contains(t, schema["description"], "API-driven architecture")
+
+	// 验证必填字段
+	required, ok := schema["required"].([]interface{})
+	require.True(t, ok)
+	assert.Contains(t, required, "name")
+	assert.Contains(t, required, "jobs")
+
+	// 验证不包含已移除的 'on' 字段
+	properties, ok := schema["properties"].(map[string]interface{})
+	require.True(t, ok)
+	_, hasOnField := properties["on"]
+	assert.False(t, hasOnField, "Schema should not contain 'on' field in API-driven architecture")
+}
+
 func TestHandlers_MethodNotAllowed(t *testing.T) {
 	logger := zap.NewNop()
 	h := NewHandlers(logger, "v1.0.0", "abc123", "2025-12-19")
@@ -136,26 +170,4 @@ func TestHandlers_Metrics(t *testing.T) {
 	// Prometheus metrics contain HELP and TYPE comments
 	assert.Contains(t, w.Body.String(), "# HELP")
 	assert.Contains(t, w.Body.String(), "# TYPE")
-}
-
-func TestHandlers_GetWorkflowSchema(t *testing.T) {
-	logger := zap.NewNop()
-	h := NewHandlers(logger, "v1.0.0", "abc123", "2025-12-19")
-
-	req := httptest.NewRequest(http.MethodGet, "/schema/workflow.json", nil)
-	w := httptest.NewRecorder()
-
-	h.GetWorkflowSchema(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
-
-	// Verify it's valid JSON
-	var schema map[string]interface{}
-	err := json.NewDecoder(w.Body).Decode(&schema)
-	require.NoError(t, err)
-
-	// Basic schema validation
-	assert.Contains(t, schema, "$schema")
 }

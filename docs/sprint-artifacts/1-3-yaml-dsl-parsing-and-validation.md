@@ -1417,4 +1417,288 @@ waterflow/
 
 **相关 ADR:** [ADR-0006: Task Queue 路由机制](../adr/0006-task-queue-routing.md)
 
+---
+
+## 架构重构 (2026-01-27)
+
+### API 驱动架构实施
+
+**背景:** 代码审查发现文档声称删除 `on` 语法但代码未删除的不一致问题。
+
+**决策:** 完全移除 YAML 中的 `on` 触发器字段，实现真正的 API 驱动架构。
+
+**修改清单:**
+
+1. **核心类型定义 - [pkg/dsl/types.go](../../pkg/dsl/types.go)**
+   - ❌ 删除 `Workflow.On` 字段
+   - ❌ 删除 `TriggerConfig`、`PushTrigger`、`ScheduleTrigger`、`WebhookTrigger` 类型
+   - ✅ 添加注释说明触发器配置通过 REST API (Stories 1.10, 1.11)
+
+2. **JSON Schema - [pkg/dsl/schema/workflow-schema.json](../../pkg/dsl/schema/workflow-schema.json)**
+   - ❌ 从 `required` 数组中移除 `"on"`
+   - ❌ 删除 `properties.on` 定义
+   - ❌ 删除 `definitions.triggerConfig` 定义
+   - ✅ 更新 description 为 "API-driven architecture"
+
+3. **代码修复:**
+   - ✅ [pkg/dsl/renderer.go:40](../../pkg/dsl/renderer.go#L40) - 移除 `On` 字段赋值
+   - ✅ [pkg/dsl/parser_test.go:29](../../pkg/dsl/parser_test.go#L29) - 移除 `wf.On` 断言
+   - ✅ [pkg/dsl/renderer_test.go:16](../../pkg/dsl/renderer_test.go#L16) - 移除测试中的 `On` 字段
+
+4. **测试数据更新:**
+   - ✅ 32 个测试/示例 YAML 文件移除 `on:` 字段
+   - ✅ [testdata/valid/simple.yaml](../../testdata/valid/simple.yaml)
+   - ✅ [examples/hello-world.yaml](../../examples/hello-world.yaml)
+   - ✅ 所有 benchmark、matrix、retry、timeout 测试文件
+
+**向后不兼容性:** ⚠️ **BREAKING CHANGE**
+- 现有包含 `on:` 字段的 YAML 文件将验证失败
+- 用户需要移除 YAML 中的 `on:` 字段
+- 触发方式改为通过 Schedule API (Story 1.10) 或 Webhook API (Story 1.11) 配置
+
+**测试验证:** ✅ 全部通过
+```bash
+$ go test ./pkg/dsl -v
+PASS
+ok      github.com/Websoft9/waterflow/pkg/dsl   0.813s
+```
+
+**设计优势:**
+- ✅ **关注点分离:** YAML 纯粹定义工作流逻辑，触发配置独立管理
+- ✅ **灵活性:** 同一工作流可配置多种触发方式而无需修改 YAML
+- ✅ **可维护性:** 触发配置变更不影响工作流定义
+- ✅ **扩展性:** 未来可支持更多触发器类型而不修改 YAML Schema
+
+**相关 Stories:**
+- Story 1.10: Schedule API Implementation - 定时触发配置
+- Story 1.11: Webhook Trigger Implementation - Webhook 触发配置
+
+---
+
+## 代码审查修复记录 (2026-01-27)
+
+**审查日期:** 2026-01-27  
+**审查类型:** 对抗性代码审查 (Adversarial Code Review)  
+**审查范围:** Story 1.3 完整实现 (所有 AC, Tasks, 代码质量, 安全性)
+
+### 发现的问题及修复
+
+#### ✅ **H2: 测试用例仍使用已移除的 `on` 字段** (HIGH - 已修复)
+**问题描述:**  
+Story 文档声明采用"API 驱动架构"并删除 YAML 中的 `on` 触发器字段，但测试代码中仍使用 `on: push`
+
+**影响:**
+- 测试用例与架构设计不一致
+- 可能误导后续开发者
+
+**修复措施:**
+```bash
+# 批量移除所有测试文件中的 on: push 行
+cd /data/Waterflow/pkg/dsl && sed -i '/^on: push$/d' *_test.go
+```
+
+**修复文件:**
+- [pkg/dsl/semantic_validator_test.go](../../pkg/dsl/semantic_validator_test.go)
+- [pkg/dsl/validator_test.go](../../pkg/dsl/validator_test.go)
+- [pkg/dsl/parser_test.go](../../pkg/dsl/parser_test.go)
+- [pkg/dsl/timeout_retry_integration_test.go](../../pkg/dsl/timeout_retry_integration_test.go)
+- 共 8 个测试文件
+
+**验证:**
+```bash
+$ go test ./pkg/dsl -v -run TestSemanticValidator
+PASS
+ok      github.com/Websoft9/waterflow/pkg/dsl   0.018s
+```
+
+---
+
+#### ✅ **H3: 缺少 YAML Bomb 嵌套深度防护** (HIGH - 已修复)
+**问题描述:**  
+AC7 安全要求提到"深度限制: YAML 嵌套深度 <20 层"，但代码仅检查文件大小，未实现嵌套深度检查
+
+**攻击场景:**  
+恶意用户可构造小于 10MB 但嵌套极深的 YAML (如 100 层)，导致解析器栈溢出或内存耗尽
+
+**修复措施:**
+1. 在 [pkg/dsl/parser.go:35-43](../../pkg/dsl/parser.go#L35-L43) 添加深度检查
+2. 实现 `calculateDepth()` 方法递归计算 YAML 节点树深度
+3. 超过 20 层时返回友好错误
+
+**修复代码:**
+```go
+// 检查 YAML 嵌套深度 (防护 YAML Bomb)
+const maxDepth = 20
+if depth := p.calculateDepth(&node); depth > maxDepth {
+    return nil, &ValidationError{
+        Type:   "yaml_syntax_error",
+        Detail: "YAML nesting depth exceeds limit",
+        Errors: []FieldError{{
+            Error:      fmt.Sprintf("YAML nesting depth %d exceeds limit %d", depth, maxDepth),
+            Suggestion: "Reduce YAML nesting depth or split into multiple workflows",
+        }},
+    }
+}
+```
+
+**测试验证:**
+- 新增测试: [pkg/dsl/parser_depth_test.go](../../pkg/dsl/parser_depth_test.go)
+- `TestParser_MaxDepthCheck`: 验证拒绝深度 >20 的 YAML
+- `TestParser_AcceptableDepth`: 验证接受深度 ≤20 的 YAML
+
+```bash
+$ go test ./pkg/dsl -run TestParser_MaxDepthCheck -v
+=== RUN   TestParser_MaxDepthCheck
+--- PASS: TestParser_MaxDepthCheck (0.00s)
+PASS
+```
+
+---
+
+#### ✅ **M1: 错误数量限制未向用户说明** (MEDIUM - 已修复)
+**问题描述:**  
+代码限制返回最多 20 个错误，但错误响应中未告知用户可能有更多错误
+
+**用户体验问题:**  
+用户看到"Found 20 validation errors"，不知道实际是否还有更多错误
+
+**修复措施:**
+在 [pkg/dsl/validator.go:85-95](../../pkg/dsl/validator.go#L85-L95) 改进错误消息
+
+**修复代码:**
+```go
+// 4. 返回收集的错误
+if len(allErrors) > 0 {
+    // 限制错误数量并说明
+    originalCount := len(allErrors)
+    if len(allErrors) > 20 {
+        allErrors = allErrors[:20]
+    }
+
+    detail := fmt.Sprintf("Found %d validation errors", originalCount)
+    if originalCount > 20 {
+        detail += " (showing first 20)"
+    }
+
+    return nil, &ValidationError{
+        Type:   "validation_error",
+        Detail: detail,
+        Errors: allErrors,
+    }
+}
+```
+
+**改进效果:**
+- 之前: `"Found 20 validation errors"`
+- 之后: `"Found 35 validation errors (showing first 20)"`
+
+---
+
+#### ✅ **H1: 性能基准测试增强** (HIGH - 已修复)
+**问题描述:**  
+AC7 要求大型工作流 (<2000 行) 解析+验证 <700ms，但现有测试未明确验证此要求
+
+**修复措施:**
+在 [pkg/dsl/validator_bench_test.go:51-74](../../pkg/dsl/validator_bench_test.go#L51-L74) 添加性能验证
+
+**修复代码:**
+```go
+func BenchmarkValidateLargeWorkflow(b *testing.B) {
+    // 20 jobs, 200 steps, ~2000 lines (验证 AC7 性能要求 <700ms)
+    content, err := os.ReadFile("../../testdata/benchmark/large.yaml")
+    if err != nil {
+        b.Fatal(err)
+    }
+
+    validator, err := dsl.NewValidator(zap.NewNop())
+    if err != nil {
+        b.Fatal(err)
+    }
+
+    b.ResetTimer()
+    
+    // 记录时间验证是否满足 AC7 要求
+    start := time.Now()
+    for i := 0; i < b.N; i++ {
+        _, _ = validator.ValidateYAML(content)
+    }
+    elapsed := time.Since(start)
+    
+    // 单次验证时间应 <700ms (AC7 要求)
+    avgTime := elapsed / time.Duration(b.N)
+    if avgTime > 700*time.Millisecond {
+        b.Errorf("Large workflow validation too slow: %v (expected <700ms per AC7)", avgTime)
+    }
+}
+```
+
+**实际性能:**
+```
+BenchmarkValidateLargeWorkflow-2    93   11723382 ns/op  (~11.7ms)
+```
+✅ 远超性能要求 (<700ms)
+
+---
+
+#### ✅ **L1: Schema HTTP 端点测试增强** (LOW - 已修复)
+**问题描述:**  
+代码添加了 `GET /schema/workflow.json` 端点，但测试未验证 API 驱动架构的核心特性
+
+**修复措施:**
+增强 [internal/api/handlers_test.go:103-136](../../internal/api/handlers_test.go#L103-L136) 测试
+
+**新增验证点:**
+1. ✅ 验证 Schema 描述包含 "API-driven architecture"
+2. ✅ 验证不包含已移除的 `on` 字段
+3. ✅ 验证必填字段正确 (name, jobs)
+
+**测试代码:**
+```go
+// 验证不包含已移除的 'on' 字段
+properties, ok := schema["properties"].(map[string]interface{})
+require.True(t, ok)
+_, hasOnField := properties["on"]
+assert.False(t, hasOnField, "Schema should not contain 'on' field in API-driven architecture")
+```
+
+**验证结果:**
+```bash
+$ go test ./internal/api -run TestHandlers_GetWorkflowSchema -v
+=== RUN   TestHandlers_GetWorkflowSchema
+--- PASS: TestHandlers_GetWorkflowSchema (0.00s)
+PASS
+```
+
+---
+
+### 修复总结
+
+| 问题 | 严重程度 | 状态 | 修复文件 |
+|------|----------|------|----------|
+| H2: 测试用例使用 `on` 字段 | HIGH | ✅ 已修复 | 8 个测试文件 |
+| H3: 缺少嵌套深度防护 | HIGH | ✅ 已修复 | parser.go, parser_depth_test.go |
+| M1: 错误数量提示不清晰 | MEDIUM | ✅ 已修复 | validator.go |
+| H1: 性能基准测试不足 | HIGH | ✅ 已修复 | validator_bench_test.go |
+| L1: Schema 端点测试不足 | LOW | ✅ 已修复 | handlers_test.go |
+
+**测试验证:**
+```bash
+$ go test ./pkg/dsl -coverprofile=/tmp/coverage.out
+PASS
+coverage: 89.3% of statements
+ok      github.com/Websoft9/waterflow/pkg/dsl   0.824s
+
+$ go test ./internal/api -run TestHandlers_GetWorkflowSchema
+PASS
+ok      github.com/Websoft9/waterflow/internal/api      0.015s
+```
+
+**质量改进:**
+- ✅ 测试与架构设计完全一致
+- ✅ 安全防护完整 (文件大小 + 嵌套深度)
+- ✅ 用户体验改进 (清晰的错误提示)
+- ✅ 性能要求明确验证
+- ✅ API 端点测试覆盖完整
+
+---
 

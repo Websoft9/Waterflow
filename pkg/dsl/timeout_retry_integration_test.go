@@ -34,7 +34,6 @@ func TestTimeoutRetryIntegration_ValidWorkflow(t *testing.T) {
 
 	yamlContent := []byte(`
 name: Build with Timeout and Retry
-on: push
 
 jobs:
   build:
@@ -102,7 +101,6 @@ func TestTimeoutRetryIntegration_InvalidTimeout(t *testing.T) {
 			name: "Negative job timeout",
 			yaml: `
 name: Test
-on: push
 jobs:
   build:
     runs-on: linux
@@ -117,7 +115,6 @@ jobs:
 			name: "Exceeds maximum timeout",
 			yaml: `
 name: Test
-on: push
 jobs:
   build:
     runs-on: linux
@@ -132,7 +129,6 @@ jobs:
 			name: "Negative step timeout",
 			yaml: `
 name: Test
-on: push
 jobs:
   build:
     runs-on: linux
@@ -172,7 +168,6 @@ func TestTimeoutRetryIntegration_InvalidRetryStrategy(t *testing.T) {
 			name: "max-attempts too low",
 			yaml: `
 name: Test
-on: push
 jobs:
   build:
     runs-on: linux
@@ -188,7 +183,6 @@ jobs:
 			name: "max-attempts too high",
 			yaml: `
 name: Test
-on: push
 jobs:
   build:
     runs-on: linux
@@ -204,7 +198,6 @@ jobs:
 			name: "Invalid backoff coefficient",
 			yaml: `
 name: Test
-on: push
 jobs:
   build:
     runs-on: linux
@@ -221,7 +214,6 @@ jobs:
 			name: "Invalid duration format",
 			yaml: `
 name: Test
-on: push
 jobs:
   build:
     runs-on: linux
@@ -258,7 +250,6 @@ func TestTimeoutRetryIntegration_RealWorldScenario(t *testing.T) {
 	// 模拟一个真实的 CI/CD 工作流
 	yamlContent := []byte(`
 name: CI/CD Pipeline with Resilience
-on: push
 
 jobs:
   test:
@@ -328,7 +319,6 @@ func TestTimeoutRetryIntegration_FromFile(t *testing.T) {
 	// 创建临时测试文件
 	testYAML := `
 name: Timeout Retry Test
-on: push
 jobs:
   build:
     runs-on: linux-amd64

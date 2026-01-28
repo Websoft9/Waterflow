@@ -1,5 +1,4 @@
 name: CI/CD Pipeline
-on: push
 env:
   GO_VERSION: "1.21"
   DB_HOST: localhost
