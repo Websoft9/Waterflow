@@ -86,6 +86,72 @@ func TestWorkflowRenderer_RenderWorkflow(t *testing.T) {
 	assert.Equal(t, "staging", buildStep.Env["BUILD_ENV"]) // step overrides job
 }
 
+// TestWorkflowRenderer_RenderJob_RunsOnExpression 测试 runs-on 表达式渲染
+func TestWorkflowRenderer_RenderJob_RunsOnExpression(t *testing.T) {
+	renderer := dsl.NewWorkflowRenderer()
+
+	workflow := &dsl.Workflow{
+		Name: "Matrix Test",
+		Vars: map[string]interface{}{
+			"default_runner": "linux-amd64",
+		},
+	}
+
+	tests := []struct {
+		name           string
+		runsOn         string
+		matrix         map[string]interface{}
+		expectedRunsOn string
+	}{
+		{
+			name:           "static runs-on",
+			runsOn:         "linux-amd64",
+			matrix:         nil,
+			expectedRunsOn: "linux-amd64",
+		},
+		{
+			name:           "expression with vars",
+			runsOn:         "${{ vars.default_runner }}",
+			matrix:         nil,
+			expectedRunsOn: "linux-amd64",
+		},
+		{
+			name:           "expression with matrix.server",
+			runsOn:         "${{ matrix.server }}",
+			matrix:         map[string]interface{}{"server": "web1", "component": "nginx"},
+			expectedRunsOn: "web1",
+		},
+		{
+			name:           "complex expression",
+			runsOn:         "${{ matrix.server }}-agent",
+			matrix:         map[string]interface{}{"server": "web2", "component": "app"},
+			expectedRunsOn: "web2-agent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := &dsl.Job{
+				Name:   "test-job",
+				RunsOn: tt.runsOn,
+				Steps:  []*dsl.Step{},
+			}
+
+			// Build context with matrix if provided
+			ctx := dsl.NewContextBuilder(workflow).WithJob(job)
+			if tt.matrix != nil {
+				ctx = ctx.WithMatrix(tt.matrix)
+			}
+			evalCtx := ctx.Build()
+
+			// Render job
+			rendered, err := renderer.RenderJob(workflow, job, evalCtx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedRunsOn, rendered.RunsOn)
+		})
+	}
+}
+
 func TestWorkflowRenderer_RenderStep_IfCondition(t *testing.T) {
 	renderer := dsl.NewWorkflowRenderer()
 

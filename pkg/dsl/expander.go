@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"fmt"
+	"sort"
 )
 
 // Expander Matrix 展开器
@@ -57,47 +58,57 @@ func (e *Expander) validateMatrix(matrix map[string][]interface{}) error {
 	return nil
 }
 
-// cartesianProduct 计算笛卡尔积
+// cartesianProduct 计算笛卡尔积 (高性能版本)
 func (e *Expander) cartesianProduct(matrix map[string][]interface{}) []*MatrixInstance {
-	// 获取所有维度 (需要确定顺序)
+	// 获取所有维度并排序以保证顺序一致性
 	dimensions := make([]string, 0, len(matrix))
 	for dim := range matrix {
 		dimensions = append(dimensions, dim)
 	}
+	sort.Strings(dimensions)
 
-	// 递归生成组合
-	instances := make([]*MatrixInstance, 0)
-	e.generateCombinations(matrix, dimensions, 0, make(map[string]interface{}), &instances)
+	// 预计算总组合数
+	totalCombinations := 1
+	for _, dim := range dimensions {
+		totalCombinations *= len(matrix[dim])
+	}
 
-	return instances
-}
+	// 预分配结果切片和所有 MatrixInstance
+	instances := make([]*MatrixInstance, totalCombinations)
 
-// generateCombinations 递归生成组合
-func (e *Expander) generateCombinations(
-	matrix map[string][]interface{},
-	dimensions []string,
-	dimIndex int,
-	current map[string]interface{},
-	instances *[]*MatrixInstance,
-) {
-	if dimIndex == len(dimensions) {
-		// 完成一个组合
-		combination := make(map[string]interface{})
-		for k, v := range current {
-			combination[k] = v
+	// 预分配所有索引数组
+	indices := make([]int, len(dimensions))
+
+	idx := 0
+	for {
+		// 创建当前组合 - 直接分配固定大小的 map
+		combination := make(map[string]interface{}, len(dimensions))
+		for i, dim := range dimensions {
+			combination[dim] = matrix[dim][indices[i]]
 		}
 
-		*instances = append(*instances, &MatrixInstance{
-			Index:  len(*instances),
+		instances[idx] = &MatrixInstance{
+			Index:  idx,
 			Matrix: combination,
-		})
-		return
+		}
+		idx++
+
+		// 递增索引（类似进位）
+		pos := len(indices) - 1
+		for pos >= 0 {
+			indices[pos]++
+			if indices[pos] < len(matrix[dimensions[pos]]) {
+				break
+			}
+			indices[pos] = 0
+			pos--
+		}
+
+		// 所有维度都已遍历完
+		if pos < 0 {
+			break
+		}
 	}
 
-	// 遍历当前维度的所有值
-	dim := dimensions[dimIndex]
-	for _, value := range matrix[dim] {
-		current[dim] = value
-		e.generateCombinations(matrix, dimensions, dimIndex+1, current, instances)
-	}
+	return instances
 }

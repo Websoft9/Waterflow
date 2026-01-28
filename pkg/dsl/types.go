@@ -87,3 +87,9 @@ type MatrixError struct {
 func (e *MatrixError) Error() string {
 	return fmt.Sprintf("matrix combinations %d exceed limit %d", e.Combinations, e.Limit)
 }
+
+// Unwrap returns nil (MatrixError is a terminal error)
+// Implements Go 1.13+ error unwrapping interface
+func (e *MatrixError) Unwrap() error {
+	return nil
+}

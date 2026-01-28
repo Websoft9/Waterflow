@@ -58,9 +58,16 @@ func (r *WorkflowRenderer) RenderWorkflow(workflow *Workflow) (*Workflow, error)
 
 // RenderJob renders a job with expression evaluation
 func (r *WorkflowRenderer) RenderJob(workflow *Workflow, job *Job, baseCtx *EvalContext) (*Job, error) {
-	// Update context with job info
+	// Update context with job info, preserve matrix and steps from baseCtx
 	ctx := NewContextBuilder(workflow).WithJob(job).Build()
-	ctx.Steps = baseCtx.Steps // Preserve steps outputs
+	ctx.Matrix = baseCtx.Matrix // Preserve matrix context
+	ctx.Steps = baseCtx.Steps   // Preserve steps outputs
+
+	// Render runs-on field (支持 matrix 表达式)
+	renderedRunsOn, err := r.replacer.Replace(job.RunsOn, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("render runs-on: %w", err)
+	}
 
 	// Render job-level env
 	renderedJobEnv, err := r.renderEnvMap(job.Env, ctx)
@@ -70,7 +77,7 @@ func (r *WorkflowRenderer) RenderJob(workflow *Workflow, job *Job, baseCtx *Eval
 
 	rendered := &Job{
 		Name:            job.Name,
-		RunsOn:          job.RunsOn,
+		RunsOn:          renderedRunsOn,
 		TimeoutMinutes:  job.TimeoutMinutes,
 		Needs:           job.Needs,
 		Env:             renderedJobEnv,

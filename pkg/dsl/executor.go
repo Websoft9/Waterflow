@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -36,7 +37,9 @@ func (e *MatrixExecutor) Execute(
 	results := make([]*MatrixResult, len(instances))
 	resultChan := make(chan *MatrixResult, len(instances))
 
-	// 确定实际并发数：如果 maxParallel <= 0，默认全部并行
+	// 确定实际并发数：
+	// - maxParallel > 0: 使用指定并发数
+	// - maxParallel <= 0: 默认全部并行 (等同于 len(instances))
 	maxParallel := e.maxParallel
 	if maxParallel <= 0 {
 		maxParallel = len(instances)
@@ -120,8 +123,19 @@ func (e *MatrixExecutor) executeInstance(
 		WithMatrix(instance.Matrix).
 		Build()
 
+	// 渲染 Job (替换 runs-on 和其他表达式)
+	renderer := NewWorkflowRenderer()
+	renderedJob, err := renderer.RenderJob(workflow, job, evalCtx)
+	if err != nil {
+		return &MatrixResult{
+			Status:     "completed",
+			Conclusion: "failure",
+			Error:      fmt.Sprintf("render job: %v", err),
+		}
+	}
+
 	// 执行 Steps
-	for _, step := range job.Steps {
+	for _, step := range renderedJob.Steps {
 		select {
 		case <-ctx.Done():
 			return &MatrixResult{
