@@ -97,8 +97,8 @@ func TestEngine_NoEnvironmentAccess(t *testing.T) {
 	ctx := mockContextBuilder()
 
 	// Set a real environment variable
-	os.Setenv("SECRET_TEST_VAR", "secret_value")
-	defer os.Unsetenv("SECRET_TEST_VAR")
+	require.NoError(t, os.Setenv("SECRET_TEST_VAR", "secret_value"))
+	defer func() { _ = os.Unsetenv("SECRET_TEST_VAR") }()
 
 	// Expression should not be able to access it unless in ctx.Env
 	_, err := engine.Evaluate(`getenv("SECRET_TEST_VAR")`, ctx)

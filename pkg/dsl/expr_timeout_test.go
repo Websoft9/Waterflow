@@ -60,7 +60,7 @@ func TestEngine_VeryComplexExpression(t *testing.T) {
 
 	// ((1 + 2) * 3 + 4) * 5 = (9 + 4) * 5 = 65
 	// Result type may be int or int64 depending on expr library
-	assert.Equal(t, 65, int(result.(int)))
+	assert.Equal(t, 65, result.(int))
 }
 
 // TestExpressionReplacer_TimeoutInReplace tests timeout during string replacement
@@ -97,7 +97,7 @@ func TestEngine_ConcurrentEvaluations(t *testing.T) {
 			result, err := engine.Evaluate("vars.value * 2", ctx)
 			assert.NoError(t, err)
 			// Result type may be int or int64
-			assert.Equal(t, 84, int(result.(int)))
+			assert.Equal(t, 84, result.(int))
 			done <- true
 		}()
 	}
