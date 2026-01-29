@@ -162,6 +162,11 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 
 		// AC6: Rerun workflow
 		router.HandleFunc("/v1/workflows/{id}/rerun", wh.RerunWorkflow).Methods(http.MethodPost)
+
+		// Agent discovery endpoints (Story 1.9 AC9)
+		ah := NewAgentHandlers(logger, temporalClient)
+		router.HandleFunc("/v1/agents", ah.ListAgents).Methods(http.MethodGet)
+		router.HandleFunc("/v1/agents/{name}", ah.GetAgentStatus).Methods(http.MethodGet)
 	}
 
 	// Audit log endpoints (Story 9-3 AC6)

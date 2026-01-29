@@ -614,6 +614,300 @@ func (h *WorkflowHandler) TerminateWorkflow(c *gin.Context) {
 - 响应时间: < 500ms (P95)
 - Terminate 操作立即生效，不等待 cleanup
 
+---
+
+### AC9: Agent 状态查询 API ✅
+
+**Given** 用户需要在提交工作流前验证 Agent 是否在线  
+**When** 调用 Agent 查询 API  
+**Then** 返回 Agent 列表及其健康状态
+
+**业务场景:**
+1. **工作流提交前验证**: 检查 `runs-on` 指定的 Agent 是否有可用 Worker
+2. **Matrix 场景验证**: 批量验证 `matrix.server` 所有值对应的 Agent 是否存在
+3. **系统监控**: 查看所有 Agent 的整体健康状况
+
+#### API 端点 1: 列出所有 Agents
+
+```
+GET /v1/agents
+```
+
+**响应示例:**
+```json
+{
+  "agents": [
+    {
+      "name": "server-01",
+      "status": "healthy",
+      "pollers_count": 3
+    },
+    {
+      "name": "server-02",
+      "status": "degraded",
+      "pollers_count": 1
+    },
+    {
+      "name": "default",
+      "status": "unavailable",
+      "pollers_count": 0
+    }
+  ]
+}
+```
+
+**状态定义:**
+- `healthy`: 有 ≥2 个活跃 Poller (Worker)
+- `degraded`: 有 1 个活跃 Poller
+- `unavailable`: 无活跃 Poller
+
+#### API 端点 2: 查询单个 Agent
+
+```
+GET /v1/agents/{name}
+```
+
+**请求示例:**
+```bash
+# 验证 runs-on 指定的 Agent 是否存在
+curl http://localhost:8080/v1/agents/server-01
+```
+
+**成功响应 (200):**
+```json
+{
+  "name": "server-01",
+  "status": "healthy",
+  "pollers_count": 3,
+  "backlog_count": 5
+}
+```
+
+**错误响应 (404):**
+```json
+{
+  "error": {
+    "code": "AGENT_NOT_FOUND",
+    "message": "Agent 'invalid-agent' does not exist or is offline"
+  }
+}
+```
+
+#### 实现代码
+
+**文件:** `internal/api/agent_handler.go` (新建)
+
+```go
+package api
+
+import (
+	"context"
+	"go.temporal.io/sdk/client"
+)
+
+// AgentHandlers handles agent discovery and status endpoints
+type AgentHandlers struct {
+	temporalClient client.Client
+}
+
+// NewAgentHandlers creates agent handlers
+func NewAgentHandlers(temporalClient client.Client) *AgentHandlers {
+	return &AgentHandlers{…}
+}
+
+// AgentResponse represents an agent status
+type AgentResponse struct {
+	Name         string `json:"name"`
+	BacklogCount int    `json:"backlog_count,omitempty"`
+}
+
+// ListAgents lists all agents
+// GET /v1/agents
+func (h *AgentHandlers) ListAgents(c *gin.Context) {
+	ctx := c.Request.Context()
+	})
+}
+
+// GetAgentStatus returns the status of a specific agent
+// GET /v1/agents/:name
+func (h *AgentHandlers) GetAgentStatus(c *gin.Context) {
+	agentName := c.Param("name")
+	})
+}
+
+// discoverAgents queries agents from Temporal
+func (h *AgentHandlers) discoverAgents(ctx context.Context) ([]AgentResponse, error) {
+	// Note: Query agents via Temporal Task Queue discovery
+	return agents, nil
+}
+
+// determineAgentHealth returns health status based on poller count
+func determineAgentHealth(pollersCount int) string {
+	if pollersCount >= 2 {
+	return "unavailable"
+}
+```
+
+**路由注册:** `internal/api/router.go`
+
+```go
+// Agent discovery (Story 1.9 AC9)
+ah := NewAgentHandlers(temporalClient)
+router.HandleFunc("/v1/agents", ah.ListAgents).Methods(http.MethodGet)
+router.HandleFunc("/v1/agents/{name}", ah.GetAgentStatus).Methods(http.MethodGet)
+```
+		return queues[i].Name < queues[j].Name
+#### 使用场景
+
+**场景 1: 提交工作流前验证**
+```bash
+# 1. 先验证 Agent 是否在线
+curl http://localhost:8080/v1/agents/server-01
+# → {"name":"server-01","status":"healthy","pollers_count":3}
+
+# 2. 确认后提交工作流
+curl -X POST http://localhost:8080/v1/workflows \
+  -d '{"yaml":"name: Deploy\njobs:\n  build:\n    runs-on: server-01\n..."}'
+```
+
+**场景 2: Matrix 场景批量验证**
+```yaml
+# 工作流定义
+strategy:
+  matrix:
+    server: [server-01, server-02, server-03]
+
+jobs:
+  deploy:
+    runs-on: ${{ matrix.server }}
+```
+
+```bash
+# 验证所有 Agent 是否在线
+for agent in server-01 server-02 server-03; do
+  status=$(curl -s http://localhost:8080/v1/agents/$agent | jq -r '.status')
+  if [ "$status" != "healthy" ]; then
+    echo "WARNING: Agent $agent is $status"
+  fi
+done
+
+# 如果所有 Agent 都健康，再提交工作流
+```
+
+**场景 3: 系统监控面板**
+```bash
+# 查看所有非健康状态的 Agent
+curl http://localhost:8080/v1/agents | \
+  jq '.agents[] | select(.status!="healthy")'
+
+# 输出:
+# {
+#   "name": "gpu-a100",
+#   "status": "unavailable",
+#   "pollers_count": 0
+# }
+```
+
+#### 与工作流提交的集成
+
+**完整流程:**
+
+```
+用户提交工作流
+    ↓
+1. 解析 YAML (AC1)
+    ↓
+2. 提取 runs-on 值
+    ↓
+3. 调用 GET /v1/agents/{runs-on} (可选验证)
+    ↓ (200 OK, status=healthy)
+4. 提交到 Temporal
+    ↓
+5. Agent Worker 执行
+    ↓ (如果 Agent 不存在)
+6. timeout-minutes 保护 (Story 1.7)
+```
+
+**前端验证示例:**
+```javascript
+async function submitWorkflow(yaml) {
+  // 1. 解析 YAML 提取 runs-on
+  const runsOn = parseRunsOn(yaml);
+  
+  // 2. 验证 Agent 是否在线
+  const agentStatus = await fetch(`/v1/agents/${runsOn}`);
+  if (agentStatus.status === 404) {
+    alert(`Error: Agent '${runsOn}' does not exist or is offline`);
+    return;
+  }
+  
+  const agent = await agentStatus.json();
+  if (agent.status === 'unavailable') {
+    const confirm = window.confirm(
+      `Warning: No workers available for agent '${runsOn}'. Continue?`
+    );
+    if (!confirm) return;
+  }
+  
+  // 3. 提交工作流
+  await fetch('/v1/workflows', {
+    method: 'POST',
+    body: JSON.stringify({ yaml })
+  });
+}
+```
+
+**性能要求:**
+- 单个 Agent 查询: < 200ms (P95)
+- 列出所有 Agents: < 500ms (P95)
+- 缓存 Temporal DescribeTaskQueue 结果 30 秒
+1. 解析 YAML (AC1)
+    ↓
+2. 提取 runs-on 值
+    ↓
+3. 调用 GET /v1/agents/{runs-on} (可选验证)
+    ↓ (200 OK, status=healthy)
+4. 提交到 Temporal
+    ↓
+5. Agent Worker 执行
+    ↓ (如果 Agent 不存在)
+6. timeout-minutes 保护 (Story 1.7)
+```
+
+**前端验证示例:**
+```javascript
+async function submitWorkflow(yaml) {
+  // 1. 解析 YAML 提取 runs-on
+  const runsOn = parseRunsOn(yaml);
+  
+  // 2. 验证 Agent 是否在线
+  const agentStatus = await fetch(`/v1/agents/${runsOn}`);
+  if (agentStatus.status === 404) {
+    alert(`Error: Agent '${runsOn}' does not exist or is offline`);
+    return;
+  }
+  
+  const agent = await agentStatus.json();
+  if (agent.status === 'unavailable') {
+    const confirm = window.confirm(
+      `Warning: No workers available for agent '${runsOn}'. Continue?`
+    );
+    if (!confirm) return;
+  }
+  
+  // 3. 提交工作流
+  await fetch('/v1/workflows', {
+    method: 'POST',
+    body: JSON.stringify({ yaml })
+  });
+}
+```
+
+**性能要求:**
+- 单个 Agent 查询: < 200ms (P95)
+- 列出所有 Agents: < 500ms (P95)
+- 缓存 Temporal DescribeTaskQueue 结果 30 秒
+
 ## Tasks / Subtasks
 
 ### Task 1: 工作流提交 API 实现 (AC1)

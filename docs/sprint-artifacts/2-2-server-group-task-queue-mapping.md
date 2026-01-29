@@ -469,6 +469,122 @@ runs-on: linux-ubuntu-22-04-amd64-with-docker-and-gpu-nvidia-a100-in-us-west-1-z
 - `README.md` - 快速开始中包含示例
 - API 错误提示 - 验证失败时提供建议
 
+### AC5.1: Matrix 动态 Task Queue 路由 (Story 1.6 集成)
+
+**Given** 工作流使用 Matrix 策略并配置动态 runs-on  
+**When** Matrix 展开为多个实例  
+**Then** 每个实例自动路由到对应的 Task Queue
+
+**示例 - 多服务器部署:**
+```yaml
+name: Multi-Server Deployment
+
+jobs:
+  deploy:
+    runs-on: ${{ matrix.server }}  # 动态分配到不同 Agent
+    strategy:
+      matrix:
+        server: [web1, web2, web3]
+        component: [nginx, app, worker]
+      max-parallel: 3               # 最多并行 3 个
+      fail-fast: false              # 失败不影响其他实例
+    steps:
+      - name: Deploy Component
+        uses: docker@v1
+        with:
+          container: ${{ matrix.component }}
+          action: restart
+          server: ${{ matrix.server }}
+```
+
+**展开后的路由 (9 个实例):**
+```
+实例 0: runs-on: "web1" → Task Queue: web1 → Agent web1
+实例 1: runs-on: "web1" → Task Queue: web1 → Agent web1
+实例 2: runs-on: "web1" → Task Queue: web1 → Agent web1
+实例 3: runs-on: "web2" → Task Queue: web2 → Agent web2
+实例 4: runs-on: "web2" → Task Queue: web2 → Agent web2
+实例 5: runs-on: "web2" → Task Queue: web2 → Agent web2
+实例 6: runs-on: "web3" → Task Queue: web3 → Agent web3
+实例 7: runs-on: "web3" → Task Queue: web3 → Agent web3
+实例 8: runs-on: "web3" → Task Queue: web3 → Agent web3
+```
+
+**Agent 配置:**
+```yaml
+# Agent web1 配置
+agent:
+  task_queues:
+    - web1
+
+# Agent web2 配置
+agent:
+  task_queues:
+    - web2
+
+# Agent web3 配置
+agent:
+  task_queues:
+    - web3
+```
+
+**技术实现 (已在 Story 1.6 实现):**
+1. `renderer.RenderJob()` 渲染 `runs-on` 表达式
+2. `MatrixExecutor.executeInstance()` 在执行前调用渲染
+3. `temporal/workflow.go` 使用渲染后的 `job.RunsOn` 作为 Task Queue
+
+**示例 - 复杂表达式:**
+```yaml
+jobs:
+  deploy:
+    runs-on: ${{ matrix.server }}-agent  # 复杂表达式
+    strategy:
+      matrix:
+        server: [prod, staging, dev]
+```
+
+**展开结果:**
+```
+实例 0: runs-on: "prod-agent" → Task Queue: prod-agent
+实例 1: runs-on: "staging-agent" → Task Queue: staging-agent
+实例 2: runs-on: "dev-agent" → Task Queue: dev-agent
+```
+
+**优势:**
+- ✅ 真正的分布式执行 - 每个服务器独立处理自己的任务
+- ✅ 避免资源冲突 - 不同服务器的任务不会相互影响
+- ✅ 自然负载均衡 - 每个 Agent 只处理分配给它的实例
+- ✅ 弹性扩展 - 添加新服务器只需启动新 Agent
+
+**实际应用场景:**
+```yaml
+# 场景 1: 多区域部署
+jobs:
+  deploy:
+    runs-on: ${{ matrix.region }}
+    strategy:
+      matrix:
+        region: [us-west, eu-central, asia-east]
+
+# 场景 2: 多环境测试
+jobs:
+  test:
+    runs-on: ${{ matrix.env }}-runners
+    strategy:
+      matrix:
+        env: [dev, staging, prod]
+        version: [v1, v2]
+
+# 场景 3: 混合架构构建
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}-${{ matrix.arch }}
+    strategy:
+      matrix:
+        os: [linux, macos, windows]
+        arch: [amd64, arm64]
+```
+
 ### AC6: 不存在 Queue 的错误处理
 
 **Given** 工作流指定了 `runs-on: special-hardware`  
@@ -536,85 +652,33 @@ jobs:
 - 使用合理的超时时间 (考虑 Agent 启动时间)
 - 监控 Task Queue 状态 (通过 Temporal UI)
 
-### AC7: 服务器组状态查询 API (可选,为 Story 2.7 准备)
+### AC7: Agent 状态查询 (Story 1.9 实现)
 
-**Given** 用户想知道哪些 Task Queue 有可用 Agent  
-**When** 调用状态查询 API  
-**Then** 返回所有活跃的 Task Queue 和 Worker 数量
+**Given** 用户想知道哪些 Agent 有可用 Worker  
+**When** 调用 Agent 查询 API  
+**Then** 返回 Agent 列表及其健康状态
 
-**API 端点** (本 Story 实现基础,Story 2.7 完善):
+**说明:**
+Agent 状态查询 API 的完整实现在 **Story 1.9 AC9** 中，作为工作流管理 API 的一部分。
+
+**API 端点:**
 ```
-GET /v1/task-queues
-```
-
-**响应示例:**
-```json
-{
-  "task_queues": [
-    {
-      "name": "linux-amd64",
-      "worker_count": 3,
-      "last_heartbeat": "2025-12-25T10:30:00Z",
-      "status": "healthy"
-    },
-    {
-      "name": "linux-common",
-      "worker_count": 5,
-      "last_heartbeat": "2025-12-25T10:30:00Z",
-      "status": "healthy"
-    },
-    {
-      "name": "gpu-a100",
-      "worker_count": 1,
-      "last_heartbeat": "2025-12-25T10:29:45Z",
-      "status": "healthy"
-    }
-  ]
-}
+GET /v1/agents          # 列出所有 Agents
+GET /v1/agents/{name}   # 查询单个 Agent 状态
 ```
 
-**实现** (基础版本,`internal/api/task_queue_handler.go`):
-```go
-// ListTaskQueues returns a list of active task queues.
-// This is a basic implementation that queries Temporal for worker status.
-func (h *Handler) ListTaskQueues(c *gin.Context) {
-	ctx := c.Request.Context()
-	
-	// Query Temporal for task queue statistics
-	// Note: Temporal SDK doesn't provide a direct API for this in MVP
-	// This is a placeholder for Story 2.7 (Agent Health Monitoring)
-	
-	// For now, return a simple response based on known agents
-	// Full implementation in Story 2.7 will query Temporal Admin API
-	
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Task queue listing not yet implemented (Story 2.7)",
-		"hint":    "Use Temporal UI to view active task queues",
-	})
-}
-```
+**主要用途:**
+1. **工作流提交前验证**: 检查 `runs-on` 指定的 Agent 是否存在
+2. **Matrix 场景**: 批量验证 `matrix.server` 对应的 Agents
+3. **系统监控**: 查看所有 Agent 的健康状况
 
-**路由注册** (`internal/api/router.go`):
-```go
-func SetupRouter(handler *Handler) *gin.Engine {
-	router := gin.Default()
-	
-	v1 := router.Group("/v1")
-	{
-		// ... existing routes
-		
-		// Task queue management (Story 2.2 placeholder, Story 2.7 full implementation)
-		v1.GET("/task-queues", handler.ListTaskQueues)
-	}
-	
-	return router
-}
-```
+**为什么在 Story 1.9:**
+- Agent API 主要用于**工作流提交前的验证**
+- 从用户角度是工作流管理流程的一部分
+- 与其他工作流 API (`/v1/workflows`) 保持一致的分组
+- 隐藏 Temporal Task Queue 实现细节，使用 Agent 这个更直观的概念
 
-**Story 2.7 完善:**
-- 调用 Temporal Admin API 获取 Worker 心跳
-- 计算每个 Queue 的 Worker 数量
-- 返回详细的健康状态
+**参考:** 详见 [Story 1.9 AC9](./1-9-workflow-management-api.md#ac9-agent-状态查询-api-)
 
 ## Developer Context
 
@@ -1098,9 +1162,11 @@ jobs:
 - ✅ `pkg/temporal/workflow.go` - 扩展 `RunWorkflowExecutor` 使用 `runs-on` 作为 Task Queue
 - ✅ `pkg/dsl/validator.go` - 添加 `validateTaskQueueName` 函数
 - ✅ `pkg/dsl/validator_test.go` - 命名验证测试
-- ✅ `internal/api/task_queue_handler.go` - 占位 API (Story 2.7 完善)
-- ✅ `internal/api/router.go` - 注册 `/v1/task-queues` 路由
 - ✅ `docs/guides/server-groups.md` - 命名约定指南
+
+**Story 1.9 实现 (Agent API):**
+- ✅ `internal/api/agent_handler.go` - Agent 查询 API
+- ✅ `internal/api/router.go` - 注册 `/v1/agents` 路由
 
 **已在 Story 2.1 实现 (无需修改):**
 - Agent Worker 多 Queue 轮询
@@ -1148,8 +1214,8 @@ Claude Sonnet 4.5
 3. **AC3: Temporal 负载均衡** - Temporal 原生支持,文档已说明
 4. **AC4: Task Queue 命名验证** - `pkg/dsl/semantic_validator.go` 添加 `ValidateTaskQueueName` 函数
 5. **AC5: 命名约定指南** - 创建 `docs/guides/server-groups.md`
-6. **AC6: Queue 不存在处理** - Temporal 自动处理,文档已说明超时行为
-7. **AC7: Task Queue API 占位** - `internal/api/workflow_handler.go` 添加 `ListTaskQueues` 方法
+6. **AC6: Queue 不存在处理** - Temporal 自动处理,文档已说明超时行为 + `pkg/dsl/validator_runs_on.go` 格式验证
+7. **AC7: Agent 查询 API** - 完整实现移至 Story 1.9 AC9 (工作流管理 API)
 
 ### File List
 
@@ -1157,17 +1223,21 @@ Claude Sonnet 4.5
 - `docs/guides/server-groups.md` - 服务器组命名指南 (448 行)
 - `examples/multi-server.yaml` - 多服务器部署示例 (117 行)
 - `pkg/dsl/task_queue_validator_test.go` - Task Queue 验证测试 (164 行)
+- `pkg/dsl/validator_runs_on.go` - runs-on 格式验证器 (85 行)
+- `pkg/dsl/validator_runs_on_test.go` - runs-on 验证测试 (210 行)
 
 **修改文件:**
 - `pkg/dsl/semantic_validator.go` - 添加 ValidateTaskQueueName + validateRunsOn (~90 行新增)
-- `internal/api/workflow_handler.go` - 添加 ListTaskQueues 方法 + 强制验证 (~35 行新增/修改)
-- `internal/api/router.go` - 注册 Task Queue 路由 (~2 行新增)
 - `pkg/temporal/workflow.go` - 添加防御性 runs-on 检查 (~12 行新增)
 - `README.md` - 更新多服务器示例 (~15 行修改)
 - `docs/sprint-artifacts/sprint-status.yaml` - 状态更新
 - `docs/sprint-artifacts/2-2-server-group-task-queue-mapping.md` - 本文件
 
-**总计:** ~710 新增代码行 (含测试), ~32 修改行
+**Story 1.9 新增 (Task Queue API):**
+- `internal/api/taskqueue_handler.go` - Task Queue 查询 API (150 行)
+- `internal/api/router.go` - 注册路由 (~2 行新增)
+
+**总计:** ~1131 新增代码行 (含测试), ~32 修改行
 
 **测试覆盖:**
 - ✅ **单元测试:** TestValidateTaskQueueName (19个用例), TestSemanticValidator_ValidateRunsOn (5个用例)

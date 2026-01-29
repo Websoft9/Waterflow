@@ -1,8 +1,8 @@
 # Waterflow REST API 完整清单
 
 **版本:** v1  
-**最后更新:** 2026-01-27  
-**总计:** 27 个 API 端点
+**最后更新:** 2026-01-28  
+**总计:** 29 个 API 端点
 
 ---
 
@@ -18,7 +18,8 @@
 | **节点管理** | 1 | Story 5.6 |
 | **YAML 验证** | 1 | Story 5.2 |
 | **审计日志** | 1 | Story 9.3 |
-| **总计** | **27** | - |
+| **Agent 管理** | 2 | Story 1.9 |
+| **总计** | **29** | - |
 
 ---
 
@@ -349,6 +350,56 @@ GET /v1/audit?action=workflow.cancel&user=admin&start_time=2026-01-01T00:00:00Z
 
 ---
 
+## 9️⃣ Agent 管理 API (2 个) - Story 1.9
+
+### 9.1 列出 Agents
+```
+GET /v1/agents
+```
+- **用途**: 获取所有可用 Agents
+- **返回**: 
+```json
+{
+  "agents": [
+    {
+      "name": "server-01",
+      "status": "healthy",
+      "pollers_count": 2
+    },
+    {
+      "name": "server-02",
+      "status": "degraded",
+      "pollers_count": 1
+    }
+  ]
+}
+```
+- **状态说明**:
+  - `healthy`: 有 ≥2 个活跃 Poller
+  - `degraded`: 有 1 个活跃 Poller
+  - `unavailable`: 无活跃 Poller
+
+### 9.2 查询 Agent 状态
+```
+GET /v1/agents/{name}
+```
+- **用途**: 查询单个 Agent 的健康状态
+- **返回**:
+```json
+{
+  "name": "server-01",
+  "status": "healthy",
+  "pollers_count": 3,
+  "backlog_count": 5
+}
+```
+- **场景**: 
+  - 提交工作流前验证 `runs-on` 对应的 Agent 是否存在
+  - Matrix 场景验证所有 `server` 值对应的 Agent 是否可用
+  - 防止提交到不存在的 Agent 导致工作流永久等待
+
+---
+
 ## 🚀 Post-MVP API (4 个)
 
 ### Story 1.9 扩展
@@ -394,4 +445,4 @@ POST /v1/workflows/{id}/resume           # 恢复工作流 (P3)
 
 ---
 
-**当前状态:** Epic 1 完成后,Waterflow 将提供 **27 个生产级 REST API** 🎉
+**当前状态:** Epic 1 完成后,Waterflow 将提供 **29 个生产级 REST API** 🎉
