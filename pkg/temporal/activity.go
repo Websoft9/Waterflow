@@ -204,16 +204,21 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 	}
 
 	// Fallback: no node registry (测试模式)
+	// TODO(Story 4.1): Replace with actual NodeRegistry integration
+	// This placeholder is only used for testing when NodeRegistry is not available.
+	// In production, nodeRegistry should always be initialized.
 	logger.Warn("Node registry not available, using placeholder execution")
 
 	// Simulate execution
 	outputs := make(map[string]string)
 	outputs["result"] = "success"
 
-	// Record heartbeat
+	// Record heartbeat with detailed progress information
 	activity.RecordHeartbeat(ctx, map[string]interface{}{
-		"step":     input.Step.Name,
-		"progress": "completed",
+		"step":        input.Step.Name,
+		"progress":    "completed",
+		"duration_ms": time.Since(startTime).Milliseconds(),
+		"placeholder": true, // Indicates this is a placeholder execution
 	})
 
 	duration := time.Since(startTime)

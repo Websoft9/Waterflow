@@ -86,9 +86,9 @@ Waterflow 需要一个用户友好的 DSL 来定义工作流。目标用户群�
 ```yaml
 name: Build and Test
 
-on:
-  push:
-    branches: [main]
+vars:
+  environment: production
+  branch: main
 
 jobs:
   build:
@@ -99,7 +99,7 @@ jobs:
       - name: Checkout Code
         uses: checkout@v1
         with:
-          repository: ${{ workflow.repository }}
+          repository: ${{ vars.branch }}
       
       - name: Run Tests
         uses: run@v1
@@ -111,11 +111,14 @@ jobs:
           backoff: 2s
 ```
 
+> **注意:** 原设计包含 `on` 字段用于定义触发器，但在实际实现中采用了 **API 驱动架构**。工作流的触发方式不在 YAML 中定义，而是通过 REST API 提交时决定（手动提交、定时触发、Webhook 等），这简化了 DSL 语法，使其更加纯粹地专注于描述"做什么"而非"何时触发"。
+
 ### 核心概念:
 
 1. **Workflow** - 顶层对象
    - `name`: 工作流名称
-   - `on`: 触发条件
+   - `vars`: 全局变量定义（可选）
+   - `env`: 全局环境变量（可选）
    - `jobs`: 任务列表
 
 2. **Job** - 一组 Steps
@@ -161,11 +164,12 @@ steps:
 
 | 特性 | GitHub Actions | Waterflow | 原因 |
 |------|----------------|-----------|------|
-| **触发器** | 20+ 种事件 | 简化版(push/schedule/webhook) | MVP 范围 |
-| **Matrix** | 支持 | 暂不支持 | 后续版本 |
+| **触发器** | YAML `on` 字段 | API 驱动（提交时指定） | 架构差异，简化 DSL |
+| **Matrix** | 支持 | ✅ 已支持 (Story 1.6) | 已实现 |
 | **Secrets** | 内置 KV | 集成外部(Vault) | 安全性 |
-| **runs-on** | GitHub 托管 Runner | Task Queue 名称 | 架构差异 |
+| **runs-on** | GitHub 托管 Runner | Task Queue 名称 | 架构差异 (Temporal) |
 | **Container** | 支持 | 暂不支持 | 后续版本 |
+| **vars** | 预留字段 | ✅ 已支持 (Story 1.4) | 已实现 |
 
 ## Schema 定义
 
@@ -175,18 +179,20 @@ steps:
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["name", "on", "jobs"],
+  "required": ["name", "jobs"],
   "properties": {
     "name": {
       "type": "string",
       "description": "工作流名称"
     },
-    "on": {
-      "description": "触发条件",
-      "oneOf": [
-        {"type": "string"},
-        {"type": "object"}
-      ]
+    "vars": {
+      "type": "object",
+      "description": "全局变量定义"
+    },
+    "env": {
+      "type": "object",
+      "description": "全局环境变量",
+      "additionalProperties": {"type": "string"}
     },
     "jobs": {
       "type": "object",
@@ -234,20 +240,22 @@ import "gopkg.in/yaml.v3"
 
 type Workflow struct {
     Name string                 `yaml:"name"`
-    On   map[string]interface{} `yaml:"on"`
-    Jobs map[string]Job         `yaml:"jobs"`
+    Vars map[string]interface{} `yaml:"vars,omitempty"`
+    Env  map[string]string      `yaml:"env,omitempty"`
+    Jobs map[string]*Job        `yaml:"jobs"`
 }
 
 type Job struct {
-    RunsOn         string `yaml:"runs-on"`
-    TimeoutMinutes int    `yaml:"timeout-minutes"`
-    Steps          []Step `yaml:"steps"`
+    RunsOn         string            `yaml:"runs-on"`
+    TimeoutMinutes int               `yaml:"timeout-minutes,omitempty"`
+    Needs          []string          `yaml:"needs,omitempty"`
+    Steps          []*Step           `yaml:"steps"`
 }
 
 type Step struct {
-    Name           string                 `yaml:"name"`
+    Name           string                 `yaml:"name,omitempty"`
     Uses           string                 `yaml:"uses"`
-    With           map[string]interface{} `yaml:"with"`
+    With           map[string]interface{} `yaml:"with,omitempty"`
     TimeoutMinutes int                    `yaml:"timeout-minutes,omitempty"`
     Retry          *RetryConfig           `yaml:"retry,omitempty"`
 }

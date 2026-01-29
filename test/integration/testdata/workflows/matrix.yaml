@@ -1,7 +1,6 @@
 # Matrix Strategy Workflow
 # Tests parallel execution with matrix expansion
 name: matrix-test
-on: workflow_dispatch
 
 jobs:
   build:

@@ -1,7 +1,6 @@
 # Conditional Execution Workflow
 # Tests if conditions and continue-on-error
 name: conditional-test
-on: workflow_dispatch
 
 jobs:
   conditional:

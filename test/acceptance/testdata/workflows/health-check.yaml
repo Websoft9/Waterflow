@@ -3,7 +3,6 @@
 # Expected completion time: < 5 minutes
 
 name: acceptance-health-check
-on: workflow_dispatch
 
 vars:
   threshold_cpu: 90

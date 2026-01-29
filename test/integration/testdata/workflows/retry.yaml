@@ -1,7 +1,6 @@
 # Retry Strategy Workflow
 # Tests automatic retry on failure
 name: retry-test
-on: workflow_dispatch
 
 jobs:
   flaky:

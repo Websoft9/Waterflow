@@ -1,7 +1,6 @@
 # Job Dependencies Workflow
 # Tests job needs (dependencies) and data passing
 name: job-dependencies
-on: workflow_dispatch
 
 jobs:
   setup:

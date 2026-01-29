@@ -3,7 +3,6 @@
 # Expected completion time: < 10 minutes
 
 name: acceptance-distributed-deploy
-on: workflow_dispatch
 
 vars:
   app_name: myapp

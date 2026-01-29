@@ -1,7 +1,6 @@
 # Multi-Step Workflow with Output Passing
 # Tests step output references and data flow
 name: multi-step-outputs
-on: workflow_dispatch
 
 jobs:
   process:
