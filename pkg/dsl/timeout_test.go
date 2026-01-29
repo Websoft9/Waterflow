@@ -126,10 +126,10 @@ func TestTimeoutResolver_ValidateTimeout(t *testing.T) {
 			expectError:    true,
 		},
 		{
-			name:           "Zero timeout (valid)",
+			name:           "Zero timeout (invalid - minimum is 1)",
 			timeoutMinutes: 0,
 			fieldName:      "step.timeout",
-			expectError:    false,
+			expectError:    true,
 		},
 		{
 			name:           "Maximum valid timeout",

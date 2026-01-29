@@ -292,26 +292,18 @@ func getJobNames(jobs map[string]*Job) []string {
 func (v *SemanticValidator) validateJobTimeout(jobName string, job *Job) []FieldError {
 	var errors []FieldError
 
-	if job.TimeoutMinutes < 0 {
-		errors = append(errors, FieldError{
-			Line:       job.LineNum,
-			Field:      fmt.Sprintf("jobs.%s.timeout-minutes", jobName),
-			Error:      "timeout cannot be negative",
-			Value:      fmt.Sprintf("%d", job.TimeoutMinutes),
-			Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
-			Suggestion: "Use a positive timeout value or remove to use default (360 minutes)",
-		})
-	}
-
-	if job.TimeoutMinutes > 1440 {
-		errors = append(errors, FieldError{
-			Line:       job.LineNum,
-			Field:      fmt.Sprintf("jobs.%s.timeout-minutes", jobName),
-			Error:      "timeout exceeds maximum 1440 minutes (24 hours)",
-			Value:      fmt.Sprintf("%d", job.TimeoutMinutes),
-			Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
-			Suggestion: "Use timeout <= 1440 minutes (24 hours)",
-		})
+	if job.TimeoutMinutes != 0 {
+		resolver := NewTimeoutResolver()
+		if err := resolver.ValidateTimeout(job.TimeoutMinutes, fmt.Sprintf("jobs.%s.timeout-minutes", jobName)); err != nil {
+			errors = append(errors, FieldError{
+				Line:       job.LineNum,
+				Field:      fmt.Sprintf("jobs.%s.timeout-minutes", jobName),
+				Error:      err.Error(),
+				Value:      fmt.Sprintf("%d", job.TimeoutMinutes),
+				Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
+				Suggestion: "Use timeout between 1-1440 minutes or remove to use default (360 minutes)",
+			})
+		}
 	}
 
 	return errors
@@ -321,26 +313,18 @@ func (v *SemanticValidator) validateJobTimeout(jobName string, job *Job) []Field
 func (v *SemanticValidator) validateStepTimeout(jobName string, stepIdx int, step *Step) []FieldError {
 	var errors []FieldError
 
-	if step.TimeoutMinutes < 0 {
-		errors = append(errors, FieldError{
-			Line:       step.LineNum,
-			Field:      fmt.Sprintf("jobs.%s.steps[%d].timeout-minutes", jobName, stepIdx),
-			Error:      "timeout cannot be negative",
-			Value:      fmt.Sprintf("%d", step.TimeoutMinutes),
-			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
-			Suggestion: "Use a positive timeout value or remove to inherit from job",
-		})
-	}
-
-	if step.TimeoutMinutes > 1440 {
-		errors = append(errors, FieldError{
-			Line:       step.LineNum,
-			Field:      fmt.Sprintf("jobs.%s.steps[%d].timeout-minutes", jobName, stepIdx),
-			Error:      "timeout exceeds maximum 1440 minutes (24 hours)",
-			Value:      fmt.Sprintf("%d", step.TimeoutMinutes),
-			Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
-			Suggestion: "Use timeout <= 1440 minutes (24 hours)",
-		})
+	if step.TimeoutMinutes != 0 {
+		resolver := NewTimeoutResolver()
+		if err := resolver.ValidateTimeout(step.TimeoutMinutes, fmt.Sprintf("jobs.%s.steps[%d].timeout-minutes", jobName, stepIdx)); err != nil {
+			errors = append(errors, FieldError{
+				Line:       step.LineNum,
+				Field:      fmt.Sprintf("jobs.%s.steps[%d].timeout-minutes", jobName, stepIdx),
+				Error:      err.Error(),
+				Value:      fmt.Sprintf("%d", step.TimeoutMinutes),
+				Snippet:    extractCodeSnippet(v.content, step.LineNum, 2),
+				Suggestion: "Use timeout between 1-1440 minutes or remove to inherit from job",
+			})
+		}
 	}
 
 	return errors

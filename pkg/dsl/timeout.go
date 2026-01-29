@@ -48,8 +48,8 @@ func (r *TimeoutResolver) ResolveJobTimeout(job *Job) time.Duration {
 
 // ValidateTimeout 验证超时配置
 func (r *TimeoutResolver) ValidateTimeout(timeoutMinutes int, fieldName string) error {
-	if timeoutMinutes < 0 {
-		return fmt.Errorf("%s: timeout cannot be negative", fieldName)
+	if timeoutMinutes < 1 {
+		return fmt.Errorf("%s: timeout must be at least 1 minute", fieldName)
 	}
 	if timeoutMinutes > 1440 {
 		return fmt.Errorf("%s: timeout cannot exceed 1440 minutes (24 hours)", fieldName)
