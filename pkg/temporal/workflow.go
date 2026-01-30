@@ -235,14 +235,24 @@ func ExecuteJobInstance(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, in
 			RetryPolicy:         retryPolicy.ToTemporalRetryPolicy(),
 		})
 
+		// Convert EvalContext to serializable version for Temporal
+		serializableCtx := evalCtx.ToSerializable()
+
+		// Serialize step data to prevent function reference leakage
+		stepInput := ExecuteStepInput{
+			WorkflowName: wf.Name,
+			JobName:      job.Name,
+			StepName:     step.Name,
+			StepUses:     step.Uses,
+			StepWith:     step.With,
+			StepEnv:      step.Env,
+			StepIf:       step.If,
+			Context:      serializableCtx,
+		}
+
 		// Execute step activity (ADR-0002: single-node execution pattern)
 		var stepResult StepResult
-		err := workflow.ExecuteActivity(activityCtx, "ExecuteStepActivity", ExecuteStepInput{
-			Workflow: wf,
-			Job:      job,
-			Step:     step,
-			Context:  evalCtx,
-		}).Get(activityCtx, &stepResult)
+		err := workflow.ExecuteActivity(activityCtx, "ExecuteStepActivity", stepInput).Get(activityCtx, &stepResult)
 
 		if err != nil {
 			logger.Error("Step failed", "step", step.Name, "error", err)

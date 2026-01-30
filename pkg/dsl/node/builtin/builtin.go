@@ -64,3 +64,18 @@ func (n *RunNode) Metadata() node.NodeMetadata {
 		},
 	}
 }
+
+// RegisterBuiltinNodes registers all builtin nodes to the registry
+func RegisterBuiltinNodes(registry *node.Registry) error {
+	// Register checkout@v1
+	if err := registry.Register(&CheckoutNode{}); err != nil {
+		return err
+	}
+
+	// Register run@v1
+	if err := registry.Register(&RunNode{}); err != nil {
+		return err
+	}
+
+	return nil
+}

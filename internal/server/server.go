@@ -75,6 +75,8 @@ type Server struct {
 	buildTime string
 	// temporalClient is the Temporal workflow engine client
 	temporalClient *temporal.Client
+	// temporalWorker is the Temporal worker for executing workflows and activities
+	temporalWorker *temporal.Worker
 	// agentMonitor periodically updates agent metrics
 	agentMonitor *AgentMonitor
 	// eventDispatcher dispatches workflow lifecycle events
@@ -216,6 +218,19 @@ func (s *Server) Start() error {
 				zap.String("temporal_host", s.config.Temporal.Host),
 				zap.String("namespace", s.config.Temporal.Namespace),
 			)
+
+			// Initialize and start Temporal Worker (Story 1-8 AC2)
+			activities := temporal.NewActivities(s.logger, s.nodeRegistry)
+			s.temporalWorker = temporal.NewWorker(temporalClient, activities)
+			if err := s.temporalWorker.Start(); err != nil {
+				s.logger.Warn("Failed to start Temporal Worker",
+					zap.Error(err),
+				)
+			} else {
+				s.logger.Info("Temporal Worker started successfully",
+					zap.String("task_queue", s.config.Temporal.TaskQueue),
+				)
+			}
 		}
 	} else {
 		s.logger.Info("Temporal not configured, workflow API will be disabled")
@@ -390,6 +405,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// Stop AgentMonitor
 	if s.agentMonitor != nil {
 		s.agentMonitor.Stop()
+	}
+
+	// Stop Temporal Worker (Story 1-8 AC2)
+	if s.temporalWorker != nil {
+		s.temporalWorker.Stop()
+		s.logger.Info("Temporal Worker stopped")
 	}
 
 	// Close Temporal client if connected

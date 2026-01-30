@@ -11,20 +11,23 @@ type Worker struct {
 	logger *zap.Logger
 }
 
-// NewWorker creates a new Temporal worker and registers workflows and activities.
+// NewWorker creates a new Temporal worker and registers workflows ONLY (no activities).
+// Server Worker only orchestrates workflows - Step execution happens on Agent Workers.
 func NewWorker(client *Client, activities *Activities) *Worker {
 	w := worker.New(client.client, client.config.TaskQueue, worker.Options{
 		MaxConcurrentActivityExecutionSize:     100,
 		MaxConcurrentWorkflowTaskExecutionSize: 50,
 	})
 
-	// Register workflows
+	// Register workflows (Server orchestrates workflow execution)
 	w.RegisterWorkflow(RunWorkflowExecutor)
+	w.RegisterWorkflow(ExecuteJobInstance) // Child workflow for job execution
 
-	// Register activities
-	w.RegisterActivity(activities.ExecuteStepActivity)
+	// ⚠️ DO NOT register activities here!
+	// Step activities are executed by Agent Workers on their task queues.
+	// Server Worker only handles workflow orchestration.
 
-	client.logger.Info("Temporal Worker created",
+	client.logger.Info("Temporal Worker created (orchestration only - no activities)",
 		zap.String("task_queue", client.config.TaskQueue),
 	)
 

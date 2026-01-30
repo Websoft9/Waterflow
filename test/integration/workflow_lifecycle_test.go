@@ -40,7 +40,7 @@ vars:
   message: "Hello from lifecycle test"
 jobs:
   main:
-    runs-on: linux-amd64
+    runs-on: linux-amd64  # Route to Agent Worker (not Server Worker)
     steps:
       - name: Echo message
         uses: run@v1

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Websoft9/waterflow/pkg/config"
 	"github.com/Websoft9/waterflow/pkg/dsl/node"
+	"github.com/Websoft9/waterflow/pkg/dsl/node/builtin"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/zap"
@@ -34,6 +35,12 @@ func NewWorker(cfg *config.Config, logger *zap.Logger) (*Worker, error) {
 
 	// Initialize NodeRegistry
 	nodeRegistry := node.NewRegistry()
+
+	// Register builtin nodes (checkout@v1, run@v1)
+	if err := builtin.RegisterBuiltinNodes(nodeRegistry); err != nil {
+		return nil, fmt.Errorf("failed to register builtin nodes: %w", err)
+	}
+	logger.Info("Registered builtin nodes", zap.Int("count", 2))
 
 	// Initialize Plugin Manager with registry
 	pluginManager := NewPluginManager(cfg.Agent.PluginDir, nodeRegistry, logger)

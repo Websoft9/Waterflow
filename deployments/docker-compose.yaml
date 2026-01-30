@@ -1,83 +1,88 @@
 services:
   # PostgreSQL Database (Temporal dependency)
   postgresql:
-    image: postgres:15-alpine
+    image: postgres:${POSTGRESQL_VERSION:-16}
     container_name: waterflow-postgresql
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-temporal}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-temporal}
-      POSTGRES_DB: ${POSTGRES_DB:-temporal}
     volumes:
       - postgresql-data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U temporal" ]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 60
+      start_period: 30s
     networks:
       - waterflow-network
     restart: unless-stopped
-    # Security options
-    security_opt:
-      - no-new-privileges:true
-    read_only: false # PostgreSQL needs write access to data directory
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - SETUID
-      - SETGID
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
 
-  # Temporal Server (内部服务，不对外暴露)
-  temporal:
-    image: temporalio/auto-setup:1.22.0
-    container_name: waterflow-temporal
+  # Temporal Admin Tools - 用于初始化数据库
+  temporal-admin-tools:
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: waterflow-temporal-admin-tools
+    restart: on-failure:6
     depends_on:
       postgresql:
         condition: service_healthy
     environment:
-      DB: postgresql
-      DB_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-temporal}
-      POSTGRES_PWD: ${POSTGRES_PASSWORD:-temporal}
-      POSTGRES_SEEDS: postgresql
-      SKIP_DB_CREATE: "false"
-      SKIP_DEFAULT_NAMESPACE_CREATION: "false"
-      ENABLE_ES: "false"
-      LOG_LEVEL: ${TEMPORAL_LOG_LEVEL:-info}
-    # ⚠️ 不暴露端口给宿主机，仅内部网络通信
-    # ports:
-    #   - "7233:7233"  # 已注释：不对外开放
-    healthcheck:
-      test: [ "CMD", "sh", "-c", "nc -z $(hostname -i) 7233" ]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - SQL_PASSWORD=temporal
     networks:
       - waterflow-network
-    restart: unless-stopped
-    # Security options
-    security_opt:
-      - no-new-privileges:true
-    read_only: false # Temporal needs write access for state management
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: [ "/bin/sh" ]
+    command: /scripts/setup-postgres.sh
 
-  # Waterflow Server (连接到内部 Temporal)
+  # Temporal Server
+  temporal:
+    image: temporalio/server:${TEMPORAL_VERSION:-1.29.2}
+    container_name: waterflow-temporal
+    depends_on:
+      temporal-admin-tools:
+        condition: service_completed_successfully
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - BIND_ON_IP=0.0.0.0
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    networks:
+      - waterflow-network
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "7233" ]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 60
+
+  temporal-create-namespace:
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: waterflow-temporal-create-namespace
+    restart: on-failure:5
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - DEFAULT_NAMESPACE=default
+    networks:
+      - waterflow-network
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: [ "/bin/sh" ]
+    command: /scripts/create-namespace.sh
+
   waterflow:
     build:
       context: ..
@@ -92,14 +97,14 @@ services:
       WATERFLOW_SERVER_HOST: ${WATERFLOW_SERVER_HOST:-0.0.0.0}
       WATERFLOW_SERVER_PORT: ${WATERFLOW_SERVER_PORT:-8080}
 
-      # Temporal Configuration (连接内部服务)
+      # Temporal Configuration 
       WATERFLOW_TEMPORAL_HOST: ${WATERFLOW_TEMPORAL_HOST:-temporal:7233}
       WATERFLOW_TEMPORAL_NAMESPACE: ${WATERFLOW_TEMPORAL_NAMESPACE:-default}
       WATERFLOW_TEMPORAL_TASKQUEUE: ${WATERFLOW_TEMPORAL_TASKQUEUE:-waterflow-server}
       WATERFLOW_LOG_LEVEL: ${WATERFLOW_LOG_LEVEL:-info}
       WATERFLOW_LOG_FORMAT: ${WATERFLOW_LOG_FORMAT:-json}
     ports:
-      - "${WATERFLOW_SERVER_PORT:-8080}:8080" # 只暴露 Waterflow API
+      - "${WATERFLOW_SERVER_PORT:-8080}:8080"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 30s
@@ -109,25 +114,10 @@ services:
     networks:
       - waterflow-network
     restart: unless-stopped
-    # Security options
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,nodev
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
 
   # Temporal UI (开发/调试用)
   temporal-ui:
-    image: temporalio/ui:2.22.0
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.44.0}
     container_name: waterflow-temporal-ui
     depends_on:
       temporal:
@@ -136,7 +126,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:${TEMPORAL_UI_PORT:-8088}
     ports:
-      - "${TEMPORAL_UI_PORT:-8088}:8080" # UI 容器内监听 8080,映射到宿主机 8088
+      - "${TEMPORAL_UI_PORT:-8088}:8080"
     networks:
       - waterflow-network
     restart: unless-stopped
@@ -173,28 +163,11 @@ services:
     networks:
       - waterflow-network
     restart: unless-stopped
-    # Security options
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,nodev
-      - /app/logs:noexec,nosuid,nodev
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 256M
 
 volumes:
   postgresql-data:
-    driver: local
   agent-plugins:
-    driver: local
+
 
 networks:
   waterflow-network:

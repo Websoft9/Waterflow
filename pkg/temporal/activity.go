@@ -31,11 +31,16 @@ func NewActivities(logger *zap.Logger, nodeRegistry *node.Registry) *Activities 
 }
 
 // ExecuteStepInput is the input parameter for ExecuteStepActivity.
+// Uses only primitive and serializable types to ensure Temporal compatibility.
 type ExecuteStepInput struct {
-	Workflow *dsl.Workflow
-	Job      *dsl.Job
-	Step     *dsl.Step
-	Context  *dsl.EvalContext
+	WorkflowName string
+	JobName      string
+	StepName     string
+	StepUses     string
+	StepWith     map[string]interface{}
+	StepEnv      map[string]string
+	StepIf       string
+	Context      *dsl.SerializableEvalContext // 使用可序列化版本
 }
 
 // StepResult is the result returned by ExecuteStepActivity.
@@ -54,18 +59,38 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 	// 获取当前 Attempt 信息 (Story 4.3)
 	info := activity.GetInfo(ctx)
 	logger.Info("Executing step",
-		"name", input.Step.Name,
-		"uses", input.Step.Uses,
+		"name", input.StepName,
+		"uses", input.StepUses,
 		"attempt", info.Attempt, // 当前尝试次数 (1-based)
 	)
 
 	startTime := time.Now()
 
+	// Reconstruct EvalContext with functions from serializable version
+	evalCtx := input.Context.ToEvalContext()
+
+	// Reconstruct Step from serialized data
+	step := &dsl.Step{
+		Name: input.StepName,
+		Uses: input.StepUses,
+		With: input.StepWith,
+		Env:  input.StepEnv,
+		If:   input.StepIf,
+	}
+
+	// Reconstruct minimal Workflow and Job for rendering context
+	workflow := &dsl.Workflow{
+		Name: input.WorkflowName,
+	}
+	job := &dsl.Job{
+		Name: input.JobName,
+	}
+
 	// 1. Check if condition (using Story 1.5 ConditionEvaluator)
-	if input.Step.If != "" {
+	if step.If != "" {
 		engine := dsl.NewEngine(5 * time.Second)
 		condEval := dsl.NewConditionEvaluator(engine)
-		shouldRun, err := condEval.Evaluate(input.Step.If, input.Context)
+		shouldRun, err := condEval.Evaluate(step.If, evalCtx)
 		if err != nil {
 			// 条件求值错误 - 永久性错误
 			return nil, temporal.NewNonRetryableApplicationError(
@@ -76,7 +101,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 		}
 
 		if !shouldRun {
-			logger.Info("Step skipped due to if condition", "name", input.Step.Name)
+			logger.Info("Step skipped due to if condition", "name", step.Name)
 			return &StepResult{
 				Status:     "skipped",
 				DurationMs: time.Since(startTime).Milliseconds(),
@@ -86,7 +111,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 
 	// 2. Render step (replace expressions - using Story 1.4 WorkflowRenderer)
 	renderer := dsl.NewWorkflowRenderer()
-	renderedStep, err := renderer.RenderStep(input.Workflow, input.Job, input.Step, input.Context)
+	renderedStep, err := renderer.RenderStep(workflow, job, step, evalCtx)
 	if err != nil {
 		// 表达式渲染错误 - 永久性错误
 		return nil, temporal.NewNonRetryableApplicationError(
@@ -116,7 +141,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 				validationErr.NodeName = renderedStep.Uses
 			}
 			logger.Error("Parameter validation failed",
-				"step", input.Step.Name,
+				"step", step.Name,
 				"uses", renderedStep.Uses,
 				"error", err)
 
@@ -128,7 +153,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 			)
 		}
 
-		logger.Info("Parameter validation passed", "step", input.Step.Name, "uses", renderedStep.Uses)
+		logger.Info("Parameter validation passed", "step", step.Name, "uses", renderedStep.Uses)
 
 		// 3. Execute node (Story 4.3 - 真正执行节点)
 		// Track node execution start
@@ -142,7 +167,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 			var nonRetryable *node.NonRetryableError
 			if errors.As(err, &nonRetryable) {
 				logger.Warn("Non-retryable error detected",
-					"step", input.Step.Name,
+					"step", step.Name,
 					"error_type", nonRetryable.ErrorType,
 					"message", nonRetryable.Message,
 					"attempt", info.Attempt,
@@ -159,7 +184,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 
 			// 其他错误 - 可重试 (网络错误、临时故障等)
 			logger.Warn("Step failed, will retry according to policy",
-				"step", input.Step.Name,
+				"step", step.Name,
 				"error", err,
 				"attempt", info.Attempt,
 				"retryable", true,
@@ -173,13 +198,13 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 		// 成功时记录重试信息 (如果经过重试)
 		if info.Attempt > 1 {
 			logger.Info("Step succeeded after retry",
-				"name", input.Step.Name,
+				"name", step.Name,
 				"attempt", info.Attempt,
 				"duration_ms", duration.Milliseconds(),
 			)
 		} else {
 			logger.Info("Step completed",
-				"name", input.Step.Name,
+				"name", step.Name,
 				"duration_ms", duration.Milliseconds(),
 			)
 		}
@@ -192,7 +217,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 
 		// Record heartbeat
 		activity.RecordHeartbeat(ctx, map[string]interface{}{
-			"step":     input.Step.Name,
+			"step":     step.Name,
 			"progress": "completed",
 		})
 
@@ -215,7 +240,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 
 	// Record heartbeat with detailed progress information
 	activity.RecordHeartbeat(ctx, map[string]interface{}{
-		"step":        input.Step.Name,
+		"step":        step.Name,
 		"progress":    "completed",
 		"duration_ms": time.Since(startTime).Milliseconds(),
 		"placeholder": true, // Indicates this is a placeholder execution
@@ -223,7 +248,7 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 
 	duration := time.Since(startTime)
 
-	logger.Info("Step completed", "name", input.Step.Name, "duration_ms", duration.Milliseconds())
+	logger.Info("Step completed", "name", step.Name, "duration_ms", duration.Milliseconds())
 
 	return &StepResult{
 		Status:     "success",
