@@ -215,10 +215,14 @@ func (a *Activities) ExecuteStepActivity(ctx context.Context, input ExecuteStepI
 			outputs[k] = fmt.Sprintf("%v", v)
 		}
 
-		// Record heartbeat
+		// Record heartbeat with detailed progress information
 		activity.RecordHeartbeat(ctx, map[string]interface{}{
-			"step":     step.Name,
-			"progress": "completed",
+			"step":         step.Name,
+			"uses":         step.Uses,
+			"progress":     "completed",
+			"duration_ms":  duration.Milliseconds(),
+			"attempt":      info.Attempt,
+			"outputs_size": len(outputs),
 		})
 
 		return &StepResult{
