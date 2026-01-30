@@ -131,9 +131,9 @@ test-integration:
 	@echo "Running all tests including integration tests..."
 	go test -v -race ./...
 
-## integration-test: Run E2E integration tests with docker-compose environment
+## integration-test: Run component-level integration tests with docker-compose environment
 integration-test:
-	@echo "Running E2E integration tests..."
+	@echo "Running integration tests..."
 	./scripts/run-integration-tests.sh
 
 ## integration-test-only: Run integration tests without environment setup (assumes env is running)
@@ -150,6 +150,25 @@ integration-test-report:
 	fi
 	gotestsum --format testname --junitfile integration-test-report.xml -- -v -tags integration ./test/integration/...
 
+## e2e-test: Run Story-level E2E tests with full environment setup
+e2e-test:
+	@echo "Running E2E tests..."
+	./scripts/run-e2e-tests.sh
+
+## e2e-test-only: Run E2E tests without environment setup (assumes env is running)
+e2e-test-only:
+	@echo "Running E2E tests (env must be running)..."
+	SERVER_URL=http://localhost:18080 TEMPORAL_HOST=localhost:17233 go test -v -tags e2e ./test/e2e/...
+
+## e2e-test-report: Run E2E tests with JUnit report generation (requires gotestsum)
+e2e-test-report:
+	@echo "Running E2E tests with report generation..."
+	@if ! command -v gotestsum &> /dev/null; then \
+		echo "Installing gotestsum..."; \
+		go install gotest.tools/gotestsum@latest; \
+	fi
+	gotestsum --format testname --junitfile e2e-test-report.xml -- -v -tags e2e ./test/e2e/...
+
 ## acceptance-test: Run acceptance tests with full environment setup
 acceptance-test:
 	@echo "Running acceptance tests..."
@@ -164,7 +183,12 @@ acceptance-test-only:
 acceptance-test-scenario:
 	@echo "Running acceptance test scenario: $(SCENARIO)..."
 	./scripts/run-acceptance-tests.sh --scenario $(SCENARIO)
-	gotestsum --format testname --junitfile integration-test-report.xml -- -v -tags integration ./test/integration/...
+
+## test-all: Run all test levels (unit, integration, e2e, acceptance)
+test-all: test-unit integration-test e2e-test acceptance-test
+	@echo "=========================================="
+	@echo "All test levels completed successfully!"
+	@echo "=========================================="
 
 ## coverage: Generate test coverage report (unit tests only)
 coverage:

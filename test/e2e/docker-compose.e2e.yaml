@@ -1,0 +1,124 @@
+# Docker Compose configuration for E2E testing
+# Story-level end-to-end tests with complete pipeline validation
+# Usage: docker compose -f test/e2e/docker-compose.e2e.yaml up -d
+
+services:
+  # PostgreSQL Database (Temporal dependency)
+  postgresql:
+    image: postgres:15-alpine
+    container_name: waterflow-e2e-postgresql
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - waterflow-e2e-network
+    tmpfs:
+      - /var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # Temporal Server
+  temporal:
+    image: temporalio/auto-setup:1.22.0
+    container_name: waterflow-e2e-temporal
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgresql
+      SKIP_DB_CREATE: "false"
+      SKIP_DEFAULT_NAMESPACE_CREATION: "false"
+      ENABLE_ES: "false"
+      LOG_LEVEL: warn
+    healthcheck:
+      test: [ "CMD", "sh", "-c", "nc -z $(hostname -i) 7233" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    networks:
+      - waterflow-e2e-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Waterflow Server
+  waterflow-server:
+    build:
+      context: ../..
+      dockerfile: build/Dockerfile.server
+    image: waterflow/server:e2e
+    container_name: waterflow-e2e-server
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      WATERFLOW_SERVER_HOST: 0.0.0.0
+      WATERFLOW_SERVER_PORT: 8080
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: default
+      WATERFLOW_TEMPORAL_TASKQUEUE: waterflow-e2e
+      WATERFLOW_LOG_LEVEL: info
+      WATERFLOW_LOG_FORMAT: json
+    ports:
+      - "18080:8080"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+    networks:
+      - waterflow-e2e-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+
+  # Waterflow Agent
+  waterflow-agent:
+    build:
+      context: ../..
+      dockerfile: build/Dockerfile.agent
+    image: waterflow/agent:e2e
+    container_name: waterflow-e2e-agent
+    depends_on:
+      waterflow-server:
+        condition: service_healthy
+    environment:
+      WATERFLOW_TEMPORAL_HOST: temporal:7233
+      WATERFLOW_TEMPORAL_NAMESPACE: default
+      WATERFLOW_AGENT_TASK_QUEUES: linux-amd64,default,test-queue
+      WATERFLOW_LOG_LEVEL: info
+      WATERFLOW_AGENT_ID: e2e-agent-1
+    networks:
+      - waterflow-e2e-network
+    # Agent needs docker socket for docker nodes
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+
+networks:
+  waterflow-e2e-network:
+    driver: bridge
+    name: waterflow-e2e-network

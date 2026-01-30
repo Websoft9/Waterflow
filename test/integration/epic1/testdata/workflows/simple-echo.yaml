@@ -1,0 +1,20 @@
+# Simple Echo Workflow
+# Tests basic workflow submission and execution
+name: simple-echo
+
+jobs:
+  echo:
+    name: Echo Test
+    runs-on: linux-amd64
+    steps:
+      - name: Print Hello
+        uses: shell@v1
+        with:
+          command: echo "Hello from integration test"
+      
+      - name: Print Environment
+        uses: shell@v1
+        with:
+          command: |
+            echo "Date: $(date)"
+            echo "Hostname: $(hostname)"

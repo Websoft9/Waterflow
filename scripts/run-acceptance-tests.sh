@@ -1,7 +1,7 @@
 #!/bin/bash
 # Acceptance Test Runner for Waterflow
 # Runs PRD-defined acceptance scenarios with full environment setup
-# Usage: ./scripts/run-acceptance-tests.sh [--keep-env] [--scenario <name>]
+# Usage: ./scripts/run-acceptance-tests.sh [--keep-env] [--epic <N>] [--scenario <name>]
 
 set -e
 
@@ -13,7 +13,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-COMPOSE_FILE="test/acceptance/docker-compose.acceptance.yaml"
+EPIC="1"  # Default to Epic 1
+COMPOSE_FILE=""
 REPORT_DIR="test/acceptance/reports"
 TIMEOUT_HEALTH=180
 TIMEOUT_TESTS=900  # 15 minutes for acceptance tests
@@ -27,6 +28,10 @@ while [[ $# -gt 0 ]]; do
             KEEP_ENV=true
             shift
             ;;
+        --epic)
+            EPIC="$2"
+            shift 2
+            ;;
         --scenario)
             SCENARIO="$2"
             shift 2
@@ -37,6 +42,10 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Set compose file based on epic
+COMPOSE_FILE="test/acceptance/epic${EPIC}/docker-compose.acceptance.yaml"
+TEST_PATH="./test/acceptance/epic${EPIC}/..."
 
 # Functions
 log_info() {
@@ -211,7 +220,7 @@ main() {
     mkdir -p "$REPORT_DIR"
     
     # Run acceptance tests
-    log_info "Running acceptance tests..."
+    log_info "Running Epic ${EPIC} acceptance tests..."
     
     TEST_ARGS="-v -tags acceptance -timeout ${TIMEOUT_TESTS}s"
     if [ -n "$SCENARIO" ]; then
@@ -221,7 +230,7 @@ main() {
     set +e
     SERVER_URL=http://localhost:18080 \
     TEMPORAL_HOST=localhost:17233 \
-    go test $TEST_ARGS ./test/acceptance/... 2>&1 | tee "$REPORT_DIR/test-output.txt"
+    go test $TEST_ARGS "$TEST_PATH" 2>&1 | tee "$REPORT_DIR/test-output.txt"
     TEST_EXIT_CODE=${PIPESTATUS[0]}
     set -e
     

@@ -3,61 +3,81 @@
 # Usage: docker compose -f test/acceptance/docker-compose.acceptance.yaml up -d
 
 services:
-  # PostgreSQL Database (Temporal dependency)
-  postgres:
-    image: postgres:15-alpine
-    container_name: acceptance-postgres
+  # PostgreSQL Database
+  postgresql:
+    image: postgres:16
+    container_name: acceptance-postgresql
     environment:
-      POSTGRES_USER: temporal
-      POSTGRES_PASSWORD: temporal
-      POSTGRES_DB: temporal
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
-      interval: 3s
-      timeout: 3s
-      retries: 10
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-temporal}
+      POSTGRES_USER: ${POSTGRES_USER:-temporal}
+    ports:
+      - "15432:5432"
     networks:
       - acceptance-network
-    tmpfs:
-      - /var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Temporal Admin Tools - 用于数据库初始化
+  temporal-admin-tools:
+    image: temporalio/admin-tools:${TEMPORAL_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: acceptance-temporal-admin-tools
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+    stdin_open: true
+    tty: true
+    networks:
+      - acceptance-network
 
   # Temporal Server
   temporal:
-    image: temporalio/auto-setup:1.22.0
+    image: temporalio/server:${TEMPORAL_VERSION:-1.29.2}
     container_name: acceptance-temporal
     depends_on:
-      postgres:
+      postgresql:
         condition: service_healthy
+      temporal-admin-tools:
+        condition: service_started
     environment:
       DB: postgresql
       DB_PORT: 5432
-      POSTGRES_USER: temporal
-      POSTGRES_PWD: temporal
-      POSTGRES_SEEDS: postgres
-      SKIP_DB_CREATE: "false"
-      SKIP_DEFAULT_NAMESPACE_CREATION: "false"
-      ENABLE_ES: "false"
-      LOG_LEVEL: warn
+      POSTGRES_USER: ${POSTGRES_USER:-temporal}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-temporal}
+      POSTGRES_SEEDS: postgresql
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
     ports:
       - "17233:7233"
-    healthcheck:
-      test: [ "CMD", "sh", "-c", "nc -z $(hostname -i) 7233" ]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 30s
+    volumes:
+      - ../../deployments/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
     networks:
       - acceptance-network
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
+    healthcheck:
+      test: [ "CMD", "tctl", "--address", "temporal:7233", "cluster", "health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Temporal Namespace Creation
+  temporal-create-namespace:
+    image: temporalio/admin-tools:${TEMPORAL_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: acceptance-temporal-create-namespace
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${WATERFLOW_TEMPORAL_NAMESPACE:-default}
+    volumes:
+      - ../../deployments/scripts:/scripts:ro
+    entrypoint: /scripts/create-namespace.sh
+    networks:
+      - acceptance-network
 
   # Waterflow Server
   waterflow-server:
@@ -67,31 +87,32 @@ services:
     image: waterflow/server:acceptance
     container_name: acceptance-server
     depends_on:
-      temporal:
-        condition: service_healthy
+      temporal-create-namespace:
+        condition: service_completed_successfully
     environment:
-      WATERFLOW_SERVER_HOST: 0.0.0.0
-      WATERFLOW_SERVER_PORT: 8080
-      WATERFLOW_TEMPORAL_HOST: temporal:7233
-      WATERFLOW_TEMPORAL_NAMESPACE: default
-      WATERFLOW_TEMPORAL_TASKQUEUE: waterflow-acceptance
-      WATERFLOW_LOG_LEVEL: info
-      WATERFLOW_LOG_FORMAT: json
+      # Database Configuration
+      WATERFLOW_DB_HOST: ${WATERFLOW_DB_HOST:-postgresql}
+      WATERFLOW_DB_PORT: ${WATERFLOW_DB_PORT:-5432}
+      WATERFLOW_DB_NAME: ${WATERFLOW_DB_NAME:-waterflow}
+      WATERFLOW_DB_USER: ${WATERFLOW_DB_USER:-temporal}
+      WATERFLOW_DB_PASSWORD: ${WATERFLOW_DB_PASSWORD:-temporal}
+      WATERFLOW_DB_SSLMODE: ${WATERFLOW_DB_SSLMODE:-disable}
+      # Temporal Configuration
+      WATERFLOW_TEMPORAL_HOST: ${WATERFLOW_TEMPORAL_HOST:-temporal:7233}
+      WATERFLOW_TEMPORAL_NAMESPACE: ${WATERFLOW_TEMPORAL_NAMESPACE:-default}
+      WATERFLOW_TEMPORAL_TASKQUEUE: ${WATERFLOW_TEMPORAL_TASKQUEUE:-waterflow-server}
+      WATERFLOW_LOG_LEVEL: ${WATERFLOW_LOG_LEVEL:-info}
+      WATERFLOW_LOG_FORMAT: ${WATERFLOW_LOG_FORMAT:-json}
     ports:
       - "18080:8080"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 30s
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
     networks:
       - acceptance-network
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 256M
 
   # Agent 1: Web Server 1 (linux-amd64 task queue)
   agent-web-1:
@@ -108,7 +129,7 @@ services:
       WATERFLOW_AGENT_ID: agent-web-1
       WATERFLOW_TEMPORAL_HOST: temporal:7233
       WATERFLOW_TEMPORAL_NAMESPACE: default
-      WATERFLOW_TEMPORAL_TASKQUEUE: linux-amd64
+      WATERFLOW_AGENT_TASK_QUEUES: linux-amd64,linux-common
       WATERFLOW_LOG_LEVEL: info
       WATERFLOW_LOG_FORMAT: json
       # Simulate server metrics
@@ -117,11 +138,6 @@ services:
       SERVER_DISK_PERCENT: "58"
     networks:
       - acceptance-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 128M
 
   # Agent 2: Web Server 2 (linux-amd64 task queue)
   agent-web-2:
@@ -138,7 +154,7 @@ services:
       WATERFLOW_AGENT_ID: agent-web-2
       WATERFLOW_TEMPORAL_HOST: temporal:7233
       WATERFLOW_TEMPORAL_NAMESPACE: default
-      WATERFLOW_TEMPORAL_TASKQUEUE: linux-amd64
+      WATERFLOW_AGENT_TASK_QUEUES: linux-amd64,linux-common
       WATERFLOW_LOG_LEVEL: info
       WATERFLOW_LOG_FORMAT: json
       # Simulate server metrics
@@ -147,11 +163,6 @@ services:
       SERVER_DISK_PERCENT: "72"
     networks:
       - acceptance-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 128M
 
   # Agent 3: DB Server (db-server task queue)
   agent-db-1:
@@ -168,7 +179,7 @@ services:
       WATERFLOW_AGENT_ID: agent-db-1
       WATERFLOW_TEMPORAL_HOST: temporal:7233
       WATERFLOW_TEMPORAL_NAMESPACE: default
-      WATERFLOW_TEMPORAL_TASKQUEUE: db-server
+      WATERFLOW_AGENT_TASK_QUEUES: db-server
       WATERFLOW_LOG_LEVEL: info
       WATERFLOW_LOG_FORMAT: json
       # Simulate server metrics
@@ -177,11 +188,6 @@ services:
       SERVER_DISK_PERCENT: "48"
     networks:
       - acceptance-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 128M
 
   # Mock App for deployment testing
   mock-app:

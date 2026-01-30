@@ -1,274 +1,205 @@
-# Integration Testing
+# Waterflow Integration Tests
 
-本目录包含 Waterflow 的端到端集成测试，用于验证系统各组件在真实环境中的协作。
+## 概述
+
+本目录包含 Waterflow 的集成测试。集成测试聚焦于**组件间接口和协作**，不测试完整的用户旅程（E2E测试在 `test/e2e/` 目录）。
 
 ## 目录结构
 
 ```
 test/integration/
-├── README.md              # 本文档
-├── workflow_e2e_test.go   # 工作流端到端测试
-├── api_test.go            # API 集成测试
-├── agent_test.go          # Agent 集成测试
-├── multi_step_test.go     # 多步骤工作流测试
-├── retry_test.go          # 重试与容错测试
-├── common_test.go         # 共享测试工具函数
-└── testdata/
-    └── workflows/         # 测试工作流定义
-        ├── simple-echo.yaml
-        ├── multi-step-outputs.yaml
-        ├── matrix.yaml
-        ├── retry.yaml
-        ├── conditional.yaml
-        └── job-dependencies.yaml
+├── epic1/              # Epic 1: Waterflow 核心工作流引擎
+│   ├── story1_1_server_test.go
+│   ├── story1_2_api_test.go
+│   ├── ...
+│   └── README.md       # Epic 1 详细说明
+├── epic2/              # Epic 2: (未来扩展)
+├── common_test.go      # 跨 Epic 共享的测试工具
+├── deprecated/         # 已废弃的测试文件
+└── README.md           # 本文件
 ```
 
-## 运行集成测试
+## BMad 测试分层
 
-### 方式一：使用脚本 (推荐)
+### 集成测试 (Integration Tests)
+- **位置**: `test/integration/`
+- **标签**: `//go:build integration`
+- **范围**: 组件间接口和数据传递，不包括完整用户流程
+- **依赖**: 可使用部分真实服务（如数据库、Temporal Client），但不需要完整环境
+- **粒度**: 细粒度，聚焦特定集成点
+- **示例**:
+  - HTTP 中间件链执行
+  - YAML Parser → Go Struct 转换
+  - 配置加载和验证逻辑
+  - Temporal Client 初始化
 
+### 与 E2E 测试的区别
+
+| 维度 | 集成测试 | E2E 测试 |
+|------|----------|----------|
+| **测试对象** | 组件接口 | 用户场景 |
+| **测试范围** | 部分系统 | 完整系统 |
+| **环境要求** | 部分依赖 | Docker Compose 完整栈 |
+| **执行速度** | 快 | 慢 |
+| **构建标签** | `integration` | `e2e` |
+
+---
+
+## Epic 概览
+
+### Epic 1: Waterflow 核心工作流引擎
+
+**位置**: [epic1/](epic1/)  
+**测试数量**: 67 个集成测试  
+**覆盖范围**: Story 1.1 - 1.11
+
+详细测试说明见 [epic1/README.md](epic1/README.md)。
+
+---
+
+## 运行测试
+
+### 运行所有集成测试
 ```bash
-# 完整运行：启动环境、运行测试、清理
-make integration-test
-
-# 或直接执行脚本
-./scripts/run-integration-tests.sh
+go test -tags=integration ./test/integration/...
 ```
 
-### 方式二：手动运行
-
+### 运行特定 Epic 的测试
 ```bash
-# 1. 启动测试环境
-docker-compose -f deployments/docker-compose.test.yaml up -d
-
-# 2. 等待服务就绪
-# Server: http://localhost:18080/health
-# Agent: http://localhost:18081/health
-
-# 3. 运行测试
-go test -v -tags integration ./test/integration/...
-
-# 4. 清理环境
-docker-compose -f deployments/docker-compose.test.yaml down -v
+# Epic 1 所有测试
+go test -tags=integration ./test/integration/epic1/...
 ```
 
-### 方式三：使用已有环境
-
+### 运行特定 Story 的测试
 ```bash
-# 如果环境已在运行，只运行测试
-make integration-test-only
-
-# 或指定自定义 URL
-SERVER_URL=http://localhost:8080 go test -v -tags integration ./test/integration/...
+# Epic 1, Story 1.4: 表达式引擎和变量系统
+go test -tags=integration ./test/integration/epic1/ -run "TestStory1_4"
 ```
 
-## 测试分类
-
-### 1. Workflow E2E 测试 (`workflow_e2e_test.go`)
-
-验证工作流的完整生命周期：
-
-- **提交工作流** - 验证 YAML 提交和解析
-- **状态查询** - 验证状态轮询和转换
-- **工作流取消** - 验证优雅取消机制
-- **日志收集** - 验证步骤日志获取
-
-### 2. API 测试 (`api_test.go`)
-
-验证 REST API 端点：
-
-- **YAML 验证** - `/v1/validate` 端点
-- **可用节点** - `/v1/nodes` 端点
-- **工作流列表** - `/v1/workflows` 端点
-- **健康检查** - `/health` 和 `/ready` 端点
-- **工作流重跑** - `/v1/workflows/:id/rerun`
-
-### 3. Agent 测试 (`agent_test.go`)
-
-验证 Agent 功能：
-
-- **连接性** - 通过工作流执行验证 Agent 连接状态
-- **命令执行** - Shell 命令在 Agent 上执行
-- **环境变量** - 全局和步骤级环境变量传递
-- **工作目录** - 工作目录设置
-- **日志收集** - 输出日志收集
-- **并发执行** - 多工作流并行执行
-
-### 4. 多步骤测试 (`multi_step_test.go`)
-
-验证复杂工作流：
-
-- **顺序执行** - 步骤按序执行
-- **输出传递** - 步骤间输出传递
-- **条件执行** - `if` 条件控制
-- **Matrix 策略** - 并行矩阵展开
-- **Job 依赖** - `needs` 依赖链
-
-### 5. 容错测试 (`retry_test.go`)
-
-验证错误处理：
-
-- **重试机制** - 失败重试
-- **退避策略** - 指数退避
-- **超时处理** - 步骤和 Job 超时
-- **错误传播** - 失败状态传播
-- **continue-on-error** - 错误后继续
-
-## 环境变量
-
-| 变量 | 默认值 | 描述 |
-|------|--------|------|
-| `WATERFLOW_TEST_URL` | `http://localhost:18080` | Waterflow Server 地址 (优先) |
-| `SERVER_URL` | `http://localhost:18080` | Waterflow Server 地址 (兼容) |
-| `WATERFLOW_AGENT_URL` | `http://localhost:18081` | Waterflow Agent 地址 |
-| `TEST_TIMEOUT` | `10m` | 测试超时时间 |
-
-## 测试夹具
-
-### simple-echo.yaml
-
-最简单的工作流，单步骤输出：
-
-```yaml
-name: simple-echo
-jobs:
-  echo:
-    steps:
-      - name: Say Hello
-        uses: shell@v1
-        with:
-          command: echo "Hello, World!"
+### 运行特定测试用例
+```bash
+# Epic 1, Story 1.4, 测试用例 001
+go test -tags=integration ./test/integration/epic1/ -run "TestStory1_4_INT_001"
 ```
 
-### matrix.yaml
+### 调试模式
+```bash
+# 显示详细输出
+go test -tags=integration ./test/integration/epic1/... -v
 
-Matrix 策略测试：
-
-```yaml
-jobs:
-  test:
-    strategy:
-      matrix:
-        os: [ubuntu, alpine]
-        version: [1.20, 1.21]
-    steps:
-      - name: Print version
-        uses: shell@v1
-        with:
-          command: echo "${{ matrix.os }}-${{ matrix.version }}"
+# 显示测试覆盖率
+go test -tags=integration ./test/integration/epic1/... -cover
 ```
 
-### retry.yaml
-
-重试配置测试：
-
-```yaml
-steps:
-  - name: Flaky operation
-    uses: shell@v1
-    timeout-minutes: 5
-    retry:
-      max-attempts: 3
+### 详细输出
+```bash
+go test -tags=integration -v ./test/integration/...
 ```
 
-## 编写新测试
+---
 
-### 1. 添加 Build Tag
+## 测试命名规范
 
-所有集成测试文件必须包含：
+### 文件命名
+```
+epic{N}_story{M}_{feature}_test.go
 
+示例:
+- epic1_story1_1_server_test.go
+- epic1_story1_3_dsl_test.go
+```
+
+### 测试函数命名
 ```go
-//go:build integration
+func TestStory{Epic}_{Story}_INT_{Sequence}_{Description}(t *testing.T)
 
-package integration
+示例:
+- TestStory1_1_INT_001_ConfigLoading
+- TestStory1_3_INT_002_SchemaValidator
 ```
 
-### 2. 使用共享工具函数
+### 测试 ID 格式
+```
+{Epic}.{Story}-INT-{Sequence}
 
-```go
-func TestIntegration_MyFeature(t *testing.T) {
-    if testing.Short() {
-        t.Skip("Skipping integration test in short mode")
-    }
-
-    serverURL := getServerURL()
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-    defer cancel()
-
-    // 提交工作流
-    resp, err := submitWorkflow(ctx, serverURL, myYAML)
-    require.NoError(t, err)
-
-    // 等待完成
-    status, err := waitForWorkflowCompletion(ctx, serverURL, resp.WorkflowID, 60*time.Second)
-    require.NoError(t, err)
-
-    assert.Equal(t, "completed", status.Status)
-}
+示例:
+- 1.1-INT-001
+- 1.3-INT-002
 ```
 
-### 3. 添加测试夹具
+---
 
-将工作流 YAML 文件放在 `testdata/workflows/` 目录：
+## 测试依赖
 
-```go
-yaml, err := loadTestWorkflow("my-fixture.yaml")
-require.NoError(t, err)
-```
+### 最小依赖（不需要完整环境）
+集成测试设计为**不依赖 Docker Compose 完整栈**，仅需要：
+- Go 1.21+
+- 被测试的代码包（internal/, pkg/）
 
-## 故障排除
+### 可选依赖（部分测试需要）
+- Temporal Client SDK（Story 1.9 测试）
+- Mock 对象（testutil, common_test.go）
 
-### 测试超时
+---
 
-```bash
-# 增加超时时间
-go test -v -tags integration -timeout 10m ./test/integration/...
-```
+## 测试状态
 
-### 服务未就绪
+### 当前状态
+所有测试当前使用 `t.Skip()` 跳过，因为功能尚未实现。
 
-```bash
-# 检查服务状态
-curl http://localhost:18080/health
-curl http://localhost:18081/health
+### 实施策略
+测试采用 **Test-Driven Development (TDD)** 方式：
+1. ✅ **测试框架先行** - 所有测试用例已创建
+2. ⏳ **实现驱动** - 当功能实现时，取消 `t.Skip()` 并运行测试
+3. ✅ **持续验证** - 每次代码提交后运行集成测试
 
-# 查看日志
-docker-compose -f deployments/docker-compose.test.yaml logs server
-docker-compose -f deployments/docker-compose.test.yaml logs agent
-```
+---
 
-### 数据库连接问题
+## 测试命名规范
 
-```bash
-# 检查 PostgreSQL
-docker-compose -f deployments/docker-compose.test.yaml exec postgres pg_isready
+### 文件命名
+- **Epic 级别**: `epic{N}/`
+- **Story 级别**: `story{StoryNumber}_{feature}_test.go`
+- **示例**: `epic1/story1_4_vars_test.go`
 
-# 重置环境
-docker-compose -f deployments/docker-compose.test.yaml down -v
-docker-compose -f deployments/docker-compose.test.yaml up -d
-```
+### 测试函数命名
+- **格式**: `TestStory{Epic}_{Story}_INT_{Sequence}_{Description}`
+- **示例**: `TestStory1_4_INT_001_VariableResolutionChain`
 
-## CI/CD 集成
+### 测试 ID
+- **格式**: `{Epic}.{Story}-INT-{Sequence}`
+- **示例**: `1.4-INT-001`
 
-在 GitHub Actions 中使用：
+---
 
-```yaml
-integration-tests:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-    
-    - name: Run integration tests
-      run: make integration-test
-```
+## 贡献指南
 
-## 相关文档
+### 实现新功能时
+1. 进入对应的 Epic 目录（如 `epic1/`）
+2. 找到对应的 Story 测试文件
+3. 定位相关的测试用例
+4. 删除或注释 `t.Skip()`
+5. 实现测试逻辑
+6. 运行测试验证实现
 
-- [测试策略](../../docs/development.md)
-- [部署指南](../../docs/deployment.md)
-- [API 文档](../../docs/api-guide.md)
+### 添加新测试时
+1. 遵循命名规范
+2. 使用 BDDSpec 框架记录测试意图
+3. 在 Epic 的 README 中更新测试覆盖统计
+4. 确保测试聚焦组件集成，避免E2E流程
+
+### 添加新 Epic 时
+1. 创建 `epic{N}/` 目录
+2. 创建 `epic{N}/README.md` 说明文档
+3. 按 Story 组织测试文件
+4. 在本 README 的 "Epic 概览" 中添加条目
+
+---
+
+## 参考文档
+
+- [Epic 1 集成测试](epic1/README.md)
+- [Epic 定义文档](../../docs/epics.md)
+- [E2E 测试](../e2e/README.md)
+- [测试支持工具](../support/testutil/README.md)
+- [BMad 测试标准](https://github.com/bmad-sim/bmad)

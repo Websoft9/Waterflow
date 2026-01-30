@@ -9,6 +9,7 @@ test/support/
 ├── apitest/      # API 测试辅助
 ├── factories/    # 测试数据工厂
 ├── mocks/        # Mock 实现
+├── perfutil/     # 性能测试工具 (新增)
 └── testutil/     # 通用测试工具
 ```
 
@@ -67,7 +68,39 @@ testutil.AssertEventually(t, func() bool {
 id := testutil.GenerateUniqueID("workflow")
 ```
 
-## 2. 测试数据工厂 (factories)
+## 2. 性能测试工具 (perfutil)
+
+**新增模块** - 支持 Performance 和 Stress 测试
+
+详见 [perfutil/README.md](perfutil/README.md)
+
+### 内存泄漏检测
+
+```go
+import "github.com/Websoft9/waterflow/test/support/perfutil"
+
+baseline := perfutil.CaptureMemoryBaseline(t)
+// ... 运行测试 ...
+perfutil.AssertNoMemoryLeak(t, baseline, 50) // 最大 50MB 增长
+```
+
+### Goroutine 泄漏检测
+
+```go
+tracker := perfutil.StartGoroutineTracking(t)
+// ... 运行测试 ...
+tracker.AssertNoGoroutineLeak(t, 20) // 最大 20 个增长
+```
+
+### 崩溃恢复测试
+
+```go
+simulator := perfutil.NewCrashSimulator(t, cmd)
+simulator.SimulateCrash()
+perfutil.AssertStateRecovery(t, client, workflowID, expectedEvents)
+```
+
+## 3. 测试数据工厂 (factories)
 
 ### WorkflowFactory
 
