@@ -23,7 +23,7 @@ func TestParser_Parse_ValidYAML(t *testing.T) {
 	}{
 		{
 			name: "simple workflow",
-			file: "../../testdata/valid/simple.yaml",
+			file: "../../testdata/fixtures/valid-workflows/simple.yaml",
 			expected: func(t *testing.T, wf *dsl.Workflow) {
 				assert.Equal(t, "Build and Test", wf.Name)
 				// Note: 'on' field removed in API-driven architecture
@@ -50,7 +50,7 @@ func TestParser_Parse_ValidYAML(t *testing.T) {
 		},
 		{
 			name: "multi-job workflow",
-			file: "../../testdata/valid/multi-job.yaml",
+			file: "../../testdata/fixtures/valid-workflows/multi-job.yaml",
 			expected: func(t *testing.T, wf *dsl.Workflow) {
 				assert.Equal(t, "CI/CD Pipeline", wf.Name)
 				assert.Len(t, wf.Jobs, 3)
@@ -95,7 +95,7 @@ func TestParser_Parse_InvalidYAML(t *testing.T) {
 	}{
 		{
 			name:          "syntax error",
-			file:          "../../testdata/invalid/syntax-error.yaml",
+			file:          "../../testdata/fixtures/invalid-workflows/syntax-error.yaml",
 			expectedError: "yaml_syntax_error",
 		},
 	}
@@ -127,7 +127,7 @@ func TestParser_Parse_InvalidYAML(t *testing.T) {
 func TestParser_ExtractLineNumbers(t *testing.T) {
 	parser := setupParser()
 
-	content, err := os.ReadFile("../../testdata/valid/simple.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/valid-workflows/simple.yaml")
 	require.NoError(t, err)
 
 	workflow, err := parser.Parse(content)
@@ -156,7 +156,7 @@ func TestParser_ExtractLineNumbers(t *testing.T) {
 func TestParser_ErrorCodeSnippet(t *testing.T) {
 	parser := setupParser()
 
-	content, err := os.ReadFile("../../testdata/invalid/syntax-error.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/invalid-workflows/syntax-error.yaml")
 	require.NoError(t, err)
 
 	_, err = parser.Parse(content)
@@ -177,7 +177,7 @@ func TestParser_ErrorCodeSnippet(t *testing.T) {
 func TestParser_InternalFields(t *testing.T) {
 	parser := setupParser()
 
-	content, err := os.ReadFile("../../testdata/valid/simple.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/valid-workflows/simple.yaml")
 	require.NoError(t, err)
 
 	workflow, err := parser.Parse(content)

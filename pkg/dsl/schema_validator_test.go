@@ -23,8 +23,8 @@ func TestSchemaValidator_Validate_Valid(t *testing.T) {
 	validator := setupSchemaValidator()
 
 	tests := []string{
-		"../../testdata/valid/simple.yaml",
-		"../../testdata/valid/multi-job.yaml",
+		"../../testdata/fixtures/valid-workflows/simple.yaml",
+		"../../testdata/fixtures/valid-workflows/multi-job.yaml",
 	}
 
 	for _, file := range tests {
@@ -54,7 +54,7 @@ func TestSchemaValidator_Validate_MissingRequired(t *testing.T) {
 	parser := setupParser()
 	validator := setupSchemaValidator()
 
-	content, err := os.ReadFile("../../testdata/invalid/missing-required.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/invalid-workflows/missing-required.yaml")
 	require.NoError(t, err)
 
 	workflow, err := parser.Parse(content)
@@ -84,7 +84,7 @@ func TestSchemaValidator_Validate_InvalidType(t *testing.T) {
 	parser := setupParser()
 	validator := setupSchemaValidator()
 
-	content, err := os.ReadFile("../../testdata/invalid/invalid-type.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/invalid-workflows/invalid-type.yaml")
 	require.NoError(t, err)
 
 	workflow, err := parser.Parse(content)
@@ -149,7 +149,7 @@ func TestSchemaValidator_LineNumbers(t *testing.T) {
 	parser := setupParser()
 	validator := setupSchemaValidator()
 
-	content, err := os.ReadFile("../../testdata/invalid/missing-required.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/invalid-workflows/missing-required.yaml")
 	require.NoError(t, err)
 
 	workflow, err := parser.Parse(content)

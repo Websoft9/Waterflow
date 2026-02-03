@@ -1372,17 +1372,23 @@ waterflow/
 - ✅ pkg/dsl/node/registry_test.go (注册表测试)
 - ✅ pkg/dsl/node/builtin/builtin_test.go (内置节点测试)
 - ✅ pkg/dsl/schema/workflow-schema.json (JSON Schema)
-- ✅ testdata/valid/simple.yaml (测试数据)
-- ✅ testdata/valid/multi-job.yaml (测试数据)
-- ✅ testdata/invalid/syntax-error.yaml (测试数据)
-- ✅ testdata/invalid/missing-required.yaml (测试数据)
-- ✅ testdata/invalid/invalid-type.yaml (测试数据)
+- ✅ testdata/fixtures/valid-workflows/simple.yaml (测试数据)
+- ✅ testdata/fixtures/valid-workflows/multi-job.yaml (测试数据)
+- ✅ testdata/fixtures/invalid-workflows/syntax-error.yaml (测试数据)
+- ✅ testdata/fixtures/invalid-workflows/missing-required.yaml (测试数据)
+- ✅ testdata/fixtures/invalid-workflows/invalid-type.yaml (测试数据)
 
 **实际修改的文件:**
 - ✅ internal/api/handlers.go (添加 ValidateWorkflow, RenderWorkflow, GetWorkflowSchema)
 - ✅ internal/api/router.go (添加验证和渲染端点路由, Schema 端点)
 - ✅ internal/api/handlers_validation_test.go (验证 API 测试)
 - ✅ go.mod (新增依赖: gopkg.in/yaml.v3, xeipuuv/gojsonschema)
+
+**测试数据路径说明 (2026-02-03 修正):**
+测试文件使用 `testdata/fixtures/` 目录结构而非最初文档声称的 `testdata/valid/` 和 `testdata/invalid/`。实际文件位置：
+- 有效工作流: `testdata/fixtures/valid-workflows/`
+- 无效工作流: `testdata/fixtures/invalid-workflows/`
+- Matrix 测试: `testdata/fixtures/matrix/`
 
 ### Code Review & Fixes (2025-12-23)
 
@@ -1740,7 +1746,10 @@ ok      github.com/Websoft9/waterflow/internal/api      0.015s
 
 ## 测试验证记录
 
-### 单元测试 (2026-01-30)
+### 单元测试 (2026-01-30, 更新 2026-02-03)
+
+**测试路径修正 (2026-02-03):**  
+修复了所有测试文件中的路径引用,从不存在的 `testdata/valid/` 改为实际的 `testdata/fixtures/valid-workflows/`。
 
 **测试执行:**
 ```bash
@@ -1752,7 +1761,7 @@ $ go test -v ./pkg/dsl -run "Validator|Parser" -count=1
 - ✅ 所有 YAML 解析和验证测试通过
 - ✅ 覆盖率: **89.7%** (超过 AC7 要求的 85%)
 - ✅ 测试文件数: **48** 个测试文件
-- ✅ 测试用例数: **35+** 个测试场景
+- ✅ 测试用例数: **206+** 个测试通过 (454 个子测试运行)
 
 **通过的关键测试:**
 - `TestParser_Parse_ValidYAML` - YAML 基本解析 (AC1)
@@ -1764,7 +1773,7 @@ $ go test -v ./pkg/dsl -run "Validator|Parser" -count=1
 - `TestSemanticValidator_ValidateRetryStrategy` - 重试配置 (AC6)
 
 **性能验证:**
-- 测试执行时间: **0.032s**
+- 测试执行时间: **0.828s**
 - 单次验证性能: **~12ms** (远超 AC7 <700ms 要求)
 
 ### 集成测试 (2026-01-30)

@@ -27,7 +27,7 @@ func TestSemanticValidator_NodeExists(t *testing.T) {
 	parser := setupParser()
 	validator := setupSemanticValidator()
 
-	content, err := os.ReadFile("../../testdata/valid/simple.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/valid-workflows/simple.yaml")
 	require.NoError(t, err)
 
 	workflow, err := parser.Parse(content)

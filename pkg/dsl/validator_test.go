@@ -22,7 +22,7 @@ func setupValidator() *dsl.Validator {
 func TestValidator_ValidYAML(t *testing.T) {
 	validator := setupValidator()
 
-	content, err := os.ReadFile("../../testdata/valid/simple.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/valid-workflows/simple.yaml")
 	require.NoError(t, err)
 
 	workflow, err := validator.ValidateYAML(content)
@@ -34,7 +34,7 @@ func TestValidator_ValidYAML(t *testing.T) {
 func TestValidator_SyntaxError(t *testing.T) {
 	validator := setupValidator()
 
-	content, err := os.ReadFile("../../testdata/invalid/syntax-error.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/invalid-workflows/syntax-error.yaml")
 	require.NoError(t, err)
 
 	workflow, err := validator.ValidateYAML(content)
@@ -49,7 +49,7 @@ func TestValidator_SyntaxError(t *testing.T) {
 func TestValidator_SchemaError(t *testing.T) {
 	validator := setupValidator()
 
-	content, err := os.ReadFile("../../testdata/invalid/missing-required.yaml")
+	content, err := os.ReadFile("../../testdata/fixtures/invalid-workflows/missing-required.yaml")
 	require.NoError(t, err)
 
 	workflow, err := validator.ValidateYAML(content)
