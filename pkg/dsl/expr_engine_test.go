@@ -378,3 +378,113 @@ func TestEngine_ExpressionWithinLengthLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 201, result)
 }
+
+// TestEngine_NestingDepthLimit tests expression nesting depth limit (max 10 levels)
+func TestEngine_NestingDepthLimit(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+	ctx := &EvalContext{
+		Vars: map[string]interface{}{
+			"a": map[string]interface{}{
+				"b": map[string]interface{}{
+					"c": map[string]interface{}{
+						"d": map[string]interface{}{
+							"e": map[string]interface{}{
+								"f": map[string]interface{}{
+									"g": map[string]interface{}{
+										"h": map[string]interface{}{
+											"i": map[string]interface{}{
+												"j": map[string]interface{}{
+													"k": "too deep",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// 11级嵌套应该失败
+	_, err := engine.Evaluate("vars.a.b.c.d.e.f.g.h.i.j.k", ctx)
+	require.Error(t, err)
+
+	exprErr, ok := err.(*ExpressionError)
+	require.True(t, ok, "error should be ExpressionError")
+	assert.Equal(t, "nesting_error", exprErr.Type)
+	assert.Contains(t, exprErr.Message, "too deeply nested")
+	assert.Contains(t, exprErr.Message, "max 10")
+}
+
+// TestEngine_NestingWithinLimit tests expression within nesting depth limit
+func TestEngine_NestingWithinLimit(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+	ctx := &EvalContext{
+		Vars: map[string]interface{}{
+			"a": map[string]interface{}{
+				"b": map[string]interface{}{
+					"c": map[string]interface{}{
+						"d": map[string]interface{}{
+							"e": map[string]interface{}{
+								"f": map[string]interface{}{
+									"g": map[string]interface{}{
+										"h": map[string]interface{}{
+											"i": "valid",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// 9级嵌套应该成功
+	result, err := engine.Evaluate("vars.a.b.c.d.e.f.g.h.i", ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "valid", result)
+}
+
+// TestEngine_ArrayIndexNestingDepth tests array index counted in nesting depth
+func TestEngine_ArrayIndexNestingDepth(t *testing.T) {
+	engine := NewEngine(1 * time.Second)
+	ctx := &EvalContext{
+		Vars: map[string]interface{}{
+			"servers": []interface{}{
+				map[string]interface{}{
+					"config": map[string]interface{}{
+						"db": map[string]interface{}{
+							"pool": map[string]interface{}{
+								"max": map[string]interface{}{
+									"connections": map[string]interface{}{
+										"limit": map[string]interface{}{
+											"value": map[string]interface{}{
+												"setting": map[string]interface{}{
+													"override": "deep",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// 包含数组索引的深嵌套: vars.servers[0].config.db.pool.max.connections.limit.value.setting.override
+	// 总共11层,应该失败
+	_, err := engine.Evaluate("vars.servers[0].config.db.pool.max.connections.limit.value.setting.override", ctx)
+	require.Error(t, err)
+
+	exprErr, ok := err.(*ExpressionError)
+	require.True(t, ok)
+	assert.Equal(t, "nesting_error", exprErr.Type)
+}

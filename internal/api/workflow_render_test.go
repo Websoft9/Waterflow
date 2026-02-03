@@ -233,3 +233,48 @@ jobs:
 	// Note: Full env merge validation requires step execution
 	// This test verifies the endpoint accepts multi-level env
 }
+
+// TestRenderWorkflow_NestingDepthLimit tests expression nesting depth limit
+func TestRenderWorkflow_NestingDepthLimit(t *testing.T) {
+	router := setupRouter()
+
+	yamlContent := `
+name: Nesting Depth Test
+vars:
+  a:
+    b:
+      c:
+        d:
+          e:
+            f:
+              g:
+                h:
+                  i:
+                    j:
+                      k: "too deep"
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      - uses: run@v1
+        with:
+          # 11 levels of nesting (vars.a.b.c.d.e.f.g.h.i.j.k)
+          value: ${{ vars.a.b.c.d.e.f.g.h.i.j.k }}
+`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/workflows/render", bytes.NewBufferString(yamlContent))
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Should fail with 400 Bad Request
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+
+	// Should contain nesting error
+	detail := response["detail"].(string)
+	assert.Contains(t, detail, "nested")
+}

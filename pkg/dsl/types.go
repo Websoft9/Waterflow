@@ -26,6 +26,11 @@ type Job struct {
 	ContinueOnError bool              `yaml:"continue-on-error,omitempty" json:"continue_on_error,omitempty"`
 	Outputs         map[string]string `yaml:"outputs,omitempty" json:"outputs,omitempty"` // Story 1.5: Job输出
 
+	// ADR-0009: 表达式字段（用于定义阶段求值）
+	// 这些字段在 YAML 解析时可能包含表达式，需要在定义阶段求值后写入对应的值字段
+	RunsOnExpr         string `yaml:"-" json:"-"` // runs-on 原始表达式
+	TimeoutMinutesExpr string `yaml:"-" json:"-"` // timeout-minutes 原始表达式
+
 	// 内部字段
 	Name    string `yaml:"-" json:"name"` // Job key
 	LineNum int    `yaml:"-" json:"-"`
@@ -36,6 +41,9 @@ type Strategy struct {
 	Matrix      map[string][]interface{} `yaml:"matrix" json:"matrix"`
 	MaxParallel int                      `yaml:"max-parallel,omitempty" json:"max_parallel,omitempty"`
 	FailFast    *bool                    `yaml:"fail-fast,omitempty" json:"fail_fast,omitempty"` // 默认 true
+
+	// ADR-0009: Matrix 表达式字段（用于定义阶段求值）
+	MatrixExpr map[string]string `yaml:"-" json:"-"` // matrix 字段的原始表达式映射
 
 	// 预留字段 (MVP 不实现)
 	Include []map[string]interface{} `yaml:"include,omitempty" json:"include,omitempty"`

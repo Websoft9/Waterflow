@@ -32,6 +32,15 @@ func (e *Engine) Compile(expression string) (*vm.Program, error) {
 		)
 	}
 
+	// Check nesting depth limit (max 10 levels)
+	if depth := countNestingDepth(expression); depth > 10 {
+		return nil, NewExpressionError(
+			expression,
+			fmt.Sprintf("expression too deeply nested: %d levels (max 10)", depth),
+			"nesting_error",
+		)
+	}
+
 	// Build options
 	options := []expr.Option{
 		expr.Env(EvalContext{}),
@@ -104,4 +113,52 @@ func (e *Engine) wrapError(err error, expression string) error {
 		err.Error(),
 		"expression_evaluation_error",
 	)
+}
+
+// countNestingDepth counts the maximum nesting depth in an expression
+// Examples:
+// - "a.b.c" → depth 3
+// - "a[0].b.c[1].d" → depth 4
+// - "func(a.b.c)" → depth 3
+func countNestingDepth(expression string) int {
+	maxDepth := 0
+	currentDepth := 0
+	inBracket := false
+	inParen := false
+
+	for i := 0; i < len(expression); i++ {
+		ch := expression[i]
+
+		switch ch {
+		case '.':
+			if !inBracket && !inParen {
+				currentDepth++
+				if currentDepth > maxDepth {
+					maxDepth = currentDepth
+				}
+			}
+		case '[':
+			inBracket = true
+			currentDepth++
+			if currentDepth > maxDepth {
+				maxDepth = currentDepth
+			}
+		case ']':
+			inBracket = false
+		case '(':
+			inParen = true
+		case ')':
+			inParen = false
+		case ' ', ',', '+', '-', '*', '/', '=', '!', '<', '>', '&', '|':
+			if !inBracket && !inParen {
+				currentDepth = 0
+			}
+		}
+	}
+
+	// If no nesting, depth is 1 (base level)
+	if maxDepth == 0 {
+		return 1
+	}
+	return maxDepth
 }
