@@ -106,6 +106,7 @@ func TestEvalContext_CannotSerialize(t *testing.T) {
 	ctx.Len = funcs["len"].(func(interface{}) (int, error))
 
 	// Attempting to serialize EvalContext directly should fail
+	//nolint:staticcheck // SA1026: Intentionally testing marshaling of unsupported function type
 	_, err := json.Marshal(ctx)
 	assert.Error(t, err, "EvalContext with functions should NOT be JSON serializable")
 	assert.Contains(t, err.Error(), "unsupported type", "Error should mention unsupported type")
