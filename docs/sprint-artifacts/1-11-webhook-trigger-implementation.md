@@ -2,6 +2,33 @@
 
 Status: not-started
 
+> **⚠️ 架构变更通知 (ADR-0009, 2026-02-03)**
+>
+> 本 Story 基于 [ADR-0009](../adr/0009-workflow-definition-execution-separation.md) 进行了 API 重设计：
+>
+> **核心变更:**
+> - Webhook API 挂载到 `/v1/workflows/{name}/webhooks` 下
+> - Webhook 引用已存储的工作流定义 (Definition)
+> - 支持 vars 参数绑定，执行时覆盖 YAML 默认值
+>
+> **新 API 结构:**
+> ```
+> POST   /v1/workflows/{name}/webhooks              # 创建 Webhook
+> GET    /v1/workflows/{name}/webhooks              # 列出 Webhooks
+> GET    /v1/workflows/{name}/webhooks/{webhook_id} # 获取详情
+> DELETE /v1/workflows/{name}/webhooks/{webhook_id} # 删除 Webhook
+>
+> # 触发端点 (外部调用)
+> POST   /api/v1/webhooks/{webhook_id}/trigger      # 接收外部事件
+> ```
+>
+> **参数三层覆盖机制:**
+> 1. YAML 中的 vars 默认值
+> 2. Webhook 创建时绑定的 vars
+> 3. Webhook payload 中的 vars（最高优先级）
+>
+> **详见:** [api-inventory.md](../api-inventory.md), [ADR-0009](../adr/0009-workflow-definition-execution-separation.md)
+
 ## Story
 
 As a **工作流用户**,  

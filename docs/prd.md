@@ -365,14 +365,34 @@ engine := waterflow.New(waterflow.Config{
   - Temporal SDK 集成层
   - 配置管理（服务器组、密钥、事件处理）
 
-- **主要 API 端点:**
+- **主要 API 端点（基于 ADR-0009 架构）:**
   ```
-  POST   /v1/workflows          # 提交工作流
-  GET    /v1/workflows/:id      # 查询状态
-  DELETE /v1/workflows/:id      # 取消执行
-  GET    /v1/workflows/:id/logs # 获取日志
-  POST   /v1/validate           # 验证 YAML
-  GET    /v1/nodes              # 列出节点
+  # Definition Management (工作流定义管理)
+  POST   /v1/workflows                    # 创建工作流定义
+  GET    /v1/workflows                    # 列表工作流定义
+  GET    /v1/workflows/{name}             # 获取定义详情
+  PUT    /v1/workflows/{name}             # 更新定义
+  DELETE /v1/workflows/{name}             # 删除定义
+  
+  # Execution Management (工作流执行管理)
+  POST   /v1/workflows/{name}/run         # 基于定义执行
+  POST   /v1/executions                   # 一次性执行
+  GET    /v1/executions                   # 列表执行
+  GET    /v1/executions/{id}              # 查询执行状态
+  GET    /v1/executions/{id}/logs         # 获取执行日志
+  POST   /v1/executions/{id}/cancel       # 取消执行
+  
+  # Schedule Management (定时触发)
+  POST   /v1/workflows/{name}/schedules   # 创建 Schedule
+  GET    /v1/workflows/{name}/schedules   # 列表 Schedules
+  
+  # Webhook Management (事件触发)
+  POST   /v1/workflows/{name}/webhooks    # 创建 Webhook
+  POST   /v1/webhooks/{id}/trigger        # 触发 Webhook
+  
+  # Utilities
+  POST   /v1/validate                     # 验证 YAML
+  GET    /v1/nodes                        # 列出节点
   ```
 
 - **部署方式:**
@@ -960,6 +980,258 @@ docs/
 
 ---
 
-**文档状态:** 架构设计完成  
-**最后更新:** 2025-12-16  
+## 功能需求补充（ADR-0009 架构更新）
+
+> **更新日期:** 2026-02-03  
+> **更新原因:** 基于 [ADR-0009: 工作流定义与执行分离](adr/0009-workflow-definition-execution-separation.md)，新增以下功能需求以支持工作流定义持久化、定时触发和事件触发能力。
+
+### FR3.1: 工作流定义管理 API
+
+**需求描述:**  
+提供完整的工作流定义生命周期管理能力，支持定义的创建、查询、更新和删除。工作流定义独立于执行实例存储，可被多次执行和触发器引用。
+
+**核心功能:**
+- 创建工作流定义 (POST /v1/workflows)
+  - 存储 YAML 内容和元数据
+  - 支持 vars 默认值定义
+  - YAML 内容完整持久化到数据库
+
+- 列表工作流定义 (GET /v1/workflows)
+  - 支持按 category、tags 过滤
+  - 支持分页查询
+
+- 获取定义详情 (GET /v1/workflows/{name})
+  - 返回完整的 YAML 内容
+  - 返回元数据（创建时间、更新时间、版本）
+
+- 更新定义 (PUT /v1/workflows/{name})
+  - 保留创建时间，更新修改时间
+
+- 删除定义 (DELETE /v1/workflows/{name})
+  - 级联删除关联的 Schedule 和 Webhook
+
+**存储架构:**
+- **工作流定义:** 数据库存储（GORM + PostgreSQL）
+- **系统模板:** 文件系统存储（examples/workflows/），通过独立的模板 API 提供
+
+**技术实现:**
+- 数据库表：workflow_definitions (name, content, metadata, timestamps)
+- 并发安全：支持多实例 Server 并发访问
+- 内容哈希：用于变更检测和缓存
+
+---
+
+### FR3.2: 工作流执行管理 API
+
+**需求描述:**  
+提供工作流执行实例的完整管理能力，支持基于定义执行、一次性执行、状态查询、日志获取、取消和重试等操作。
+
+**核心功能:**
+- 基于定义执行 (POST /v1/workflows/{name}/run)
+  - 从 DefinitionStore 加载工作流定义
+  - 支持 vars 参数覆盖（执行时 vars 优先级最高）
+  - 创建新的执行实例，关联到定义
+  - 返回 execution_id 和初始状态
+
+- 一次性执行 (POST /v1/executions)
+  - 直接提交 YAML 内容执行
+  - 不创建工作流定义
+  - 适用于测试、临时任务场景
+
+- 列表执行 (GET /v1/executions)
+  - 支持按 workflow_name 过滤
+  - 支持按状态过滤 (running, completed, failed, cancelled)
+  - 支持按时间范围过滤
+  - 分页查询
+
+- 查询执行状态 (GET /v1/executions/{id})
+  - 返回执行状态 (pending, running, completed, failed, cancelled, terminated)
+  - 返回所有 Job 和 Step 的详细执行进度
+  - 返回关联的 definition_name (如果基于定义执行)
+  - 返回合并后的 vars 参数
+  - 从 Temporal Event History 解析状态
+
+- 获取执行日志 (GET /v1/executions/{id}/logs)
+  - 返回结构化日志 (JSON Lines 格式)
+  - 从 Temporal Event History 重建日志
+  - 支持日志级别过滤
+  - 支持 Job/Step 过滤
+  - 支持实时日志流 (SSE)
+
+- 取消执行 (POST /v1/executions/{id}/cancel)
+  - 发送取消信号到 Temporal Workflow
+  - 正在执行的 Step 优雅停止
+  - 标记为 cancelled 状态
+  - 记录取消操作到审计日志
+
+- 重试执行 (POST /v1/executions/{id}/retry)
+  - 创建新的执行实例
+  - 如果基于定义，重新加载最新定义
+  - 支持 vars 参数覆盖
+  - 包含 original_execution_id 字段
+
+- 终止执行 (POST /v1/executions/{id}/terminate)
+  - 强制终止执行，不执行清理逻辑
+  - 状态变为 terminated
+  - 记录终止原因到 Event History
+
+**三层参数覆盖机制:**
+```
+优先级（低 → 高）：
+1. YAML 默认值（定义中的 vars）
+2. 触发器绑定参数（Schedule/Webhook 创建时指定）
+3. 执行时覆盖（API 调用或 Webhook payload）
+```
+
+**技术约束:**
+- 不支持删除执行记录（Event History 不可变）
+- 不支持修改运行中工作流的定义
+- Event History 大小限制 50MB（可配置到 500MB）
+- 执行状态通过解析 Temporal Event History 获取
+
+---
+
+### FR19: 工作流定时触发 (Schedule)
+
+**需求描述:**  
+支持为工作流定义配置基于 cron 表达式的定时触发器，实现工作流的自动化调度执行。基于 Temporal Schedules 实现，无需外部调度器。
+
+**核心功能:**
+- 创建 Schedule (POST /v1/workflows/{name}/schedules)
+  - 关联到已存在的工作流定义
+  - 配置 cron 表达式、时区
+  - 支持 vars 参数绑定（覆盖 YAML 默认值）
+  - 创建 Temporal Schedule
+  - 元数据存储到 workflow_schedules 表
+
+- 列表 Schedules (GET /v1/workflows/{name}/schedules)
+  - 返回指定工作流定义的所有 Schedules
+  - 包含 cron 表达式、timezone、enabled 状态
+  - 包含绑定的 vars 参数
+
+- 获取 Schedule 详情 (GET /v1/workflows/{name}/schedules/{schedule_id})
+  - 返回完整配置
+  - 包含 next_run_time、last_run_time、total_runs
+  - 从 Temporal 获取运行统计
+
+- 更新 Schedule (PUT /v1/workflows/{name}/schedules/{schedule_id})
+  - 更新 cron、timezone、vars
+  - 更新 Temporal Schedule
+
+- 暂停/恢复 Schedule
+  - POST /v1/workflows/{name}/schedules/{schedule_id}/pause
+  - POST /v1/workflows/{name}/schedules/{schedule_id}/resume
+  - 暂停后不再触发新的执行
+  - 恢复后继续按 cron 执行
+
+- 删除 Schedule (DELETE /v1/workflows/{name}/schedules/{schedule_id})
+  - 删除 Temporal Schedule
+  - 清理 workflow_schedules 表记录
+  - 正在运行的执行不受影响
+
+**参数覆盖机制:**
+- Schedule 触发时，合并参数：YAML 默认值 + Schedule 绑定的 vars
+- Schedule 绑定的 vars 优先级高于 YAML 默认值
+
+**技术实现:**
+- 基于 Temporal Schedules API
+- 数据库表：workflow_schedules (schedule_id, workflow_name, cron, timezone, vars, enabled, temporal_id)
+- 支持标准 cron 表达式（包括秒级精度）
+- 时区支持（默认 UTC）
+
+**使用示例:**
+```json
+POST /v1/workflows/nightly-deploy/schedules
+{
+  "schedule_id": "prod-deploy",
+  "cron": "0 2 * * *",
+  "timezone": "Asia/Shanghai",
+  "vars": {
+    "env": "production",
+    "notify": true
+  },
+  "enabled": true
+}
+```
+
+---
+
+### FR20: 工作流事件触发 (Webhook)
+
+**需求描述:**  
+支持为工作流定义配置 Webhook 触发器，实现基于外部事件（如 Git Push、第三方通知等）的工作流自动执行。
+
+**核心功能:**
+- 创建 Webhook (POST /v1/workflows/{name}/webhooks)
+  - 关联到已存在的工作流定义
+  - 生成唯一的 webhook_id
+  - 触发 URL：POST /v1/webhooks/{webhook_id}/trigger
+  - 支持 Secret 配置（用于签名验证）
+  - 支持 vars 参数绑定
+  - 元数据存储到 workflow_webhooks 表
+
+- 列表 Webhooks (GET /v1/workflows/{name}/webhooks)
+  - 返回指定工作流定义的所有 Webhooks
+  - 包含 webhook_id、触发 URL、enabled 状态
+  - 包含绑定的 vars 参数
+
+- 删除 Webhook (DELETE /v1/workflows/{name}/webhooks/{webhook_id})
+  - 删除 Webhook 配置
+  - 清理 workflow_webhooks 表记录
+  - 后续触发请求返回 404
+
+- Webhook 触发端点 (POST /v1/webhooks/{webhook_id}/trigger)
+  - 验证 Secret（如果配置，通过请求头或签名）
+  - 从 DefinitionStore 加载工作流定义
+  - 合并参数：YAML 默认值 + Webhook 绑定 vars + payload 中的 vars
+  - 创建新的执行实例
+  - 返回 202 Accepted 和 execution_id
+  - Secret 验证失败返回 403 Forbidden
+
+**参数覆盖机制（三层）:**
+```
+优先级（低 → 高）：
+1. YAML 默认值（定义中的 vars）
+2. Webhook 绑定参数（创建 Webhook 时指定）
+3. Payload 参数（触发请求中的 vars）
+```
+
+**安全机制:**
+- Secret 验证：支持签名验证（HMAC-SHA256）
+- 请求限流：防止滥用
+- IP 白名单：可选配置
+
+**技术实现:**
+- 数据库表：workflow_webhooks (webhook_id, workflow_name, secret, vars, enabled)
+- Webhook ID 使用 UUID 生成，不可预测
+- 支持异步执行，立即返回 execution_id
+
+**使用示例:**
+```json
+# 创建 Webhook
+POST /v1/workflows/ci-pipeline/webhooks
+{
+  "webhook_id": "github-push",
+  "vars": {
+    "branch": "main"
+  },
+  "secret": "my-webhook-secret",
+  "enabled": true
+}
+
+# 触发 Webhook
+POST /v1/webhooks/github-push/trigger
+X-Webhook-Signature: sha256=...
+{
+  "vars": {
+    "commit": "abc123",
+    "author": "user@example.com"
+  }
+}
+```
+
+---
+
+**文档状态:** 架构设计完成（已更新 ADR-0009）  
+**最后更新:** 2026-02-03  
 **下次评审:** Post-MVP（设计伙伴验证后）

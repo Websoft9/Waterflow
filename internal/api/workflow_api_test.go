@@ -249,3 +249,51 @@ func TestCancelWorkflow_NotRunning(t *testing.T) {
 	// Should return 404 (not found) or 409 (conflict)
 	assert.True(t, w.Code == http.StatusNotFound || w.Code == http.StatusConflict)
 }
+
+// TestTerminateWorkflow_Success tests successful workflow termination (AC8)
+func TestTerminateWorkflow_Success(t *testing.T) {
+	router, temporalClient := setupTestRouter(t, true)
+	if temporalClient == nil {
+		t.Skip("Temporal not available, skipping integration test")
+	}
+	defer temporalClient.Close()
+
+	// Test with reason
+	reqBody := map[string]string{"reason": "Test termination"}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/v1/workflows/test-wf-id/terminate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Should return 204 No Content or 404 Not Found
+	assert.True(t, w.Code == http.StatusNoContent || w.Code == http.StatusNotFound)
+}
+
+// TestTerminateWorkflow_EmptyID tests validation when ID is empty
+func TestTerminateWorkflow_EmptyID(t *testing.T) {
+	router, _ := setupTestRouter(t, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/workflows//terminate", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Should return 301 (redirect) or 404 (route not matched) - both acceptable
+	assert.True(t, w.Code == http.StatusNotFound || w.Code == http.StatusMovedPermanently)
+}
+
+// TestTerminateWorkflow_WithoutReason tests termination without reason
+func TestTerminateWorkflow_WithoutReason(t *testing.T) {
+	router, temporalClient := setupTestRouter(t, true)
+	if temporalClient == nil {
+		t.Skip("Temporal not available, skipping integration test")
+	}
+	defer temporalClient.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/workflows/test-id/terminate", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Should return 204 or 404
+	assert.True(t, w.Code == http.StatusNoContent || w.Code == http.StatusNotFound)
+}

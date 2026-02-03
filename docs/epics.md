@@ -3,6 +3,7 @@ stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
   - /data/Waterflow/docs/prd.md
   - /data/Waterflow/docs/architecture.md
+  - /data/Waterflow/docs/adr/0009-workflow-definition-execution-separation.md
 workflowType: 'epics-and-stories'
 lastStep: 4
 project_name: 'Waterflow'
@@ -12,6 +13,17 @@ status: 'complete'
 ---
 
 # Waterflow - Epic Breakdown
+
+> **架构更新 (ADR-0009):**
+> 
+> 根据 [ADR-0009: 工作流定义与执行分离](adr/0009-workflow-definition-execution-separation.md)，以下 Stories 已更新：
+> 
+> - **Story 1-9**: API 语义从"工作流管理"重构为"Definition/Execution 分离"
+> - **Story 1-10**: Schedule API 挂载到 `/v1/workflows/{name}/schedules`
+> - **Story 1-11**: Webhook API 挂载到 `/v1/workflows/{name}/webhooks`
+> - **Story 1-3/1-4/1-6**: DSL 参数化增强（`runs-on`, `timeout`, `matrix` 支持变量）
+> 
+> 详见 [api-inventory.md](api-inventory.md) 完整 API 清单。
 
 ## Overview
 
@@ -320,15 +332,18 @@ status: 'complete'
 ## Epic List
 
 ### Epic 1: 核心工作流引擎基础
-开发者可以部署 Waterflow Server,通过 Temporal Event Sourcing 实现工作流状态 100% 持久化,采用单节点执行模式执行完整的 YAML 工作流（包含变量、表达式、条件执行、并行矩阵、超时重试等 DSL 功能）,通过 REST API 和 Prometheus 指标管理工作流的完整生命周期
+开发者可以部署 Waterflow Server,通过 Temporal Event Sourcing 实现工作流状态 100% 持久化,采用单节点执行模式执行完整的 YAML 工作流（包含变量、表达式、条件执行、并行矩阵、超时重试等 DSL 功能）,通过 REST API 和 Prometheus 指标管理工作流的完整生命周期。**基于 ADR-0009 架构更新：**工作流定义与执行分离,支持持久化定义存储、Schedule 定时触发和 Webhook 事件触发。
 
-**FRs covered:** FR1, FR2, FR5, FR6, FR7
+**FRs covered:** FR1, FR2, FR3.1, FR3.2, FR5, FR6, FR7, FR19, FR20
 
 **关键架构特性:**
 - Event Sourcing: 所有状态存储在 Temporal Event History,Server 完全无状态
 - 单节点执行模式: 每个 Step 独立配置超时/重试 (ADR-0002)
 - DSL 引擎: YAML 解析 + 表达式系统 + 变量系统 + matrix 策略展开 (ADR-0004, ADR-0005)
-- 完整API: 提交、查询、列表、日志、取消、重新运行
+- **Definition/Execution 分离**: 工作流定义持久存储,支持多次执行和触发器引用 (ADR-0009)
+- **混合存储**: 系统模板(文件系统) + 用户定义(数据库)
+- **三层参数覆盖**: YAML 默认 → 触发器绑定 → 执行时覆盖
+- 完整API: Definition管理、Execution管理、Schedule管理、Webhook管理
 - 可观测性: 健康检查、就绪检查、Prometheus 指标、结构化日志
 
 ### Epic 2: 分布式 Agent 系统
@@ -366,7 +381,7 @@ status: 'complete'
 
 ### Epic 6: 工作流模板库
 
-用户可以从预定义模板快速开始,了解 Waterflow 的最佳实践和常见模式
+用户可以从预定义模板快速开始,了解 Waterflow 的最佳实践和常见模式。**基于 ADR-0009 架构更新：**模板通过独立的 `/v1/templates` API 访问，存储在文件系统，与工作流定义 (`/v1/workflows`) 概念清晰分离。
 
 **FRs covered:** FR18
 
@@ -422,7 +437,7 @@ Waterflow 通过全面测试验证,提供稳定的发布版本和多种分发渠
 
 ## Epic 1: 核心工作流引擎基础
 
-开发者可以部署 Waterflow Server,通过 Temporal Event Sourcing 实现工作流状态 100% 持久化,采用单节点执行模式执行完整的 YAML 工作流（包含变量、表达式、条件执行、并行矩阵、超时重试等 DSL 功能）,通过 REST API 和 Prometheus 指标管理工作流的完整生命周期。支持基于 Temporal Schedules 的定时触发和基于 Webhook 的事件驱动触发。
+开发者可以部署 Waterflow Server,通过 Temporal Event Sourcing 实现工作流状态 100% 持久化,采用单节点执行模式执行完整的 YAML 工作流（包含变量、表达式、条件执行、并行矩阵、超时重试等 DSL 功能）,通过 REST API 和 Prometheus 指标管理工作流的完整生命周期。**基于 ADR-0009 架构更新：**工作流定义与执行分离,支持持久化定义存储、Schedule 定时触发和 Webhook 事件触发。
 
 **12 个 Story**
 
@@ -756,186 +771,292 @@ So that **将 YAML 工作流转换为持久化的 Temporal Workflow 执行**。
 **And** 所有 Step 成功时工作流标记为 completed  
 **And** Temporal UI 显示每个 Step 的状态  
 
-### Story 1.9: 工作流管理 API
+### Story 1.9: Definition/Execution 分离架构 API
+
+> **⚠️ 架构重构 (ADR-0009):**  
+> 本 Story 已从"工作流管理 API"重构为"Definition/Execution 分离架构"。原已完成的代码需要重构以支持工作流定义持久存储和执行分离。
 
 As a **工作流用户**,  
-I want **通过 REST API 管理工作流的完整生命周期**,  
-So that **可以提交、查询、列表、查看日志、取消和重新运行工作流**。
+I want **通过 REST API 分别管理工作流定义和执行实例**,  
+So that **可以保存工作流定义供多次使用,并通过 Schedule/Webhook 触发执行**。
 
 **Acceptance Criteria:**
 
-**AC1: 工作流提交**
-**Given** REST API 服务和 Temporal 集成已完成  
-**When** POST `/v1/workflows` 请求带有 YAML 内容  
-**Then** 返回工作流 ID 和提交状态  
-**And** 工作流 ID 唯一且可追踪 (使用 UUID)  
+**Part A: Definition Management API (工作流定义管理)**
+
+**AC1: 创建工作流定义**
+**Given** REST API 服务和 DefinitionStore 已完成  
+**When** POST `/v1/workflows` 请求带有 YAML 内容和元数据  
+**Then** 返回工作流定义详情 (name, created_at)  
+**And** 定义存储到数据库  
+**And** YAML 内容完整保存  
+**And** 支持 vars 默认值定义  
 **And** 请求格式错误返回 400 和详细错误信息  
 **And** YAML 验证失败返回 422 和语法错误位置  
-**And** 工作流提交到 Temporal 执行队列  
-**And** 响应时间 <500ms  
-**And** 支持 dry-run 模式 (?dry_run=true 仅验证不执行)  
-**And** 响应包含预估执行时间 (基于历史数据)  
+**And** 定义名称冲突返回 409 Conflict  
+**And** 响应时间 <300ms
 
-**AC2: 工作流查询 (单个)**
-**Given** 工作流已提交并执行  
-**When** GET `/v1/workflows/{id}` 查询工作流  
-**Then** 返回工作流状态 (pending, running, completed, failed, cancelled, terminated)  
+**AC1b: 列出工作流定义**
+**Given** 系统中存在多个工作流定义  
+**When** GET `/v1/workflows?category=deployment&page=1&limit=20`  
+**Then** 返回定义列表 (分页)  
+**And** 支持按 category 过滤  
+**And** 支持按名称前缀搜索  
+**And** 返回总数、当前页、总页数  
+**And** 响应时间 <200ms
+
+**AC1c: 获取定义详情**
+**Given** 工作流定义已创建  
+**When** GET `/v1/workflows/{name}`  
+**Then** 返回完整的定义内容和元数据  
+**And** 包含 YAML 内容、vars 默认值、创建时间  
+**And** 定义不存在返回 404  
+**And** 响应时间 <100ms
+
+**AC1d: 更新工作流定义**
+**Given** 工作流定义已存在  
+**When** PUT `/v1/workflows/{name}` 请求新的 YAML 内容  
+**Then** 更新定义内容  
+**And** 保留 created_at,更新 updated_at  
+**And** 响应时间 <300ms
+
+**AC1e: 删除工作流定义**
+**Given** 工作流定义已存在  
+**When** DELETE `/v1/workflows/{name}`  
+**Then** 删除定义  
+**And** 关联的 Schedule/Webhook 同时删除  
+**And** 返回 204 No Content
+
+**Part B: Execution Management API (工作流执行管理)**
+
+**AC2: 基于定义执行工作流**
+**Given** 工作流定义已创建  
+**When** POST `/v1/workflows/{name}/run` 请求 (可选 vars 覆盖)  
+**Then** 返回执行 ID 和状态  
+**And** 从 DefinitionStore 加载定义  
+**And** 合并参数: YAML vars + 请求 vars (请求优先)  
+**And** 提交到 Temporal 执行  
+**And** execution 记录包含 definition_name 引用  
+**And** 支持 dry-run 模式  
+**And** 响应时间 <500ms
+
+**AC2b: 一次性执行 (不存储定义)**
+**Given** 用户需要临时执行工作流  
+**When** POST `/v1/executions` 请求带有完整 YAML  
+**Then** 直接执行工作流,不创建定义  
+**And** 返回执行 ID  
+**And** 适用于测试、临时任务场景  
+**And** 响应时间 <500ms  
+
+**AC3: 查询执行状态 (单个)**
+**Given** 工作流执行已提交  
+**When** GET `/v1/executions/{id}` 查询执行  
+**Then** 返回执行状态 (pending, running, completed, failed, cancelled, terminated)  
 **And** 返回执行进度 - 所有 Job 和 Step 的详细状态 (从 Event History 解析)  
 **And** 返回开始时间、结束时间和持续时间  
-**And** 返回工作流定义的 name 和 vars  
-**And** 工作流不存在返回 404  
-**And** 响应时间 <200ms (小型工作流), <500ms (大型工作流)  
-**And** 支持 `?include=events` 包含原始 Event History (调试用)  
+**And** 返回关联的 definition_name (如果基于定义执行)  
+**And** 返回合并后的 vars 参数  
+**And** 执行不存在返回 404  
+**And** 响应时间 <200ms (小型), <500ms (大型)  
+**And** 支持 `?include=events` 包含原始 Event History
 
-**AC3: 工作流列表查询**
-**Given** 系统中存在多个工作流  
-**When** GET `/v1/workflows?page=1&limit=20&status=running&name=deploy`  
-**Then** 返回工作流列表 (分页)  
-**And** 支持按状态过滤 (status=running,completed,failed,cancelled)  
-**And** 支持按名称精确搜索 (workflow_name=Deploy)  
-**And** 支持按提交时间范围过滤 (start_time_from, start_time_to)  
+**AC3b: 执行列表查询**
+**Given** 系统中存在多个执行实例  
+**When** GET `/v1/executions?workflow_name=my-deploy&status=running&page=1&limit=20`  
+**Then** 返回执行列表 (分页)  
+**And** 支持按 workflow_name 过滤  
+**And** 支持按状态过滤 (running, completed, failed, cancelled)  
+**And** 支持按时间范围过滤  
 **And** 返回总数、当前页、总页数  
-**And** 默认按提交时间倒序排列  
-**And** 分页限制: 1 <= limit <= 100, 默认 20  
+**And** 默认按提交时间倒序  
 **And** 响应时间 <300ms  
 
-**AC4: 工作流日志查询**
-**Given** 工作流正在执行或已完成  
-**When** GET `/v1/workflows/{id}/logs` 请求日志  
+**AC4: 执行日志查询**
+**Given** 工作流执行正在运行或已完成  
+**When** GET `/v1/executions/{id}/logs` 请求日志  
 **Then** 返回结构化日志 (JSON Lines 格式)  
 **And** 日志包含时间戳、级别、Job/Step 信息、消息  
-**And** 日志从 Temporal Event History 重建 (ActivityStarted, Completed, Failed, Timeout)  
+**And** 日志从 Temporal Event History 重建  
 **And** 支持日志级别过滤 (?level=error,warn)  
-**And** 支持 Job/Step 过滤 (?job=deploy&step=build)  
-**And** 支持实时日志流 (?stream=true, 使用 SSE)  
-**And** 历史日志响应时间: <100ms (小型), <500ms (中型), <2s (大型)  
+**And** 支持 Job/Step 过滤  
+**And** 支持实时日志流 (?stream=true, SSE)  
+**And** 响应时间: <100ms (小型), <500ms (中型), <2s (大型)
 
-**AC5: 工作流取消**
-**Given** 工作流正在运行  
-**When** POST `/v1/workflows/{id}/cancel` 请求取消  
-**Then** 工作流标记为 cancelled 状态  
-**And** Temporal Workflow 收到取消信号 (client.CancelWorkflow)  
-**And** 正在执行的 Step 优雅停止 (最多等待 30 秒)  
-**And** 取消传播到所有子工作流和 Activity  
-**And** 取消已完成的工作流返回 409 Conflict  
-**And** 取消不存在的工作流返回 404  
+**AC5: 取消执行**
+**Given** 工作流执行正在运行  
+**When** POST `/v1/executions/{id}/cancel` 请求取消  
+**Then** 执行标记为 cancelled 状态  
+**And** Temporal Workflow 收到取消信号  
+**And** 正在执行的 Step 优雅停止  
 **And** 取消成功返回 202 Accepted  
-**And** 记录取消操作到审计日志 (用户、时间、原因)  
+**And** 记录取消操作到审计日志
 
-**AC6: 工作流重新运行**
-**Given** 工作流已完成 (成功或失败)  
-**When** POST `/v1/workflows/{id}/rerun` 请求重新运行  
-**Then** 使用相同的 YAML 定义创建新的工作流实例  
-**And** 支持覆盖 vars 参数 (body: {vars: {env: "staging"}})  
-**And** 支持跳过成功的 Step (body: {skip_successful: true})  
-**And** 支持从特定 Job 开始 (body: {from_job: "deploy"})  
-**And** 返回新的工作流 ID  
-**And** 新工作流包含 original_workflow_id 字段 (追踪重新运行关系)  
-**And** 原工作流保持不变  
-**And** 正在运行的工作流不能重新运行,返回 409  
-**And** 响应时间 <500ms  
+**AC6: 重新运行执行**
+**Given** 执行已完成 (成功或失败)  
+**When** POST `/v1/executions/{id}/retry` 请求重试  
+**Then** 创建新的执行实例  
+**And** 如果基于定义,从 DefinitionStore 重新加载  
+**And** 支持覆盖 vars 参数  
+**And** 返回新的执行 ID  
+**And** 新执行包含 original_execution_id 字段  
+**And** 响应时间 <500ms
 
-**AC7: 通用 API 规范**
+**AC7: 强制终止执行**
+**Given** 执行正在运行或卡住  
+**When** POST `/v1/executions/{id}/terminate` 请求终止  
+**Then** 执行立即终止,状态变为 terminated  
+**And** 不执行清理逻辑  
+**And** 记录终止原因到 Event History  
+**And** 返回 204 No Content
+
+**AC8: 通用 API 规范**
 **Given** 所有 API 端点  
 **When** 发生错误时  
-**Then** 返回统一的错误格式: `{error: {code, message, details}}`  
-**And** 使用标准 HTTP 状态码 (400, 404, 409, 422, 500, 503)  
-**And** 所有响应包含 X-Request-ID header (用于追踪)  
-**And** 支持 CORS (开发环境)  
-**And** API 版本通过 URL 前缀 `/v1/` 管理  
-**And** 支持 API 限流 (默认 100 req/min per IP)  
+**Then** 返回统一错误格式: `{error: {code, message, details}}`  
+**And** 使用标准 HTTP 状态码  
+**And** 所有响应包含 X-Request-ID header  
+**And** API 版本通过 `/v1/` 前缀管理  
+**And** 支持 API 限流
 
-**AC8: 强制终止工作流**
-**Given** 工作流正在运行或卡住  
-**When** POST `/v1/workflows/{id}/terminate` 请求终止  
-**Then** 返回 204 No Content  
-**And** 工作流立即终止，不执行清理逻辑 (client.TerminateWorkflow)  
-**And** 工作流状态变为 terminated  
-**And** Terminate vs Cancel 区别明确：Cancel=优雅停止，Terminate=强制终止  
-**And** 记录终止原因到 Event History  
-**And** 终止已完成的工作流返回 409 Conflict  
-**And** 响应时间 <200ms  
+**Part C: DefinitionStore 实现**
 
-**技术约束 (基于 Temporal 和 Event Sourcing 架构):**
-- ⚠️ 不支持删除工作流记录 (Event History 不可变)
-- ⚠️ 不支持修改运行中工作流的定义 (需取消后重新提交)
-- ⚠️ 不支持 Activity 中间重试 (需重新运行整个工作流)
+**AC9: DefinitionStore 接口**
+**Given** 需要存储工作流定义  
+**When** 实现 DefinitionStore 接口  
+**Then** 支持 Get, List, Save, Delete 操作  
+**And** DatabaseStore 实现 (GORM + PostgreSQL)  
+**And** 支持并发安全访问  
+**And** 数据库表: workflow_definitions
+
+**技术约束 (基于 ADR-0009 架构):**
+- ⚠️ 不支持删除执行记录 (Event History 不可变)
+- ⚠️ 不支持修改运行中工作流的定义
 - ⚠️ Event History 大小限制 50MB (可配置到 500MB)
-- ℹ️ 详细 Job/Step 状态通过解析 Event History 获取
-- ℹ️ 重新运行通过创建新工作流实例实现
+- ℹ️ 定义删除会同时删除关联的 Schedule/Webhook
+- ℹ️ 执行状态通过解析 Temporal Event History 获取
 
-**Post-MVP 功能 (Story 1.9.1 或后续 Epic):**
--  POST `/v1/workflows/{id}/archive` - 归档工作流 (不删除,仅隐藏)
-- 🟡 GET `/v1/workflows/{id}/events` - 获取原始 Event History (高级调试)
-- 🔴 POST `/v1/workflows/{id}/pause` - 暂停工作流 (需 Workflow 代码支持)
-- 🔴 POST `/v1/workflows/{id}/resume` - 恢复工作流 (需 Signal 机制)  
+**实施重点 (Story 1.9 重构):**
+1. **阶段1 (5天)**: 实现 DefinitionStore 接口,重构 API Handler
+2. **阶段2 (2天)**: 数据库表设计和实现
+3. **阶段3**: API 测试更新和文档同步
+
+**Post-MVP 功能:**
+- 🟢 工作流定义版本管理
+- 🟢 定义导入/导出 (YAML 文件)
+- 🟡 定义模板市场
+- 🔴 可视化定义编辑器  
 
 ### Story 1.10: Schedule API 实现（基于 Temporal Schedules）
 
+> **✅ 架构更新 (ADR-0009):**  
+> Schedule API 挂载到工作流定义,路径从 `/v1/schedules` 改为 `/v1/workflows/{name}/schedules`。支持 vars 参数绑定和三层参数覆盖机制。
+
 As a **工作流用户**,  
-I want **通过 API 注册定时工作流**,  
+I want **为工作流定义配置定时触发器**,  
 So that **工作流可以按 cron 表达式自动执行，无需配置外部调度器**。
 
 **Acceptance Criteria:**
 
 **创建 Schedule:**
-**Given** 用户已有工作流定义  
-**When** 调用 POST /v1/schedules 配置定时触发  
+**Given** 工作流定义已创建 (如 my-deploy)  
+**When** 调用 POST /v1/workflows/my-deploy/schedules 配置定时触发  
 **Then** 创建 Temporal Schedule 并返回详情  
-**And** Schedule 成功注册到 Temporal Server  
-**And** 元数据存储到 SQLite  
+**And** Schedule 关联到工作流定义  
+**And** 支持 vars 参数绑定 (覆盖 YAML 默认值)  
+**And** Schedule 元数据存储到 workflow_schedules 表  
 **And** 返回 201 Created 状态码  
 
 **列出 Schedules:**
-**Given** 系统中有多个已注册的 Schedules  
-**When** 调用 GET /v1/schedules  
-**Then** 返回 Schedule 列表（分页）  
-**And** 支持按状态过滤（active, paused）  
-**And** 支持按工作流名称过滤  
+**Given** 工作流定义已创建多个 Schedules  
+**When** 调用 GET /v1/workflows/{name}/schedules  
+**Then** 返回该定义的所有 Schedules  
+**And** 支持按状态过滤 (enabled, disabled)  
+**And** 包含 cron 表达式、timezone、绑定的 vars
 
 **查询 Schedule 详情:**
 **Given** Schedule 已创建  
-**When** 调用 GET /v1/schedules/:id  
+**When** 调用 GET /v1/workflows/{name}/schedules/{schedule_id}  
 **Then** 返回完整的 Schedule 详情  
 **And** 包含 next_run_time、last_run_time、total_runs  
+**And** 包含绑定的 vars 参数
+
+**更新 Schedule:**
+**Given** Schedule 已创建  
+**When** 调用 PUT /v1/workflows/{name}/schedules/{schedule_id}  
+**Then** 更新 Schedule 配置 (cron, timezone, vars)  
+**And** 更新 Temporal Schedule  
+**And** 返回 200 OK
 
 **暂停/恢复 Schedule:**
 **Given** Schedule 正在运行  
-**When** 调用 PATCH /v1/schedules/:id 修改状态  
-**Then** 更新 Temporal Schedule 状态  
-**And** 暂停后不再触发新的执行  
-**And** 恢复后继续按 cron 执行  
+**When** 调用 POST /v1/workflows/{name}/schedules/{schedule_id}/pause  
+**Then** 暂停 Temporal Schedule  
+**And** enabled 字段设为 false  
+**When** 调用 POST /v1/workflows/{name}/schedules/{schedule_id}/resume  
+**Then** 恢复执行
 
 **删除 Schedule:**
 **Given** Schedule 已创建  
-**When** 调用 DELETE /v1/schedules/:id  
+**When** 调用 DELETE /v1/workflows/{name}/schedules/{schedule_id}  
 **Then** 删除 Temporal Schedule  
-**And** 清理元数据  
-**And** 正在运行的工作流不受影响  
+**And** 清理 workflow_schedules 表记录  
+**And** 正在运行的执行不受影响
 
-**手动触发:**
-**Given** Schedule 已创建  
-**When** 调用 POST /v1/schedules/:id/trigger  
-**Then** 立即触发一次工作流执行  
-**And** 不影响正常的定时调度  
-
+**参数覆盖机制:**
+**Given** Schedule 触发工作流执行  
+**When** 执行开始  
+**Then** 参数按优先级合并: YAML默认值 < Schedule绑定的vars  
+**And** 合并后的 vars 传递给工作流执行
 ### Story 1.11: Webhook Trigger 实现
 
+> **✅ 架构更新 (ADR-0009):**  
+> Webhook API 挂载到工作流定义,路径为 `/v1/workflows/{name}/webhooks` 和 `/v1/webhooks/{id}/trigger`。支持 payload 中的 vars 参数覆盖。
+
 As a **工作流用户**,  
-I want **通过 Webhook 触发工作流**,  
+I want **为工作流定义配置 Webhook 触发器**,  
 So that **工作流可以响应外部事件（如 Git Push、第三方通知等）自动执行**。
 
 **Acceptance Criteria:**
 
-**注册 Webhook Trigger:**
-**Given** 用户已有工作流定义  
-**When** 调用 POST /v1/triggers 配置 Webhook 触发  
-**Then** 注册 Webhook Trigger 并返回详情  
-**And** 生成唯一的 Webhook URL  
-**And** 存储 Webhook Secret（用于签名验证）  
-**And** 返回 201 Created 状态码  
+**创建 Webhook:**
+**Given** 工作流定义已创建 (如 my-deploy)  
+**When** 调用 POST /v1/workflows/my-deploy/webhooks 配置 Webhook  
+**Then** 创建 Webhook 并返回详情  
+**And** 生成唯一的 webhook_id  
+**And** 触发 URL: POST /v1/webhooks/{webhook_id}/trigger  
+**And** 支持 Secret 配置 (用于签名验证)  
+**And** 支持 vars 参数绑定  
+**And** 元数据存储到 workflow_webhooks 表  
+**And** 返回 201 Created
 
-**接收 Webhook 请求:**
+**列出 Webhooks:**
+**Given** 工作流定义已创建多个 Webhooks  
+**When** 调用 GET /v1/workflows/{name}/webhooks  
+**Then** 返回该定义的所有 Webhooks  
+**And** 包含 webhook_id, 触发 URL, enabled 状态
+
+**删除 Webhook:**
+**Given** Webhook 已创建  
+**When** 调用 DELETE /v1/workflows/{name}/webhooks/{webhook_id}  
+**Then** 删除 Webhook  
+**And** 清理 workflow_webhooks 表记录  
+**And** 后续触发请求返回 404
+
+**触发 Webhook:**
+**Given** Webhook 已创建且 enabled=true  
+**When** POST /v1/webhooks/{webhook_id}/trigger (带 payload)  
+**Then** 验证 Secret (如果配置)  
+**And** 从 DefinitionStore 加载工作流定义  
+**And** 合并参数: YAML默认值 < Webhook绑定vars < payload中的vars  
+**And** 创建新的执行实例  
+**And** 返回 202 Accepted 和 execution_id  
+**And** Secret 验证失败返回 403
+
+**参数覆盖机制:**
+**Given** Webhook payload 包含 vars  
+**When** 触发执行  
+**Then** 三层参数覆盖: YAML默认 → Webhook绑定 → payload vars  
+**And** 最终 vars 传递给工作流执行
 **Given** Webhook Trigger 已注册  
 **When** 外部系统发送 POST 请求到 Webhook URL  
 **Then** 验证请求并触发 Workflow  
@@ -1680,18 +1801,42 @@ So that **部署多层架构应用**。
 
 ### Story 6.4: 模板 API 端点
 
+> **✅ 架构验证 (ADR-0009):**  
+> 本 Story 已按正确架构实现。模板通过独立的 `/v1/templates` API 访问，与工作流定义 (`/v1/workflows`) 清晰分离。模板存储在文件系统（只读），工作流定义存储在数据库（可读写）。**无需任何调整。**
+
 As a **开发者**,  
-I want **通过 API 访问工作流模板**,  
-So that **程序化使用模板**。
+I want **通过 `/v1/templates` API 访问系统模板**,  
+So that **可以程序化浏览和使用预定义的工作流模板**。
 
 **Acceptance Criteria:**
 
-**Given** 内置模板已创建  
-**When** 调用 `GET /v1/templates` API  
-**Then** 返回所有可用模板列表  
-**And** 每个模板包含 name, description, parameters  
-**And** `GET /v1/templates/{name}` 返回模板 YAML 内容  
-**And** 支持参数说明和示例值
+**列出模板:**
+**Given** 系统模板存储在文件系统 (examples/workflows/)  
+**When** 调用 GET /v1/templates  
+**Then** 返回所有系统模板列表  
+**And** 包含模板元数据 (name, category, description, parameters)  
+**And** 支持 category 过滤 (?category=deployment)
+
+**获取模板详情:**
+**Given** 系统模板已存在 (如 single-server-deployment)  
+**When** 调用 GET /v1/templates/single-server-deployment  
+**Then** 返回模板完整 YAML 内容  
+**And** 返回参数定义 (供用户参考)  
+**And** 返回使用示例
+
+**模板元数据:**
+**Given** templates-metadata.json 文件  
+**When** 加载模板列表  
+**Then** 解析元数据文件  
+**And** 缓存模板信息以提高性能  
+**And** 支持热加载（文件更新后自动刷新）
+
+**与工作流定义分离:**
+**Given** 模板和工作流定义是独立概念  
+**When** 用户使用模板  
+**Then** 用户复制模板内容创建自己的工作流定义  
+**And** 通过 POST /v1/workflows 创建工作流定义  
+**And** 模板本身保持只读，不受用户修改影响
 
 ### Story 6.5: 模板文档和示例
 

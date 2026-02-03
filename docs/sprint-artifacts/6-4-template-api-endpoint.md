@@ -2,6 +2,23 @@
 
 Status: Done
 
+> **✅ 架构验证 (ADR-0009):**
+> 
+> 此 Story 已按正确架构实现。经 [ADR-0009: 工作流定义与执行分离](../adr/0009-workflow-definition-execution-separation.md) 验证，模板 API 与工作流定义 API 的清晰分离符合最佳实践。
+> 
+> **模板 vs 工作流定义:**
+> 
+> | 特性 | 模板 (Template) | 工作流定义 (Definition) |
+> |------|----------------|------------------------|
+> | **API** | `/v1/templates` | `/v1/workflows` |
+> | **用途** | 可复用的蓝图（参考资料） | 可执行的实例（持久化配置） |
+> | **存储** | 文件系统（只读） | 数据库（可读写） |
+> | **元数据** | 丰富（category, author, examples） | 简单（name, vars） |
+> 
+> **结论:** 无需任何调整，当前实现符合架构要求。
+> 
+> 详见 [api-inventory.md](../api-inventory.md) 完整 API 清单。
+
 ## Story
 
 As a **开发者**,  

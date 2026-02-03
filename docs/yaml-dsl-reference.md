@@ -206,6 +206,34 @@ jobs:
     runs-on: web-servers  # 路由到 web-servers Task Queue
 ```
 
+**支持变量引用 (ADR-0009):**
+
+`runs-on` 支持 `${{ vars.xxx }}` 表达式，允许通过变量动态配置执行环境。变量在工作流启动前解析。
+
+```yaml
+vars:
+  target_queue: web-servers
+
+jobs:
+  deploy:
+    runs-on: ${{ vars.target_queue }}  # 动态路由
+```
+
+**触发时参数覆盖:**
+
+通过 Schedule 或 Webhook 触发时，可覆盖 `vars` 实现动态路由：
+
+```yaml
+# YAML 定义默认值
+vars:
+  target_queue: staging-servers
+
+# POST /v1/executions 或 Schedule/Webhook 触发时覆盖:
+# { "vars": { "target_queue": "production-servers" } }
+```
+
+> **求值时机:** `runs-on` 在工作流启动时求值（定义解析阶段），而非 Step 执行时。这确保了 Job 路由在工作流开始前确定。
+
 **常见 Task Queue 命名:**
 - `default` - 默认队列
 - `build-servers` - 构建服务器
@@ -288,7 +316,7 @@ if: ${{ always() }}  # 总是执行
 
 ### timeout-minutes
 
-**类型:** `int`  
+**类型:** `int` 或 `string`（表达式）  
 **必需:** 否  
 **默认值:** `360` (6 小时)  
 **说明:** Job 级超时配置，单位：分钟。
@@ -298,6 +326,34 @@ jobs:
   deploy:
     timeout-minutes: 30  # 30 分钟超时
 ```
+
+**支持变量引用 (ADR-0009):**
+
+`timeout-minutes` 支持 `${{ vars.xxx }}` 表达式，允许通过变量动态配置超时时间。
+
+```yaml
+vars:
+  job_timeout: 60
+
+jobs:
+  deploy:
+    timeout-minutes: ${{ vars.job_timeout }}  # 动态超时
+```
+
+**触发时参数覆盖:**
+
+不同环境或触发器可配置不同超时：
+
+```yaml
+# YAML 定义默认值
+vars:
+  job_timeout: 30
+
+# Schedule 触发时可绑定更长超时:
+# { "vars": { "job_timeout": 120 } }
+```
+
+> **求值时机:** 在 Job 启动时解析，确保超时配置在执行前确定。
 
 **超时机制:**
 - Job 超时 → Temporal 自动终止所有 Steps
@@ -622,7 +678,6 @@ steps:
 
 **格式:** `${{ expression }}`  
 **引擎:** antonmedv/expr (安全沙箱)  
-**求值时机:** 运行时，Step 执行前  
 **可用位置:** 所有字段值（name、if、with 参数等）
 
 ```yaml
@@ -632,6 +687,63 @@ with:
   command: ${{ vars.deploy_command }}
   args: ["--env", "${{ vars.environment }}"]
 ```
+
+### 求值时机 (ADR-0009)
+
+表达式求值分为两个阶段：
+
+**1. 定义解析阶段（工作流启动时）:**
+
+以下结构性字段在工作流启动时解析，确保执行计划在运行前确定：
+
+| 字段 | 说明 |
+|------|------|
+| `runs-on` | Job 路由到哪个 Task Queue |
+| `timeout-minutes` | Job/Step 超时配置 |
+| `strategy.matrix` | Matrix 并行维度 |
+
+```yaml
+vars:
+  target_queue: web-servers
+  timeout: 60
+  servers: [web-1, web-2]
+
+jobs:
+  deploy:
+    runs-on: ${{ vars.target_queue }}      # 启动时解析
+    timeout-minutes: ${{ vars.timeout }}   # 启动时解析
+    strategy:
+      matrix:
+        server: ${{ vars.servers }}        # 启动时解析
+```
+
+**2. Step 执行阶段（每个 Step 执行前）:**
+
+其他字段在 Step 执行时解析，可使用完整上下文（包括前序 Step 输出）：
+
+| 字段 | 说明 |
+|------|------|
+| `name` | Step 显示名称 |
+| `if` | 条件执行 |
+| `with` | 节点参数 |
+| `env` | 环境变量 |
+
+```yaml
+steps:
+  - id: config
+    uses: shell@v1
+    with:
+      command: echo
+      args: ["Getting config..."]
+    # outputs.version 由节点生成
+
+  - name: Deploy version ${{ steps.config.outputs.version }}  # 执行时解析
+    if: ${{ success() }}                                       # 执行时解析
+    with:
+      version: ${{ steps.config.outputs.version }}            # 执行时解析
+```
+
+> **三层参数覆盖:** vars 支持三层覆盖机制：YAML 默认值 → 触发器绑定（Schedule/Webhook）→ 执行时参数。详见 [ADR-0009](adr/0009-workflow-definition-execution-separation.md)。
 
 ### 上下文变量
 
@@ -885,6 +997,51 @@ jobs:
         os: [ubuntu, centos, debian]
         version: ['20.04', '22.04']
 ```
+
+### 动态 Matrix 定义 (ADR-0009)
+
+Matrix 值支持 `${{ vars.xxx }}` 表达式，允许通过变量动态配置并行维度。
+
+**动态服务器列表:**
+
+```yaml
+vars:
+  target_servers:
+    - web-1.example.com
+    - web-2.example.com
+
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        server: ${{ vars.target_servers }}  # 动态 Matrix
+    steps:
+      - name: Deploy to ${{ matrix.server }}
+        uses: http@v1
+        with:
+          url: "https://${{ matrix.server }}/deploy"
+```
+
+**触发时覆盖服务器列表:**
+
+```yaml
+# YAML 定义默认（staging 环境）
+vars:
+  target_servers:
+    - staging-1.example.com
+    - staging-2.example.com
+
+# Schedule/Webhook 触发时可覆盖为生产环境:
+# POST /v1/executions
+# { 
+#   "workflow_name": "deploy-app",
+#   "vars": { 
+#     "target_servers": ["prod-1.example.com", "prod-2.example.com", "prod-3.example.com"]
+#   }
+# }
+```
+
+> **求值时机:** Matrix 表达式在工作流启动时解析（定义解析阶段），确保 Matrix 展开在 Job 执行前完成。
 
 ### Matrix 展开规则
 

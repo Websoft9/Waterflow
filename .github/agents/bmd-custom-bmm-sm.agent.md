@@ -1,6 +1,6 @@
 ---
 description: "Activates the Sm agent persona."
-tools: ["changes","edit","fetch","githubRepo","problems","runCommands","runTasks","runTests","search","runSubagent","testFailure","todos","usages"]
+tools: ["changes","edit","fetch","githubRepo","problems","runCommands","runTasks","runTests","search","runSubagent","testFailure","todos","usages","io.github.upstash/context7/*"]
 ---
 
 # Sm Agent

@@ -2,6 +2,16 @@
 
 Status: done
 
+> **架构变更通知 (ADR-0009):**
+> 
+> 此 Story 的部分验证规则已根据 [ADR-0009: 工作流定义与执行分离](../adr/0009-workflow-definition-execution-separation.md) 进行调整：
+> 
+> - **`runs-on` 字段**: 支持 `${{ vars.xxx }}` 表达式（见 AC3 更新）
+> - **`timeout-minutes` 字段**: 支持 `${{ vars.xxx }}` 表达式（见 AC3 更新）
+> - **`matrix` 值**: 支持 `${{ vars.xxx }}` 表达式（见 AC3 更新）
+> 
+> 这些结构性字段的表达式在工作流启动时解析（定义解析阶段）。详见 [yaml-dsl-reference.md](../yaml-dsl-reference.md#求值时机-adr-0009)。
+
 ## Story
 
 As a **工作流用户**,  
@@ -110,20 +120,46 @@ jobs:
 ```yaml
 # 正确类型
 timeout-minutes: 30          # int
+timeout-minutes: ${{ vars.timeout }}  # 表达式 (ADR-0009)
 continue-on-error: true      # bool
 env: {DB_HOST: localhost}    # map[string]string
 needs: [build, test]         # array[string]
 
 # 错误类型
-timeout-minutes: "30"        # ❌ 应为 int
+timeout-minutes: "30"        # ❌ 应为 int 或表达式
 continue-on-error: "yes"     # ❌ 应为 bool
 ```
 
 **And** 检查字段格式:
 - `uses` 格式: `^[a-z0-9-]+@v[0-9]+$` (如 `checkout@v1`)
-- `runs-on` 格式: `^[a-z0-9-]+$` (如 `linux-amd64`, 可选，默认 `default`)
+- `runs-on` 格式: `^[a-z0-9-]+$` (如 `linux-amd64`) 或 `${{ vars.xxx }}` 表达式 (ADR-0009)
+- `timeout-minutes`: int 或 `${{ vars.xxx }}` 表达式 (ADR-0009)
+- `matrix` 值: 数组或 `${{ vars.xxx }}` 表达式 (ADR-0009)
 - Job/Step name 格式: `^[a-z][a-z0-9-]*$` (小写字母开头)
 - 超时时间范围: 1-1440 分钟 (1 分钟到 24 小时)
+
+**表达式验证 (ADR-0009):**
+
+对于支持表达式的结构性字段，验证规则为：
+
+```yaml
+# runs-on 支持表达式
+runs-on: web-servers           # ✅ 静态值
+runs-on: ${{ vars.queue }}     # ✅ 表达式
+runs-on: my-${{ vars.env }}    # ✅ 混合表达式
+
+# timeout-minutes 支持表达式
+timeout-minutes: 30                     # ✅ 静态值
+timeout-minutes: ${{ vars.timeout }}    # ✅ 表达式
+
+# matrix 值支持表达式
+strategy:
+  matrix:
+    server: [web-1, web-2]                # ✅ 静态数组
+    server: ${{ vars.target_servers }}    # ✅ 表达式
+```
+
+> **注意:** 表达式的最终值类型在工作流启动时校验。如 `timeout-minutes: ${{ vars.timeout }}` 要求 `vars.timeout` 解析后为数字。
 
 **And** 字段类型错误时返回:
 ```json

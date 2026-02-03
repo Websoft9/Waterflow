@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Websoft9/waterflow/pkg/audit"
@@ -667,6 +668,68 @@ func (h *WorkflowHandlers) CancelWorkflow(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+// TerminateWorkflowRequest represents terminate request body (AC8)
+type TerminateWorkflowRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// TerminateWorkflow handles POST /v1/workflows/{id}/terminate endpoint (AC8)
+func (h *WorkflowHandlers) TerminateWorkflow(w http.ResponseWriter, r *http.Request) {
+	// Extract workflow ID from path
+	vars := mux.Vars(r)
+	workflowID := vars["id"]
+
+	if workflowID == "" {
+		h.writeErrorLegacy(w, r, http.StatusBadRequest, "invalid_request", "Workflow ID is required", nil)
+		return
+	}
+
+	// Parse request body (reason is optional)
+	var req TerminateWorkflowRequest
+	if r.Body != nil {
+		body, _ := io.ReadAll(r.Body)
+		if len(body) > 0 {
+			_ = json.Unmarshal(body, &req)
+		}
+		defer func() { _ = r.Body.Close() }()
+	}
+
+	// Terminate workflow via Temporal
+	err := h.temporalClient.GetClient().TerminateWorkflow(
+		r.Context(),
+		workflowID,
+		"", // runID empty = terminate current run
+		req.Reason,
+	)
+
+	if err != nil {
+		h.logger.Error("Failed to terminate workflow",
+			zap.String("workflow_id", workflowID),
+			zap.String("reason", req.Reason),
+			zap.Error(err),
+		)
+
+		// Check if workflow not found
+		if strings.Contains(err.Error(), "not found") {
+			h.writeErrorLegacy(w, r, http.StatusNotFound, "not_found", "Workflow not found", map[string]interface{}{
+				"workflow_id": workflowID,
+			})
+			return
+		}
+
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "internal_error", "Failed to terminate workflow", nil)
+		return
+	}
+
+	h.logger.Info("Workflow terminated successfully",
+		zap.String("workflow_id", workflowID),
+		zap.String("reason", req.Reason),
+	)
+
+	// AC8: Return 204 No Content
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // RerunWorkflow handles POST /v1/workflows/{id}/rerun endpoint (AC6)

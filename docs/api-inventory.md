@@ -1,8 +1,14 @@
 # Waterflow REST API 完整清单
 
 **版本:** v1  
-**最后更新:** 2026-01-28  
-**总计:** 29 个 API 端点
+**最后更新:** 2026-02-03  
+**总计:** 32 个 API 端点
+
+> **架构变更说明 (ADR-0009):**  
+> 自 2026-02-03 起，API 采用 **Definition/Execution 分离架构**：
+> - `/v1/workflows` - 工作流定义管理 (CRUD)
+> - `/v1/executions` - 工作流执行管理
+> - Schedule/Webhook 挂载到 `/v1/workflows/{name}/` 下
 
 ---
 
@@ -11,15 +17,15 @@
 | 类别 | 端点数量 | Story |
 |------|---------|-------|
 | **基础设施** | 4 | Story 1.2 |
-| **工作流管理** | 7 | Story 1.9 |
+| **工作流定义** | 5 | Story 1.9 |
+| **工作流执行** | 7 | Story 1.9 |
 | **定时调度** | 6 | Story 1.10 |
-| **Webhook 触发** | 6 | Story 1.11 |
+| **Webhook 触发** | 5 | Story 1.11 |
 | **模板管理** | 2 | Story 6.4 |
 | **节点管理** | 1 | Story 5.6 |
 | **YAML 验证** | 1 | Story 5.2 |
 | **审计日志** | 1 | Story 9.3 |
-| **Agent 管理** | 2 | Story 1.9 |
-| **总计** | **29** | - |
+| **总计** | **32** | - |
 
 ---
 
@@ -39,7 +45,7 @@ GET /ready
 ```
 - **用途**: 服务就绪检查 (包含依赖)
 - **返回**: `{"status": "ready"}` 或 503
-- **依赖**: Temporal 连接状态
+- **依赖**: Temporal 连接状态、数据库连接
 
 ### 1.3 Prometheus 监控
 ```
@@ -58,259 +64,391 @@ GET /version
 
 ---
 
-## 2️⃣ 工作流管理 API (7 个) - Story 1.9
+## 2️⃣ 工作流定义 API (5 个) - Story 1.9
 
-### 2.1 提交工作流
+> **说明**: 工作流定义是持久化存储的 YAML 工作流，可被 Schedule/Webhook 引用。
+
+### 2.1 创建工作流定义
 ```
 POST /v1/workflows
 Content-Type: application/json
 
 {
-  "yaml": "name: Deploy\njobs:...",
-  "dry_run": false
+  "name": "deploy-app",
+  "description": "Deploy application to servers",
+  "content": "name: deploy-app\njobs:...",
+  "category": "deployment"
 }
 ```
-- **用途**: 提交新工作流
-- **返回**: `{"workflow_id": "uuid", "status": "pending"}`
-- **特性**: 支持 dry-run 验证
+- **用途**: 创建新的工作流定义
+- **返回**: 201 Created
+```json
+{
+  "name": "deploy-app",
+  "namespace": "user",
+  "description": "Deploy application to servers",
+  "category": "deployment",
+  "created_at": "2026-02-03T10:00:00Z"
+}
+```
+- **验证**: YAML 语法和语义验证
+- **存储**: 用户定义存储在数据库
 
-### 2.2 查询工作流详情
+### 2.2 列出工作流定义
 ```
-GET /v1/workflows/{id}
-GET /v1/workflows/{id}?include=events
+GET /v1/workflows
+GET /v1/workflows?category=deployment&page=1&limit=20
 ```
-- **用途**: 查询单个工作流状态
-- **返回**: 完整工作流信息 (状态、进度、Job/Step 详情)
-- **特性**: 可选包含原始 Event History
+- **用途**: 分页列出工作流定义
+- **过滤参数**:
+  - `category`: deployment, monitoring, automation 等
+  - `page`, `limit`: 分页参数
+- **返回**:
+```json
+{
+  "workflows": [
+    {
+      "name": "deploy-app",
+      "description": "...",
+      "category": "deployment",
+      "created_at": "2026-02-03T10:00:00Z",
+      "updated_at": "2026-02-03T10:00:00Z"
+    }
+  ],
+  "total": 15
+}
+```
 
-### 2.3 列出工作流
+### 2.3 获取工作流定义详情
 ```
-GET /v1/workflows?page=1&limit=20&status=running&workflow_name=Deploy&start_time_from=2026-01-01T00:00:00Z
+GET /v1/workflows/{name}
 ```
-- **用途**: 分页列出工作流
-- **过滤**: 状态、名称、时间范围
-- **返回**: 工作流列表 + 分页信息
+- **用途**: 获取单个工作流定义 (含 YAML 内容)
+- **返回**:
+```json
+{
+  "name": "deploy-app",
+  "description": "Deploy application to servers",
+  "category": "deployment",
+  "content": "name: deploy-app\nvars:\n  env: prod\njobs:...",
+  "parameters": [
+    {"name": "env", "type": "string", "default": "prod"}
+  ],
+  "created_at": "2026-02-03T10:00:00Z",
+  "updated_at": "2026-02-03T10:00:00Z"
+}
+```
+- **404**: 工作流定义不存在
 
-### 2.4 获取工作流日志
+### 2.4 更新工作流定义
 ```
-GET /v1/workflows/{id}/logs
-GET /v1/workflows/{id}/logs?level=error,warn&job=deploy&stream=true
-```
-- **用途**: 查询工作流日志
-- **返回**: JSON Lines 格式日志
-- **特性**: 支持过滤、实时流 (SSE)
-
-### 2.5 取消工作流
-```
-POST /v1/workflows/{id}/cancel
-```
-- **用途**: 取消运行中的工作流
-- **返回**: 202 Accepted
-- **行为**: 优雅停止,传播到所有 Activity
-
-### 2.6 重新运行工作流
-```
-POST /v1/workflows/{id}/rerun
+PUT /v1/workflows/{name}
 Content-Type: application/json
 
 {
-  "vars": {"env": "staging"},
-  "skip_successful": true,
-  "from_job": "deploy"
+  "description": "Updated description",
+  "content": "name: deploy-app\njobs:..."
 }
 ```
-- **用途**: 重新运行已完成工作流
-- **返回**: `{"workflow_id": "new-uuid"}`
-- **特性**: 支持变量覆盖、跳过成功 Step、指定起点
+- **用途**: 更新工作流定义
+- **返回**: 200 OK + 更新后的定义
+- **验证**: YAML 语法和语义验证
 
-### 2.7 强制终止工作流
+### 2.5 删除工作流定义
 ```
-POST /v1/workflows/{id}/terminate
+DELETE /v1/workflows/{name}
+```
+- **用途**: 删除工作流定义
+- **返回**: 204 No Content
+- **冲突检查**: 存在关联的 Schedule/Webhook 时返回 409
+
+---
+
+## 3️⃣ 工作流执行 API (7 个) - Story 1.9
+
+> **说明**: 工作流执行是一次具体的运行实例。
+
+### 3.1 执行工作流定义
+```
+POST /v1/workflows/{name}/run
+Content-Type: application/json
+
+{
+  "namespace": "user",
+  "vars": {
+    "env": "production",
+    "version": "1.2.3"
+  }
+}
+```
+- **用途**: 执行已保存的工作流定义
+- **返回**: 202 Accepted
+```json
+{
+  "execution_id": "deploy-app-abc123",
+  "workflow_name": "deploy-app",
+  "status": "running",
+  "started_at": "2026-02-03T10:00:00Z"
+}
+```
+- **参数覆盖**: `vars` 覆盖 YAML 中的默认值
+- **404**: 工作流定义不存在
+
+### 3.2 直接执行工作流 (一次性)
+```
+POST /v1/executions
+Content-Type: application/json
+
+{
+  "workflow": "name: one-time-task\njobs:...",
+  "vars": {"key": "value"},
+  "dry_run": false
+}
+```
+- **用途**: 直接执行 YAML (不存储定义)
+- **返回**: 202 Accepted
+```json
+{
+  "execution_id": "one-time-task-xyz789",
+  "status": "running"
+}
+```
+- **场景**: 临时任务、测试、调试
+- **dry_run**: 仅验证不执行
+
+### 3.3 查询执行详情
+```
+GET /v1/executions/{id}
+GET /v1/executions/{id}?include=events
+```
+- **用途**: 查询单个执行的状态
+- **返回**: 完整执行信息 (状态、进度、Job/Step 详情)
+- **特性**: 可选包含原始 Event History
+
+### 3.4 列出执行
+```
+GET /v1/executions
+GET /v1/executions?workflow_name=deploy-app&status=running
+GET /v1/executions?start_time_from=2026-01-01T00:00:00Z
+```
+- **用途**: 分页列出工作流执行
+- **过滤**: workflow_name, status, 时间范围, trigger_type
+- **返回**: 执行列表 + 分页信息
+
+### 3.5 获取执行日志
+```
+GET /v1/executions/{id}/logs
+GET /v1/executions/{id}/logs?level=error,warn&job=deploy&stream=true
+```
+- **用途**: 查询执行日志
+- **返回**: JSON Lines 格式日志
+- **特性**: 支持过滤、实时流 (SSE)
+
+### 3.6 取消执行
+```
+POST /v1/executions/{id}/cancel
+```
+- **用途**: 取消运行中的执行
+- **返回**: 202 Accepted
+- **行为**: 优雅停止，传播到所有 Activity
+
+### 3.7 强制终止执行
+```
+POST /v1/executions/{id}/terminate
 Content-Type: application/json
 
 {
   "reason": "Resource cleanup required"
 }
 ```
-- **用途**: 强制终止运行中或卡住的工作流
+- **用途**: 强制终止运行中或卡住的执行
 - **返回**: 204 No Content
-- **行为**: 立即终止，不执行清理逻辑 (vs Cancel 优雅停止)
-- **场景**: 工作流卡死、资源泄漏、紧急停止
+- **行为**: 立即终止，不执行清理逻辑
 
 ---
 
-## 3️⃣ 定时调度 API (6 个) - Story 1.10
+## 4️⃣ 定时调度 API (6 个) - Story 1.10
 
-### 3.1 创建 Schedule
+> **说明**: Schedule 挂载在工作流定义下，引用而非复制 YAML。
+
+### 4.1 创建 Schedule
 ```
-POST /v1/schedules
+POST /v1/workflows/{name}/schedules
 Content-Type: application/json
 
 {
-  "name": "nightly-backup",
-  "workflow_name": "Backup",
+  "schedule_id": "nightly-deploy",
   "cron": "0 2 * * *",
-  "paused": false,
+  "timezone": "Asia/Shanghai",
+  "vars": {
+    "env": "production"
+  },
   "overlap_policy": "skip",
-  "timezone": "UTC"
+  "enabled": true
 }
 ```
-- **用途**: 注册定时工作流
-- **返回**: Schedule 详情 + next_run_time
-- **特性**: 基于 Temporal Schedules
+- **用途**: 为工作流定义创建定时调度
+- **返回**: 201 Created
+```json
+{
+  "schedule_id": "nightly-deploy",
+  "workflow_name": "deploy-app",
+  "cron": "0 2 * * *",
+  "timezone": "Asia/Shanghai",
+  "vars": {"env": "production"},
+  "next_run_time": "2026-02-04T02:00:00+08:00",
+  "enabled": true
+}
+```
+- **vars**: 执行时覆盖 YAML 默认值
+- **404**: 工作流定义不存在
 
-### 3.2 列出 Schedules
+### 4.2 列出 Schedules
 ```
-GET /v1/schedules?status=active&limit=20&offset=0
+GET /v1/workflows/{name}/schedules
 ```
-- **用途**: 分页列出 Schedules
-- **过滤**: 状态、工作流名称
-- **返回**: Schedule 列表 + 分页信息
+- **用途**: 列出工作流的所有 Schedules
+- **返回**: Schedule 列表
 
-### 3.3 查询 Schedule 详情
+### 4.3 查询 Schedule 详情
 ```
-GET /v1/schedules/{id}
+GET /v1/workflows/{name}/schedules/{schedule_id}
 ```
 - **用途**: 查询单个 Schedule
-- **返回**: 完整 Schedule 信息 + 执行历史
+- **返回**: 完整 Schedule 信息 + 最近执行历史
 
-### 3.4 暂停/恢复 Schedule
+### 4.4 更新 Schedule
 ```
-PATCH /v1/schedules/{id}
+PUT /v1/workflows/{name}/schedules/{schedule_id}
 Content-Type: application/json
 
 {
-  "paused": true
+  "cron": "0 3 * * *",
+  "vars": {"env": "staging"},
+  "enabled": false
 }
 ```
-- **用途**: 暂停或恢复 Schedule
-- **返回**: 更新后的 Schedule 状态
+- **用途**: 更新 Schedule 配置
+- **返回**: 200 OK + 更新后的 Schedule
 
-### 3.5 删除 Schedule
+### 4.5 删除 Schedule
 ```
-DELETE /v1/schedules/{id}
+DELETE /v1/workflows/{name}/schedules/{schedule_id}
 ```
 - **用途**: 删除 Schedule
 - **返回**: 204 No Content
-- **行为**: 不影响正在运行的工作流
+- **行为**: 不影响正在运行的执行
 
-### 3.6 手动触发 Schedule
+### 4.6 手动触发 Schedule
 ```
-POST /v1/schedules/{id}/trigger
-```
-- **用途**: 立即触发一次工作流执行
-- **返回**: 新工作流 ID
-- **行为**: 不影响正常调度
-
----
-
-## 4️⃣ Webhook 触发 API (6 个) - Story 1.11
-
-### 4.1 注册 Webhook Trigger
-```
-POST /v1/triggers
+POST /v1/workflows/{name}/schedules/{schedule_id}/trigger
 Content-Type: application/json
 
 {
-  "name": "deploy-on-push",
-  "workflow_name": "Deploy",
-  "type": "webhook",
-  "filters": {
-    "branches": ["main"],
-    "paths": ["src/**"]
-  },
-  "enabled": true,
-  "secret": "my-webhook-secret"
+  "vars": {"version": "1.2.4"}
 }
 ```
-- **用途**: 注册 Webhook 触发器
-- **返回**: Webhook URL + Secret
-- **特性**: 支持过滤规则
+- **用途**: 立即触发一次执行
+- **返回**: 202 Accepted + execution_id
+- **vars**: 可选，覆盖 Schedule 绑定的 vars
 
-### 4.2 接收 Webhook 请求
+---
+
+## 5️⃣ Webhook 触发 API (5 个) - Story 1.11
+
+> **说明**: Webhook 挂载在工作流定义下。
+
+### 5.1 创建 Webhook
 ```
-POST /api/v1/webhooks/{trigger_id}
+POST /v1/workflows/{name}/webhooks
+Content-Type: application/json
+
+{
+  "webhook_id": "github-push",
+  "secret": "my-webhook-secret",
+  "vars": {
+    "branch": "main"
+  },
+  "enabled": true
+}
+```
+- **用途**: 为工作流定义创建 Webhook 触发器
+- **返回**: 201 Created
+```json
+{
+  "webhook_id": "github-push",
+  "workflow_name": "deploy-app",
+  "trigger_url": "https://waterflow.example.com/api/v1/webhooks/github-push/trigger",
+  "vars": {"branch": "main"},
+  "enabled": true
+}
+```
+
+### 5.2 列出 Webhooks
+```
+GET /v1/workflows/{name}/webhooks
+```
+- **用途**: 列出工作流的所有 Webhooks
+- **返回**: Webhook 列表
+
+### 5.3 查询 Webhook 详情
+```
+GET /v1/workflows/{name}/webhooks/{webhook_id}
+```
+- **用途**: 查询单个 Webhook
+- **返回**: 完整 Webhook 信息
+
+### 5.4 删除 Webhook
+```
+DELETE /v1/workflows/{name}/webhooks/{webhook_id}
+```
+- **用途**: 删除 Webhook
+- **返回**: 204 No Content
+- **行为**: trigger_url 立即失效
+
+### 5.5 Webhook 触发端点
+```
+POST /api/v1/webhooks/{webhook_id}/trigger
 Content-Type: application/json
 X-Hub-Signature-256: sha256=...
 
 {
   "ref": "refs/heads/main",
-  "commits": [...]
+  "vars": {"commit": "abc123"}
 }
 ```
-- **用途**: 接收外部 Webhook 事件
-- **返回**: 触发的工作流 ID
-- **特性**: HMAC 签名验证、异步处理
-
-### 4.3 列出 Triggers
-```
-GET /v1/triggers?type=webhook&status=enabled
-```
-- **用途**: 分页列出 Triggers
-- **过滤**: 类型、状态
-- **返回**: Trigger 列表
-
-### 4.4 查询 Trigger 详情
-```
-GET /v1/triggers/{id}
-```
-- **用途**: 查询单个 Trigger
-- **返回**: 完整 Trigger 配置
-
-### 4.5 更新 Trigger
-```
-PATCH /v1/triggers/{id}
-Content-Type: application/json
-
-{
-  "enabled": false,
-  "filters": {"branches": ["main", "dev"]}
-}
-```
-- **用途**: 更新 Trigger 配置或状态
-- **返回**: 更新后的 Trigger
-
-### 4.6 删除 Trigger
-```
-DELETE /v1/triggers/{id}
-```
-- **用途**: 删除 Trigger
-- **返回**: 204 No Content
-- **行为**: Webhook URL 立即失效
-
-**查询 Webhook 触发历史:**
-
-通过统一的工作流查询 API:
-```
-GET /v1/workflows?trigger_type=webhook&trigger_source={trigger_id}
-```
-- **设计理念**: 避免数据冗余，保持单一数据源
-- **元数据**: 工作流包含 trigger_type, trigger_source, trigger_event
-- **优势**: 与 Schedule 设计对称，数据一致性更好
+- **用途**: 接收外部 Webhook 事件并触发执行
+- **返回**: 202 Accepted + execution_id
+- **安全**: HMAC 签名验证
+- **vars**: payload 中的 vars 作为执行时覆盖
 
 ---
 
-## 5️⃣ 模板管理 API (2 个) - Story 6.4
+## 6️⃣ 模板管理 API (2 个) - Story 6.4
 
-### 5.1 列出模板
+> **架构说明**: `/v1/templates` 是独立的模板 API，与工作流定义 API (`/v1/workflows`) 清晰分离。模板是可复用的蓝图（只读），工作流定义是可执行的实例（可读写）。
+
+### 6.1 列出模板
 ```
 GET /v1/templates
 ```
-- **用途**: 获取所有工作流模板
-- **返回**: 模板列表 (包含元数据)
+- **用途**: 获取所有系统预置工作流模板
+- **存储**: 文件系统 `examples/workflows/`
+- **返回**: 模板列表 (包含 name, category, description, parameters)
+- **过滤**: 支持 `?category=deployment` 过滤
 
-### 5.2 获取模板详情
+### 6.2 获取模板详情
 ```
 GET /v1/templates/{name}
 ```
-- **用途**: 获取单个模板的 YAML 定义
+- **用途**: 获取特定模板的详情和 YAML 内容
 - **返回**: 完整模板 YAML + 元数据
 
 ---
 
-## 6️⃣ 节点管理 API (1 个) - Story 5.6
+## 7️⃣ 节点管理 API (1 个) - Story 5.6
 
-### 6.1 列出节点
+### 7.1 列出节点
 ```
 GET /v1/nodes
 GET /v1/nodes?format=yaml
@@ -321,9 +459,9 @@ GET /v1/nodes?format=yaml
 
 ---
 
-## 7️⃣ YAML 验证 API (1 个) - Story 5.2
+## 8️⃣ YAML 验证 API (1 个) - Story 5.2
 
-### 7.1 验证 YAML
+### 8.1 验证 YAML
 ```
 POST /v1/validate
 Content-Type: application/json
@@ -334,80 +472,36 @@ Content-Type: application/json
 ```
 - **用途**: 验证 YAML 工作流语法
 - **返回**: 验证结果 + 错误详情
-- **特性**: 离线验证,无需 Temporal
+- **特性**: 离线验证，无需 Temporal
 
 ---
 
-## 8️⃣ 审计日志 API (1 个) - Story 9.3
+## 9️⃣ 审计日志 API (1 个) - Story 9.3
 
-### 8.1 查询审计日志
+### 9.1 查询审计日志
 ```
-GET /v1/audit?action=workflow.cancel&user=admin&start_time=2026-01-01T00:00:00Z
+GET /v1/audit?action=workflow.create&user=admin&start_time=2026-01-01T00:00:00Z
 ```
 - **用途**: 查询系统审计日志
 - **过滤**: 操作类型、用户、时间范围
 - **返回**: 审计日志列表
+- **操作类型**: workflow.create, workflow.delete, schedule.create, webhook.trigger 等
 
 ---
 
-## 9️⃣ Agent 管理 API (2 个) - Story 1.9
+## 🚀 Post-MVP API
 
-### 9.1 列出 Agents
+### 执行扩展
 ```
-GET /v1/agents
+POST /v1/executions/{id}/retry           # 重试失败的执行 (P1)
+POST /v1/executions/{id}/archive         # 归档执行记录 (P2)
+GET  /v1/executions/{id}/events          # 原始 Event History (P2)
 ```
-- **用途**: 获取所有可用 Agents
-- **返回**: 
-```json
-{
-  "agents": [
-    {
-      "name": "server-01",
-      "status": "healthy",
-      "pollers_count": 2
-    },
-    {
-      "name": "server-02",
-      "status": "degraded",
-      "pollers_count": 1
-    }
-  ]
-}
-```
-- **状态说明**:
-  - `healthy`: 有 ≥2 个活跃 Poller
-  - `degraded`: 有 1 个活跃 Poller
-  - `unavailable`: 无活跃 Poller
 
-### 9.2 查询 Agent 状态
+### 工作流定义扩展
 ```
-GET /v1/agents/{name}
-```
-- **用途**: 查询单个 Agent 的健康状态
-- **返回**:
-```json
-{
-  "name": "server-01",
-  "status": "healthy",
-  "pollers_count": 3,
-  "backlog_count": 5
-}
-```
-- **场景**: 
-  - 提交工作流前验证 `runs-on` 对应的 Agent 是否存在
-  - Matrix 场景验证所有 `server` 值对应的 Agent 是否可用
-  - 防止提交到不存在的 Agent 导致工作流永久等待
-
----
-
-## 🚀 Post-MVP API (4 个)
-
-### Story 1.9 扩展
-```
-POST /v1/workflows/{id}/archive          # 归档工作流 (P2)
-GET  /v1/workflows/{id}/events           # 原始 Event History (P2)
-POST /v1/workflows/{id}/pause            # 暂停工作流 (P3)
-POST /v1/workflows/{id}/resume           # 恢复工作流 (P3)
+POST /v1/workflows/{name}/fork           # Fork 定义 (P2)
+GET  /v1/workflows/{name}/versions       # 版本历史 (P3)
 ```
 
 ---
@@ -420,6 +514,12 @@ POST /v1/workflows/{id}/resume           # 恢复工作流 (P3)
 - ✅ 统一错误格式 (RFC 7807)
 - ✅ Request-ID 追踪
 - ✅ CORS 支持
+
+### 架构原则 (ADR-0009)
+- ✅ **Definition/Execution 分离** - 定义持久化，执行是运行实例
+- ✅ **触发器挂载** - Schedule/Webhook 属于工作流定义
+- ✅ **混合存储** - system=文件系统，user=数据库
+- ✅ **参数三层覆盖** - YAML默认 → 触发器绑定 → 执行时
 
 ### 性能要求
 - ✅ 基础查询 < 200ms
@@ -438,11 +538,11 @@ POST /v1/workflows/{id}/resume           # 恢复工作流 (P3)
 
 ## 🔗 相关文档
 
+- [ADR-0009: 工作流定义与执行分离架构](./adr/0009-workflow-definition-execution-separation.md)
 - [API 完整参考](./api-guide.md) - 每个端点的详细文档
 - [OpenAPI 规范](../api/openapi.yaml) - Story 10.2
 - [快速开始](./quick-start.md) - API 使用示例
-- [工作流管理 API 调研](./sprint-artifacts/1-9-workflow-management-api-research.md) - 技术调研
 
 ---
 
-**当前状态:** Epic 1 完成后,Waterflow 将提供 **29 个生产级 REST API** 🎉
+**当前状态:** 基于 ADR-0009 架构，提供 **32 个生产级 REST API** 🎉

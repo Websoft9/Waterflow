@@ -2,6 +2,31 @@
 
 Status: ✅ **done**
 
+> **架构变更通知 (ADR-0009):**
+> 
+> 此 Story 的 Matrix 功能已根据 [ADR-0009: 工作流定义与执行分离](../adr/0009-workflow-definition-execution-separation.md) 进行增强：
+> 
+> **动态 Matrix 支持:**
+> 
+> Matrix 值支持 `${{ vars.xxx }}` 表达式，允许通过变量动态配置并行维度：
+> 
+> ```yaml
+> vars:
+>   target_servers: [web-1, web-2, web-3]
+> 
+> jobs:
+>   deploy:
+>     strategy:
+>       matrix:
+>         server: ${{ vars.target_servers }}  # 动态 Matrix
+> ```
+> 
+> **求值时机:** Matrix 表达式在工作流启动时解析（定义解析阶段），确保 Matrix 展开在 Job 执行前完成。
+> 
+> **参数覆盖:** 通过 Schedule/Webhook 触发时可覆盖 `vars`，实现同一工作流定义部署到不同服务器组。
+> 
+> 详见 [yaml-dsl-reference.md](../yaml-dsl-reference.md#动态-matrix-定义-adr-0009)。
+
 ## Story
 
 As a **工作流用户**,  

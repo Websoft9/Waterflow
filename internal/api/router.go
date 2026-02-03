@@ -160,6 +160,9 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 		// AC5: Cancel workflow
 		router.HandleFunc("/v1/workflows/{id}/cancel", wh.CancelWorkflow).Methods(http.MethodPost)
 
+		// AC8: Terminate workflow
+		router.HandleFunc("/v1/workflows/{id}/terminate", wh.TerminateWorkflow).Methods(http.MethodPost)
+
 		// AC6: Rerun workflow
 		router.HandleFunc("/v1/workflows/{id}/rerun", wh.RerunWorkflow).Methods(http.MethodPost)
 

@@ -8,20 +8,31 @@ inputDocuments:
   - /data/Waterflow/docs/adr/0004-yaml-dsl-syntax.md
   - /data/Waterflow/docs/adr/0005-expression-system-syntax.md
   - /data/Waterflow/docs/adr/0006-task-queue-routing.md
+  - /data/Waterflow/docs/adr/0009-workflow-definition-execution-separation.md
 workflowType: 'architecture'
 lastStep: 8
 project_name: 'Waterflow'
 user_name: 'Websoft9'
 date: '2025-12-16'
 status: 'complete'
-version: '1.0'
+version: '1.1'
 ---
 
 # Waterflow 架构设计文档
 
-**版本:** 1.0  
+**版本:** 1.1  
 **日期:** 2025-12-16  
 **状态:** Architecture Design Complete
+
+> **架构更新 (ADR-0009):**
+> 
+> 根据 [ADR-0009: 工作流定义与执行分离](adr/0009-workflow-definition-execution-separation.md)，架构新增：
+> - **Definition/Execution 分离** - 工作流定义与执行实例分开管理
+> - **混合存储架构** - 系统模板存储在文件系统，用户定义存储在数据库
+> - **API 语义重构** - `/v1/workflows` 管理定义，`/v1/executions` 管理执行
+> - **DSL 参数化增强** - `runs-on`, `timeout`, `matrix` 支持变量表达式
+> 
+> 详见 [api-inventory.md](api-inventory.md) 完整 API 清单。
 
 ---
 
@@ -326,6 +337,84 @@ func NewServer(temporalAddr string) (*Server, error) {
         HostPort: temporalAddr,
     })
     return &Server{temporalClient: client}, nil
+}
+```
+
+#### 3.1.6 Definition Store (ADR-0009)
+
+**职责:**
+- 存储和检索工作流定义
+- 支持混合存储模式（文件系统 + 数据库）
+- 统一接口屏蔽存储细节
+
+**关键决策:** [ADR-0009: 工作流定义与执行分离](adr/0009-workflow-definition-execution-separation.md)
+
+**存储接口:**
+```go
+// DefinitionStore 统一存储接口
+type DefinitionStore interface {
+    // 获取定义
+    Get(ctx context.Context, name string) (*WorkflowDefinition, error)
+    
+    // 列表查询
+    List(ctx context.Context, opts ListOptions) ([]*WorkflowDefinition, error)
+    
+    // 保存定义
+    Save(ctx context.Context, def *WorkflowDefinition) error
+    
+    // 删除定义
+    Delete(ctx context.Context, name string) error
+}
+
+// 列表查询选项
+type ListOptions struct {
+    PageSize  int
+    PageToken string
+}
+```
+
+**工作流定义存储:**
+```
+┌─────────────────────────────────────────────────────────┐
+│              Workflow Definition Store                   │
+│                                                         │
+│                 ┌─────────────────┐                     │
+│                 │  DatabaseStore  │                     │
+│                 │   (GORM impl)   │                     │
+│                 └────────┬────────┘                     │
+│                          │                              │
+│                          ↓                              │
+│                 ┌─────────────────┐                     │
+│                 │   PostgreSQL    │                     │
+│                 │ workflow_defs   │                     │
+│                 └─────────────────┘                     │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+
+注：系统模板通过独立的模板 API 管理（Story 6.4），存储在文件系统
+```
+
+**存储策略:**
+- **工作流定义:** 数据库存储（GORM + PostgreSQL）
+- **系统模板:** 文件系统存储（由模板 API 管理，Story 6.4）
+
+**工作流定义数据模型:**
+```go
+type WorkflowDefinition struct {
+    Name        string                 // 唯一标识
+    Content     string                 // YAML 内容
+    Vars        map[string]interface{} // 默认变量
+    Schedules   []ScheduleBinding      // 关联的定时触发器
+    Webhooks    []WebhookBinding       // 关联的 Webhook
+    Metadata    DefinitionMetadata     // 元数据
+}
+
+type DefinitionMetadata struct {
+    Description string
+    Tags        []string
+    Version     string
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
 }
 ```
 

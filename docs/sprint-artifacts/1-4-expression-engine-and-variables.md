@@ -2,6 +2,28 @@
 
 Status: done
 
+> **架构变更通知 (ADR-0009):**
+> 
+> 此 Story 的求值时机模型已根据 [ADR-0009: 工作流定义与执行分离](../adr/0009-workflow-definition-execution-separation.md) 进行明确划分：
+> 
+> **两阶段求值模型:**
+> 
+> 1. **定义解析阶段（工作流启动时）** - 以下结构性字段在启动时解析：
+>    - `runs-on`: Job 路由到哪个 Task Queue
+>    - `timeout-minutes`: Job/Step 超时配置
+>    - `strategy.matrix`: Matrix 并行维度
+> 
+> 2. **Step 执行阶段（每个 Step 执行前）** - 其他字段在 Step 执行时解析：
+>    - `name`: Step 显示名称
+>    - `if`: 条件执行
+>    - `with`: 节点参数
+>    - `env`: 环境变量
+> 
+> **三层参数覆盖:**
+> - YAML 默认值 → 触发器绑定（Schedule/Webhook）→ 执行时参数
+> 
+> 详见 [yaml-dsl-reference.md](../yaml-dsl-reference.md#求值时机-adr-0009)。
+
 ## Story
 
 As a **工作流用户**,  

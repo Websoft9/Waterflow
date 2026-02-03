@@ -1,12 +1,27 @@
 openapi: 3.0.3
 info:
   title: Waterflow API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     声明式工作流编排引擎 REST API
     
     Waterflow 提供 YAML 驱动的分布式工作流编排能力，支持跨服务器任务执行、
     自动重试、完整的状态持久化和实时日志流。
+    
+    ## 架构更新 (ADR-0009)
+    
+    根据 [ADR-0009: 工作流定义与执行分离](../docs/adr/0009-workflow-definition-execution-separation.md)，
+    API 已进行语义重构：
+    
+    - **Definition API** (`/v1/workflows`): 管理工作流定义（YAML + 元数据）
+    - **Execution API** (`/v1/executions`): 管理执行实例
+    - **Schedule API** (`/v1/workflows/{name}/schedules`): 挂载到定义下
+    - **Webhook API** (`/v1/workflows/{name}/webhooks`): 挂载到定义下
+    
+    完整 API 清单详见 [api-inventory.md](../docs/api-inventory.md)。
+    
+    > **注意:** 当前 OpenAPI 规范尚未完全同步 ADR-0009 变更，将在后续版本更新。
+    > 参考文档以 api-inventory.md 为准。
     
     ## 核心功能
     - 🎯 声明式 YAML DSL (类似 GitHub Actions)
@@ -304,6 +319,39 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  
+  /v1/workflows/{id}/terminate:
+    post:
+      summary: 强制终止工作流
+      description: |
+        立即强制终止工作流，不执行清理逻辑。
+        
+        **Terminate vs Cancel 区别:**
+        - **Terminate**: 立即强制终止，不触发 defer 或 cleanup activities
+        - **Cancel**: 优雅取消，允许 cleanup logic 执行
+        
+        适用场景: 工作流卡住或需要紧急回滚。
+      tags: [Workflows]
+      operationId: terminateWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: 终止原因 (可选)
+                  example: "Deployment rollback required"
+      responses:
+        '204':
+          description: 工作流已终止 (无响应体)
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
   
