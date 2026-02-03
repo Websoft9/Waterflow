@@ -63,7 +63,7 @@ func (r *WorkflowRenderer) RenderJob(workflow *Workflow, job *Job, baseCtx *Eval
 	ctx.Matrix = baseCtx.Matrix // Preserve matrix context
 	ctx.Steps = baseCtx.Steps   // Preserve steps outputs
 
-	// Render runs-on field (支持 matrix 表达式)
+	// Render runs-on field (supports matrix expressions)
 	renderedRunsOn, err := r.replacer.Replace(job.RunsOn, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("render runs-on: %w", err)
