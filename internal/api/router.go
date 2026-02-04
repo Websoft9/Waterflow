@@ -15,8 +15,10 @@ import (
 	"github.com/Websoft9/waterflow/pkg/metrics"
 	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
+	"github.com/Websoft9/waterflow/pkg/workflow"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // NewRouter creates and configures HTTP router with all endpoints
@@ -27,7 +29,13 @@ func NewRouter(logger *zap.Logger, temporalClient *temporal.Client, eventDispatc
 }
 
 // NewRouterWithDB creates router with optional database health check support and configurable timeouts
+// gormDB parameter is optional - if provided, workflow definition management endpoints will be registered
 func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, db *sql.DB, cfg *config.Config, version, commit, buildTime string, auditLogger audit.AuditLogger, nodeRegistry *node.Registry) http.Handler {
+	return NewRouterWithGORM(logger, temporalClient, eventDispatcher, db, nil, cfg, version, commit, buildTime, auditLogger, nodeRegistry)
+}
+
+// NewRouterWithGORM creates router with GORM database for workflow definitions
+func NewRouterWithGORM(logger *zap.Logger, temporalClient *temporal.Client, eventDispatcher *events.EventDispatcher, db *sql.DB, gormDB *gorm.DB, cfg *config.Config, version, commit, buildTime string, auditLogger audit.AuditLogger, nodeRegistry *node.Registry) http.Handler {
 	router := mux.NewRouter()
 
 	// Apply global middleware (AC7 - Request ID and Server Version headers)
@@ -145,6 +153,7 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 			wh.SetAuditLogger(auditLogger)
 		}
 
+		// Legacy endpoints - maintained for backward compatibility
 		// AC1: Submit workflow
 		router.HandleFunc("/v1/workflows", wh.SubmitWorkflow).Methods(http.MethodPost)
 
@@ -170,6 +179,37 @@ func NewRouterWithDB(logger *zap.Logger, temporalClient *temporal.Client, eventD
 		ah := NewAgentHandlers(logger, temporalClient)
 		router.HandleFunc("/v1/agents", ah.ListAgents).Methods(http.MethodGet)
 		router.HandleFunc("/v1/agents/{name}", ah.GetAgentStatus).Methods(http.MethodGet)
+
+		// New Architecture: Definition API + Execution API (Story 1-9 ADR-0009)
+		if gormDB != nil {
+			// Initialize Definition Store
+			defStore := workflow.NewDatabaseDefinitionStore(gormDB)
+
+			// Definition API: Workflow definition management
+			defHandlers := NewDefinitionHandlers(logger, defStore)
+			router.HandleFunc("/v1/workflows/definitions", defHandlers.CreateWorkflowDefinition).Methods(http.MethodPost)
+			router.HandleFunc("/v1/workflows/definitions", defHandlers.ListWorkflowDefinitions).Methods(http.MethodGet)
+			router.HandleFunc("/v1/workflows/definitions/{name}", defHandlers.GetWorkflowDefinition).Methods(http.MethodGet)
+			router.HandleFunc("/v1/workflows/definitions/{name}", defHandlers.UpdateWorkflowDefinition).Methods(http.MethodPut)
+			router.HandleFunc("/v1/workflows/definitions/{name}", defHandlers.DeleteWorkflowDefinition).Methods(http.MethodDelete)
+
+			// Execution API: Workflow runtime operations
+			execHandlers := NewExecutionHandlers(logger, temporalClient, defStore, eventDispatcher)
+			if auditLogger != nil {
+				execHandlers.SetAuditLogger(auditLogger)
+			}
+
+			// Execute from definition
+			router.HandleFunc("/v1/workflows/{name}/run", execHandlers.ExecuteWorkflowDefinition).Methods(http.MethodPost)
+
+			// Direct execution
+			router.HandleFunc("/v1/executions", execHandlers.DirectExecuteWorkflow).Methods(http.MethodPost)
+			router.HandleFunc("/v1/executions", execHandlers.ListExecutions).Methods(http.MethodGet)
+			router.HandleFunc("/v1/executions/{id}", execHandlers.GetExecutionStatus).Methods(http.MethodGet)
+			router.HandleFunc("/v1/executions/{id}/logs", execHandlers.GetExecutionLogs).Methods(http.MethodGet)
+			router.HandleFunc("/v1/executions/{id}/cancel", execHandlers.CancelExecution).Methods(http.MethodPost)
+			router.HandleFunc("/v1/executions/{id}/terminate", execHandlers.TerminateExecution).Methods(http.MethodPost)
+		}
 	}
 
 	// Audit log endpoints (Story 9-3 AC6)

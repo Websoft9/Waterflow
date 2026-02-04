@@ -27,7 +27,7 @@ func TestActivities_Structure(t *testing.T) {
 
 	t.Run("activities_has_required_fields", func(t *testing.T) {
 		activities := NewActivities(logger, registry)
-		
+
 		// Verify all fields are initialized
 		assert.NotNil(t, activities.logger, "logger should be initialized")
 		assert.NotNil(t, activities.nodeRegistry, "nodeRegistry should be initialized")
@@ -80,7 +80,7 @@ func TestStepResult_Structure(t *testing.T) {
 	t.Run("result_status_types", func(t *testing.T) {
 		// Test different status types
 		statuses := []string{"success", "failure", "skipped", "timeout"}
-		
+
 		for _, status := range statuses {
 			result := &StepResult{
 				Status:     status,
@@ -88,13 +88,13 @@ func TestStepResult_Structure(t *testing.T) {
 				Error:      "",
 				DurationMs: 1234,
 			}
-			
+
 			assert.Equal(t, status, result.Status)
 			assert.NotNil(t, result.Outputs)
 			assert.GreaterOrEqual(t, result.DurationMs, int64(0))
 		}
 	})
-	
+
 	t.Run("result_with_error", func(t *testing.T) {
 		result := &StepResult{
 			Status:     "failure",
@@ -102,7 +102,7 @@ func TestStepResult_Structure(t *testing.T) {
 			Error:      "execution failed",
 			DurationMs: 5678,
 		}
-		
+
 		assert.Equal(t, "failure", result.Status)
 		assert.NotEmpty(t, result.Error)
 		assert.Equal(t, "execution failed", result.Error)

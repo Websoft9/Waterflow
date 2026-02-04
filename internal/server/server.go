@@ -17,6 +17,7 @@ import (
 	"github.com/Websoft9/waterflow/pkg/middleware"
 	"github.com/Websoft9/waterflow/pkg/temporal"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // AgentMonitor periodically updates agent metrics.
@@ -85,6 +86,8 @@ type Server struct {
 	auditLogger audit.AuditLogger
 	// nodeRegistry manages registered workflow nodes (Tech Debt: Node Handler Registry)
 	nodeRegistry *node.Registry
+	// gormDB is the GORM database instance for workflow definitions (Story 1-9)
+	gormDB *gorm.DB
 }
 
 // New creates a new Server instance.
@@ -236,8 +239,19 @@ func (s *Server) Start() error {
 		s.logger.Info("Temporal not configured, workflow API will be disabled")
 	}
 
+	// Initialize database (Story 1-9)
+	gormDB, err := InitializeDatabase(&s.config.Database, s.logger)
+	if err != nil {
+		s.logger.Warn("Failed to initialize database, workflow definition management will be disabled",
+			zap.Error(err),
+		)
+	} else if gormDB != nil {
+		s.gormDB = gormDB
+		s.logger.Info("Database initialized successfully")
+	}
+
 	// Create router with all API endpoints (Story 8-4 AC6: pass config for health check timeouts)
-	router := api.NewRouterWithDB(s.logger, s.temporalClient, s.eventDispatcher, nil, s.config, s.version, s.commit, s.buildTime, s.auditLogger, s.nodeRegistry)
+	router := api.NewRouterWithGORM(s.logger, s.temporalClient, s.eventDispatcher, nil, s.gormDB, s.config, s.version, s.commit, s.buildTime, s.auditLogger, s.nodeRegistry)
 
 	// Start AgentMonitor after router is created (if Temporal is available)
 	if s.temporalClient != nil {
@@ -416,6 +430,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// Close Temporal client if connected
 	if s.temporalClient != nil {
 		s.temporalClient.Close()
+	}
+
+	// Close database connection (Story 1-9)
+	if s.gormDB != nil {
+		sqlDB, err := s.gormDB.DB()
+		if err == nil {
+			if err := sqlDB.Close(); err != nil {
+				s.logger.Warn("Failed to close database connection", zap.Error(err))
+			} else {
+				s.logger.Info("Database connection closed")
+			}
+		}
 	}
 
 	// Close audit logger (Story 9-3)

@@ -61,11 +61,11 @@ func TestNewWorker_Integration(t *testing.T) {
 
 	logger := zap.NewNop()
 	cfg := &config.TemporalConfig{
-		Host:            "localhost:7233",
-		Namespace:       "default",
-		TaskQueue:       "test-worker-queue",
-		MaxRetries:      3,
-		RetryInterval:   1 * time.Second,
+		Host:              "localhost:7233",
+		Namespace:         "default",
+		TaskQueue:         "test-worker-queue",
+		MaxRetries:        3,
+		RetryInterval:     1 * time.Second,
 		ConnectionTimeout: 5 * time.Second,
 	}
 
@@ -132,4 +132,3 @@ func TestWorker_LoggingMessages(t *testing.T) {
 		w.Stop()
 	})
 }
-

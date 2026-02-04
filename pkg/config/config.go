@@ -25,6 +25,8 @@ type Config struct {
 	Events EventsConfig `mapstructure:"events"`
 	// Audit contains audit logging configuration (Story 9-3).
 	Audit AuditConfig `mapstructure:"audit"`
+	// Database contains database configuration for workflow definitions (Story 1-9).
+	Database DatabaseConfig `mapstructure:"database"`
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -194,6 +196,44 @@ type WebhookEventConfig struct {
 	Timeout time.Duration `mapstructure:"timeout"`
 }
 
+// DatabaseConfig holds database configuration for workflow definitions (Story 1-9).
+type DatabaseConfig struct {
+	// Enabled turns on database support (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Host is the database server host (default: localhost).
+	Host string `mapstructure:"host"`
+
+	// Port is the database server port (default: 5432 for PostgreSQL).
+	Port int `mapstructure:"port"`
+
+	// User is the database username.
+	User string `mapstructure:"user"`
+
+	// Password is the database password.
+	Password string `mapstructure:"password"`
+
+	// Database is the database name (default: waterflow).
+	Database string `mapstructure:"database"`
+
+	// SSLMode is the SSL mode (disable, require, verify-ca, verify-full).
+	// Default: disable
+	SSLMode string `mapstructure:"ssl_mode"`
+
+	// MaxIdleConns is the maximum number of idle connections (default: 10).
+	MaxIdleConns int `mapstructure:"max_idle_conns"`
+
+	// MaxOpenConns is the maximum number of open connections (default: 100).
+	MaxOpenConns int `mapstructure:"max_open_conns"`
+
+	// ConnMaxLifetime is the maximum connection lifetime (default: 1h).
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+
+	// LogLevel is the GORM log level (silent, error, warn, info).
+	// Default: warn
+	LogLevel string `mapstructure:"log_level"`
+}
+
 // Load loads configuration from file and environment variables.
 // Priority: Command line flags > Environment variables > Config file > Defaults
 func Load(configFile string) (*Config, error) {
@@ -291,6 +331,19 @@ func setDefaults(v *viper.Viper) {
 	// Events defaults
 	v.SetDefault("events.handler_type", "noop")
 	v.SetDefault("events.webhook.timeout", "5s")
+
+	// Database defaults (Story 1-9)
+	v.SetDefault("database.enabled", false)
+	v.SetDefault("database.host", "localhost")
+	v.SetDefault("database.port", 5432)
+	v.SetDefault("database.user", "waterflow")
+	v.SetDefault("database.password", "")
+	v.SetDefault("database.database", "waterflow")
+	v.SetDefault("database.ssl_mode", "disable")
+	v.SetDefault("database.max_idle_conns", 10)
+	v.SetDefault("database.max_open_conns", 100)
+	v.SetDefault("database.conn_max_lifetime", "1h")
+	v.SetDefault("database.log_level", "warn")
 }
 
 // Validate validates the Server configuration.
