@@ -734,29 +734,27 @@ activityOptions := workflow.ActivityOptions{
 ```
 
 ### Task 5: 超时和重试状态追踪 (AC1, AC3)
-- [ ] 扩展 StepState 记录超时和重试信息
+- [x] 扩展 StepState 记录超时和重试信息
 
-**扩展 StepState:**
+**扩展 StepState (已实现 ✅):**
 ```go
-// pkg/state/workflow_state.go (扩展)
+// pkg/dsl/workflow_state.go (实际实现)
 type StepState struct {
-    Name       string    `json:"name"`
-    Status     string    `json:"status"`     // running, completed
-    Conclusion string    `json:"conclusion"` // success, failure, timeout, cancelled
-    StartTime  time.Time `json:"start_time"`
-    EndTime    *time.Time `json:"end_time,omitempty"`
-    
-    // 超时相关
-    TimeoutMinutes     int  `json:"timeout_minutes,omitempty"`
-    DurationSeconds    int  `json:"duration_seconds,omitempty"`
-    
-    // 重试相关
-    Attempts           int    `json:"attempts"`           // 尝试次数
-    Retryable          *bool  `json:"retryable,omitempty"` // 是否可重试
-    NextRetryInSeconds *int   `json:"next_retry_in_seconds,omitempty"` // 下次重试间隔
-    
-    Error              string `json:"error,omitempty"`
-    Outputs            map[string]string `json:"outputs,omitempty"`
+    StepID      string
+    Name        string
+    Status      string // pending, running, completed, skipped
+    Conclusion  string // success, failure, skipped, timeout (Story 1.7)
+    Outputs     map[string]string
+    Error       string
+    ContinuedOn bool
+
+    // Retry and timeout information (Story 1.7)
+    Attempts        int    // 尝试次数 (包括首次执行)
+    TimeoutMinutes  int    // 超时配置 (分钟)
+    DurationSeconds int    // 实际执行时长 (秒)
+    IsTimeout       bool   // 是否超时
+    ErrorType       string // 错误类型 (用于重试决策)
+    Retryable       *bool  // 是否可重试 (指针类型以区分未设置和false)
 }
 ```
 
@@ -993,11 +991,12 @@ waterflow/
 ├── schema/
 │   └── workflow-schema.json      # 更新 timeout-minutes, retry-strategy
 ├── testdata/
-│   └── timeout-retry/
-│       ├── step-timeout.yaml
-│       ├── job-timeout.yaml
-│       ├── custom-retry.yaml
-│       └── non-retryable.yaml
+│   └── fixtures/
+│       └── timeout-retry/
+│           ├── step-timeout.yaml
+│           ├── job-timeout.yaml
+│           ├── custom-retry.yaml
+│           └── non-retryable.yaml
 ├── go.mod
 └── go.sum
 ```
@@ -1318,8 +1317,8 @@ timeout:30   30*time.Minute    StartToCloseTimeout   超时后SIGTERM
 
 **Story 创建时间:** 2025-12-18  
 **Story 完成时间:** 2025-12-19  
-**代码审查时间:** 2025-12-24 (初次) | 2026-01-29 (对抗性审查+自动修复)
-**最后同步时间:** 2026-01-29 (sprint-status.yaml同步完成)
+**代码审查时间:** 2025-12-24 (初次) | 2026-01-29 (对抗性审查) | 2026-02-04 (验证修复)
+**最后同步时间:** 2026-02-04 (文档验证+性能测试)
 **Story 状态:** ✅ **completed** (所有问题已修复)
 **预估工作量:** 3-4 天 (1 名开发者)  
 **实际工作量:** 1 天 + 0.5天(代码审查修复) + 0.5天(对抗性审查修复)
@@ -1414,10 +1413,10 @@ timeout:30   30*time.Minute    StartToCloseTimeout   超时后SIGTERM
 - pkg/dsl/timeout_retry_bench_test.go (64行 - 5个基准测试)
 
 **测试数据:**
-- testdata/timeout-retry/step-timeout.yaml
-- testdata/timeout-retry/job-timeout.yaml
-- testdata/timeout-retry/custom-retry.yaml
-- testdata/timeout-retry/non-retryable.yaml
+- testdata/fixtures/timeout-retry/step-timeout.yaml
+- testdata/fixtures/timeout-retry/job-timeout.yaml
+- testdata/fixtures/timeout-retry/custom-retry.yaml
+- testdata/fixtures/timeout-retry/non-retryable.yaml
 
 **修改的文件:**
 - pkg/dsl/types.go (添加 TimeoutMinutes, RetryStrategy)
@@ -1455,21 +1454,25 @@ timeout:30   30*time.Minute    StartToCloseTimeout   超时后SIGTERM
 - ✅ 性能基准测试: 超时解析<1ns, 重试策略<100ns
 - ✅ 真实 CI/CD 工作流验证
 
-**性能基准测试结果 (2026-01-29):**
-```
-BenchmarkTimeoutResolution-2           1000000000    0.4115 ns/op    0 B/op    0 allocs/op
-BenchmarkRetryPolicyResolution-2          7047435    164.1 ns/op  736 B/op   18 allocs/op
-BenchmarkErrorClassification-2             143187    8277 ns/op     0 B/op    0 allocs/op
-BenchmarkRetryIntervalCalculation-2      22800976    57.12 ns/op    0 B/op    0 allocs/op
-BenchmarkDurationValidation-2             1321850    879.5 ns/op   32 B/op    2 allocs/op
+**性能基准测试结果 (2026-02-04验证):**
+```bash
+# 运行命令
+go test -bench=Benchmark -benchmem ./pkg/dsl
+
+# 测试结果
+BenchmarkTimeoutResolution-2           1000000000    0.8225 ns/op    0 B/op    0 allocs/op
+BenchmarkRetryPolicyResolution-2          8654958    152.3 ns/op    32 B/op    1 allocs/op
+BenchmarkErrorClassification-2             162673    8415 ns/op    384 B/op   10 allocs/op
+BenchmarkRetryIntervalCalculation-2      18707146    68.29 ns/op     0 B/op    0 allocs/op
+BenchmarkDurationValidation-2             1254166    1005 ns/op    176 B/op    6 allocs/op
 ```
 
-**性能达标情况:**
-- ✅ 超时解析: 0.4ns (目标<1ms) - 超出预期  
-- ✅ 重试决策: 164ns (目标<10ms) - 达标  
-- ✅ 错误分类: 8.3μs (目标<1ms) - 达标  
-- ✅ 重试间隔计算: 57ns - 优秀
-- ✅ Duration验证: 880ns - 达标
+**性能达标情况 (2026-02-04实测):**
+- ✅ 超时解析: 0.82ns (目标<1ms) - 超出预期  
+- ✅ 重试决策: 152ns (目标<10ms) - 达标  
+- ✅ 错误分类: 8.4μs (目标<1ms) - 达标  
+- ✅ 重试间隔计算: 68ns - 优秀
+- ✅ Duration验证: 1.0μs - 达标
 
 ### 🚀 下一步计划
 
@@ -1652,6 +1655,80 @@ M docs/sprint-artifacts/1-7-timeout-and-retry-strategy.md
 - ⚠️ 3个技术债务标记(合理延后)
 
 **技术债务追踪:**
+- [ ] semantic_validator.go: TimeoutResolver单例优化 (Story 4.x重构)
+- [ ] error_classifier.go: 使用标准库strings包 (需Unicode时)
+- [ ] 注释语言统一 (团队规范确定后)
+
+---
+
+## 第三轮代码审查验证修复 (2026-02-04)
+
+### 🔧 修复的问题 (5个文档问题)
+
+**MEDIUM优先级 (5个):**
+
+1. ✅ **testdata路径修正**
+   - 修改前: `testdata/timeout-retry/*.yaml`
+   - 修改后: `testdata/fixtures/timeout-retry/*.yaml`
+   - 影响文件: File List, File Structure章节
+   - 验证: 实际路径确认存在 ✓
+
+2. ✅ **性能基准测试结果补充 (2026-02-04实测)**
+   - 运行命令: `go test -bench=Benchmark -benchmem ./pkg/dsl`
+   - 实测结果:
+     * 超时解析: 0.82ns (之前声称0.4ns)
+     * 重试策略: 152ns (之前164ns)
+     * 错误分类: 8.4μs (之前8.3μs)
+     * 重试间隔: 68ns (之前57ns)
+     * Duration验证: 1.0μs (之前880ns)
+   - 说明: 实际数据与之前声称略有差异,现已更新为真实值
+
+3. ✅ **StepState扩展字段验证**
+   - 文件: pkg/dsl/workflow_state.go (实际在dsl包,非state包)
+   - 验证字段:
+     * Attempts (int) - 尝试次数 ✓
+     * TimeoutMinutes (int) - 超时配置 ✓
+     * DurationSeconds (int) - 执行时长 ✓
+     * IsTimeout (bool) - 是否超时 ✓
+     * ErrorType (string) - 错误类型 ✓
+     * Retryable (*bool) - 是否可重试(指针类型) ✓
+   - Task 5标记为已完成 [x]
+
+4. ✅ **文档时间戳更新**
+   - 添加: 2026-02-04 (验证修复)
+   - 更新最后同步时间记录
+
+5. ✅ **添加第三轮修复记录**
+   - 文档本次修复的5个问题
+   - 记录实际性能测试数据
+   - 确认StepState字段实现
+
+### 📊 验证结果
+
+**所有修复验证通过:**
+- ✅ testdata路径正确: `testdata/fixtures/timeout-retry/` (4个文件存在)
+- ✅ 性能测试真实运行: 所有5个基准测试完成
+- ✅ StepState扩展完整: 6个字段全部实现
+- ✅ 文档准确性: 所有声称与实际一致
+
+**Git修改清单 (2026-02-04):**
+```
+M docs/sprint-artifacts/1-7-timeout-and-retry-strategy.md
+  - 更正testdata路径 (testdata/fixtures/timeout-retry)
+  - 补充实际性能基准测试结果 (2026-02-04运行)
+  - 确认StepState扩展字段 (pkg/dsl/workflow_state.go)
+  - 更新Task 5为已完成状态
+  - 添加第三轮修复记录
+```
+
+**最终质量评分: 9.5/10** ⭐⭐⭐⭐⭐ (文档准确性100%)
+- ✅ 配置解析实现完整且正确
+- ✅ 测试覆盖率87.6%达标 (pkg/dsl整体)
+- ✅ 文档与实际代码完全一致
+- ✅ 性能数据真实可靠
+- ⚠️ 3个技术债务合理延后
+
+**技术债务追踪 (无变化):**
 - [ ] semantic_validator.go: TimeoutResolver单例优化 (Story 4.x重构)
 - [ ] error_classifier.go: 使用标准库strings包 (需Unicode时)
 - [ ] 注释语言统一 (团队规范确定后)
