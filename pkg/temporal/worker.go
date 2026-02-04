@@ -41,6 +41,11 @@ func NewWorker(client *Client, activities *Activities) *Worker {
 func (w *Worker) Start() error {
 	w.logger.Info("Starting Temporal Worker")
 
+	if w.worker == nil {
+		w.logger.Warn("Worker is nil, cannot start")
+		return nil
+	}
+
 	// Start worker in background goroutine
 	go func() {
 		if err := w.worker.Run(worker.InterruptCh()); err != nil {
@@ -54,5 +59,7 @@ func (w *Worker) Start() error {
 // Stop stops the worker gracefully.
 func (w *Worker) Stop() {
 	w.logger.Info("Stopping Temporal Worker")
-	w.worker.Stop()
+	if w.worker != nil {
+		w.worker.Stop()
+	}
 }
