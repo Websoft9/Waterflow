@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -90,12 +91,15 @@ func (h *WebhookHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) 
 			zap.Error(err),
 		)
 
-		// Check for specific error types
-		if err.Error() == "invalid signature" {
+		// HIGH-2 fix: use errors.Is instead of string matching
+		switch {
+		case errors.Is(err, trigger.ErrInvalidSignature):
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "trigger not found") {
+		case errors.Is(err, trigger.ErrNotFound):
 			http.Error(w, "Trigger not found", http.StatusNotFound)
-		} else {
+		case errors.Is(err, trigger.ErrWorkflowNotFound):
+			http.Error(w, "Workflow not found", http.StatusNotFound)
+		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return

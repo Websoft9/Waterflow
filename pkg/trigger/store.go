@@ -41,7 +41,7 @@ func (s *GORMStorage) Get(id string) (*Trigger, error) {
 	result := s.db.Where("id = ?", id).First(&model)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("trigger not found")
+			return nil, fmt.Errorf("trigger '%s' not found: %w", id, ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to get trigger: %w", result.Error)
 	}
@@ -102,14 +102,14 @@ func (s *GORMStorage) List(filter *Filter) ([]*Trigger, int, error) {
 func (s *GORMStorage) Update(id string, trigger *Trigger) error {
 	model := FromTrigger(trigger)
 
-	// Update using struct (only updates non-zero fields)
-	result := s.db.Model(&TriggerModel{}).Where("id = ?", id).Updates(model)
+	// Use Save to ensure zero-value fields (nil, "") are also updated (HIGH-1 fix)
+	result := s.db.Where("id = ?", id).Save(model)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update trigger: %w", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("trigger not found")
+		return fmt.Errorf("trigger not found: %w", ErrNotFound)
 	}
 
 	return nil

@@ -33,8 +33,8 @@ func (f *FilterEngine) Match(event *WebhookEvent, filters *FilterConfig) (bool, 
 		}
 	}
 
-	// Check path filters
-	if len(filters.Paths) > 0 && len(event.ChangedFiles) > 0 {
+	// Check path filters (including paths_ignore)
+	if (len(filters.Paths) > 0 || len(filters.PathsIgnore) > 0) && len(event.ChangedFiles) > 0 {
 		if !f.MatchPath(event.ChangedFiles, filters) {
 			return false, "no changed files match path filter"
 		}
@@ -76,7 +76,14 @@ func (f *FilterEngine) MatchBranch(branch string, filters *FilterConfig) bool {
 
 // MatchTag checks if a tag matches the filter rules
 func (f *FilterEngine) MatchTag(tag string, filters *FilterConfig) bool {
-	// If no tag filter specified, accept all
+	// Check tags-ignore first (exclusion has priority)
+	for _, pattern := range filters.TagsIgnore {
+		if matchPattern(pattern, tag) {
+			return false
+		}
+	}
+
+	// If no tag filter specified, accept all (except ignored)
 	if len(filters.Tags) == 0 {
 		return true
 	}
@@ -94,12 +101,29 @@ func (f *FilterEngine) MatchTag(tag string, filters *FilterConfig) bool {
 // MatchPath checks if any changed file matches path filters
 func (f *FilterEngine) MatchPath(changedFiles []string, filters *FilterConfig) bool {
 	// If no path filter specified, accept all
-	if len(filters.Paths) == 0 {
+	if len(filters.Paths) == 0 && len(filters.PathsIgnore) == 0 {
 		return true
 	}
 
-	// Check if any changed file matches any path pattern
 	for _, file := range changedFiles {
+		// Check paths_ignore first — if matched, skip this file
+		ignored := false
+		for _, pattern := range filters.PathsIgnore {
+			if matchPathPattern(pattern, file) {
+				ignored = true
+				break
+			}
+		}
+		if ignored {
+			continue
+		}
+
+		// If no paths filter, non-ignored file is a match
+		if len(filters.Paths) == 0 {
+			return true
+		}
+
+		// Check paths filter
 		for _, pattern := range filters.Paths {
 			if matchPathPattern(pattern, file) {
 				return true
@@ -146,42 +170,53 @@ func matchPattern(pattern, value string) bool {
 }
 
 // matchPathPattern performs path-specific pattern matching
-// Supports ** for directory wildcard and * for file wildcard
+// Supports ** for zero-or-more directory segments and * for within a segment
 func matchPathPattern(pattern, path string) bool {
-	// Handle ** (match any directory depth)
-	if strings.Contains(pattern, "**") {
-		// Convert ** to a more specific pattern
-		// e.g., "docs/**" matches "docs/", "docs/api/", "docs/api/readme.md"
-		parts := strings.Split(pattern, "**")
+	// Normalize separators
+	pattern = filepath.ToSlash(pattern)
+	path = filepath.ToSlash(path)
 
-		if len(parts) == 2 {
-			prefix := parts[0]
-			suffix := parts[1]
+	if !strings.Contains(pattern, "**") {
+		matched, err := filepath.Match(pattern, path)
+		if err != nil {
+			return pattern == path
+		}
+		return matched
+	}
 
-			// Check if path starts with prefix
-			if prefix != "" && !strings.HasPrefix(path, strings.TrimSuffix(prefix, "/")) {
-				return false
-			}
+	// Split both pattern and path into segments and use recursive matching
+	patParts := strings.Split(pattern, "/")
+	pathParts := strings.Split(path, "/")
+	return matchSegments(patParts, pathParts)
+}
 
-			// Check if path ends with suffix (if suffix exists and is not just /)
-			if suffix != "" && suffix != "/" {
-				// Remove leading / from suffix for matching
-				suffix = strings.TrimPrefix(suffix, "/")
-				if suffix != "" {
-					matched, _ := filepath.Match(suffix, filepath.Base(path))
-					return matched
+// matchSegments recursively matches pattern segments against path segments.
+// ** consumes zero or more path segments.
+func matchSegments(patParts, pathParts []string) bool {
+	for len(patParts) > 0 {
+		if patParts[0] == "**" {
+			// ** matches zero or more path segments — try all possibilities
+			for i := 0; i <= len(pathParts); i++ {
+				if matchSegments(patParts[1:], pathParts[i:]) {
+					return true
 				}
 			}
-
-			return true
+			return false
 		}
+
+		if len(pathParts) == 0 {
+			return false
+		}
+
+		// Match single segment (may contain *)
+		matched, err := filepath.Match(patParts[0], pathParts[0])
+		if err != nil || !matched {
+			return false
+		}
+
+		patParts = patParts[1:]
+		pathParts = pathParts[1:]
 	}
 
-	// Standard wildcard match
-	matched, err := filepath.Match(pattern, path)
-	if err != nil {
-		return pattern == path
-	}
-
-	return matched
+	return len(pathParts) == 0
 }

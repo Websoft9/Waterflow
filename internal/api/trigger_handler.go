@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -63,11 +64,11 @@ func (h *TriggerHandlers) CreateTrigger(w http.ResponseWriter, r *http.Request) 
 			zap.Error(err),
 		)
 
-		// Check for specific error types
+		// HIGH-2 fix: use errors.Is instead of string matching
 		switch {
-		case err.Error() == "workflow '"+workflowName+"' not found":
+		case errors.Is(err, trigger.ErrWorkflowNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
-		case err.Error() == "trigger with name '"+req.Name+"' already exists":
+		case errors.Is(err, trigger.ErrAlreadyExists):
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -75,10 +76,13 @@ func (h *TriggerHandlers) CreateTrigger(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// MEDIUM-1 fix: expose secret only on Create via TriggerResponse
+	response := trig.ToResponse(true)
+
 	// Return response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(trig); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.logger.Error("Failed to encode response", zap.Error(err))
 	}
 }
@@ -122,9 +126,13 @@ func (h *TriggerHandlers) ListTriggers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build response
+	// Build response (no secrets in list)
+	triggerResponses := make([]*trigger.TriggerResponse, len(triggers))
+	for i, t := range triggers {
+		triggerResponses[i] = t.ToResponse(false)
+	}
 	response := map[string]interface{}{
-		"triggers": triggers,
+		"triggers": triggerResponses,
 		"total":    total,
 		"limit":    filter.Limit,
 		"offset":   filter.Offset,
@@ -153,9 +161,9 @@ func (h *TriggerHandlers) GetTrigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return response
+	// Return response (no secret exposed in Get)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(trig); err != nil {
+	if err := json.NewEncoder(w).Encode(trig.ToResponse(false)); err != nil {
 		h.logger.Error("Failed to encode response", zap.Error(err))
 	}
 }
@@ -193,9 +201,9 @@ func (h *TriggerHandlers) UpdateTrigger(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Return response
+	// Return response (no secret exposed in Update)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(trig); err != nil {
+	if err := json.NewEncoder(w).Encode(trig.ToResponse(false)); err != nil {
 		h.logger.Error("Failed to encode response", zap.Error(err))
 	}
 }
@@ -235,9 +243,9 @@ func (h *TriggerHandlers) EnableTrigger(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Return response
+	// Return response (no secret exposed in Enable)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(trig); err != nil {
+	if err := json.NewEncoder(w).Encode(trig.ToResponse(false)); err != nil {
 		h.logger.Error("Failed to encode response", zap.Error(err))
 	}
 }
@@ -270,9 +278,9 @@ func (h *TriggerHandlers) DisableTrigger(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Return response
+	// Return response (no secret exposed in Disable)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(trig); err != nil {
+	if err := json.NewEncoder(w).Encode(trig.ToResponse(false)); err != nil {
 		h.logger.Error("Failed to encode response", zap.Error(err))
 	}
 }

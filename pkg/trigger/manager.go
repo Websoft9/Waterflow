@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Websoft9/waterflow/pkg/dsl"
 	"github.com/Websoft9/waterflow/pkg/workflow"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
@@ -35,7 +36,8 @@ type Manager struct {
 	storage        Storage
 	logger         *zap.Logger
 	filterEngine   *FilterEngine
-	baseURL        string // Base URL for webhook URLs
+	parser         *dsl.Parser // for parsing workflow YAML before execution
+	baseURL        string      // Base URL for webhook URLs
 }
 
 // NewManager creates a new Trigger Manager
@@ -52,6 +54,7 @@ func NewManager(
 		storage:        storage,
 		logger:         logger,
 		filterEngine:   NewFilterEngine(),
+		parser:         dsl.NewParser(logger),
 		baseURL:        baseURL,
 	}
 }
@@ -63,9 +66,14 @@ func (m *Manager) Create(ctx context.Context, req *CreateRequest) (*Trigger, err
 		return nil, fmt.Errorf("unsupported trigger type: %s", req.Type)
 	}
 
+	// LOW-1 fix: validate name is not empty
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, fmt.Errorf("trigger name cannot be empty")
+	}
+
 	// Validate workflow exists
 	if _, err := m.defStore.Get(ctx, req.WorkflowName); err != nil {
-		return nil, fmt.Errorf("workflow '%s' not found: %w", req.WorkflowName, err)
+		return nil, fmt.Errorf("workflow '%s' not found: %w", req.WorkflowName, ErrWorkflowNotFound)
 	}
 
 	// Validate filter configuration
@@ -75,10 +83,13 @@ func (m *Manager) Create(ctx context.Context, req *CreateRequest) (*Trigger, err
 
 	// Generate trigger ID from name
 	triggerID := generateID(req.Name)
+	if triggerID == "" {
+		return nil, fmt.Errorf("trigger name '%s' produces an empty ID; use alphanumeric characters", req.Name)
+	}
 
 	// Check if trigger ID already exists
 	if existing, _ := m.storage.Get(triggerID); existing != nil {
-		return nil, fmt.Errorf("trigger with name '%s' already exists", req.Name)
+		return nil, fmt.Errorf("trigger with name '%s' already exists: %w", req.Name, ErrAlreadyExists)
 	}
 
 	// Generate secret if not provided
@@ -291,7 +302,7 @@ func (m *Manager) HandleWebhook(
 	// Verify signature
 	if !verifySignature(payload, signature, trigger.Secret) {
 		m.logWebhookEvent(triggerID, event, headers, false, false, false, "Signature verification failed", startTime)
-		return nil, fmt.Errorf("invalid signature")
+		return nil, fmt.Errorf("signature verification failed: %w", ErrInvalidSignature)
 	}
 
 	// Apply filters
@@ -309,28 +320,68 @@ func (m *Manager) HandleWebhook(
 	workflowDef, err := m.defStore.Get(ctx, trigger.WorkflowName)
 	if err != nil {
 		m.logWebhookEvent(triggerID, event, headers, true, true, false, fmt.Sprintf("Workflow not found: %v", err), startTime)
-		return nil, fmt.Errorf("workflow not found: %w", err)
+		return nil, fmt.Errorf("workflow '%s' not found: %w", trigger.WorkflowName, ErrWorkflowNotFound)
 	}
 
 	// Generate workflow ID
 	workflowID := fmt.Sprintf("%s-%d", triggerID, time.Now().Unix())
 
-	// Merge vars (webhook trigger vars override workflow defaults)
-	vars := make(map[string]interface{})
-	if trigger.Vars != nil {
-		for k, v := range trigger.Vars {
-			vars[k] = v
+	// Parse workflow YAML
+	wf, err := m.parser.Parse([]byte(workflowDef.Content))
+	if err != nil {
+		m.logWebhookEvent(triggerID, event, headers, true, true, false, fmt.Sprintf("Failed to parse workflow: %v", err), startTime)
+		return nil, fmt.Errorf("failed to parse workflow definition: %w", err)
+	}
+
+	// Merge vars: YAML defaults < trigger vars < (future) payload vars
+	if wf.Vars == nil {
+		wf.Vars = make(map[string]interface{})
+	}
+	for k, v := range trigger.Vars {
+		wf.Vars[k] = v
+	}
+
+	// Determine task queue from first job's runs-on
+	taskQueue := "default"
+	for _, job := range wf.Jobs {
+		if job.RunsOn != "" {
+			taskQueue = job.RunsOn
+			break
 		}
 	}
 
-	// TODO: Trigger workflow execution via Temporal
-	// This will be implemented when we integrate with the execution handler
-	// For now, we'll mark it as triggered
-	runID := "pending-implementation"
+	// Submit to Temporal asynchronously
+	if m.temporalClient == nil {
+		m.logWebhookEvent(triggerID, event, headers, true, true, false, "Temporal client unavailable", startTime)
+		return nil, fmt.Errorf("workflow execution service unavailable")
+	}
+
+	workflowOptions := client.StartWorkflowOptions{
+		ID:                       workflowID,
+		TaskQueue:                taskQueue,
+		WorkflowExecutionTimeout: 24 * time.Hour,
+		Memo: map[string]interface{}{
+			"trigger_type":   "webhook",
+			"trigger_id":     triggerID,
+			"workflow_name":  trigger.WorkflowName,
+			"trigger_event":  event.Type,
+			"trigger_ref":    event.Ref,
+			"trigger_branch": event.Branch,
+		},
+	}
+
+	run, err := m.temporalClient.ExecuteWorkflow(ctx, workflowOptions, "RunWorkflowExecutor", wf)
+	if err != nil {
+		m.logWebhookEvent(triggerID, event, headers, true, true, false, fmt.Sprintf("Failed to start workflow: %v", err), startTime)
+		m.storage.IncrementTriggerCount(triggerID, false) //nolint:errcheck
+		return nil, fmt.Errorf("failed to start workflow execution: %w", err)
+	}
+
+	runID := run.GetRunID()
 
 	// Update statistics
-	m.storage.IncrementTriggerCount(triggerID, true)
-	m.storage.UpdateLastTrigger(triggerID, workflowID)
+	m.storage.IncrementTriggerCount(triggerID, true)  //nolint:errcheck
+	m.storage.UpdateLastTrigger(triggerID, workflowID) //nolint:errcheck
 
 	// Log success
 	m.logWebhookEvent(triggerID, event, headers, true, true, true, "Workflow triggered successfully", startTime)
@@ -338,6 +389,7 @@ func (m *Manager) HandleWebhook(
 	m.logger.Info("Webhook triggered workflow",
 		zap.String("trigger_id", triggerID),
 		zap.String("workflow_id", workflowID),
+		zap.String("run_id", runID),
 		zap.String("workflow_name", workflowDef.Name),
 	)
 

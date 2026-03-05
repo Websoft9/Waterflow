@@ -487,3 +487,85 @@ func TestType(t *testing.T) {
 	// Test type constants
 	assert.Equal(t, Type("webhook"), TypeWebhook)
 }
+
+// TestFilterEngine_MatchPath_PathsIgnore validates HIGH-3 fix
+func TestFilterEngine_MatchPath_PathsIgnore(t *testing.T) {
+	engine := NewFilterEngine()
+
+	tests := []struct {
+		name         string
+		changedFiles []string
+		filters      *FilterConfig
+		expected     bool
+	}{
+		{
+			name:         "ignored file not matched",
+			changedFiles: []string{"docs/README.md"},
+			filters: &FilterConfig{
+				PathsIgnore: []string{"docs/**"},
+			},
+			expected: false,
+		},
+		{
+			name:         "non-ignored file matched when no paths filter",
+			changedFiles: []string{"src/main.go"},
+			filters: &FilterConfig{
+				PathsIgnore: []string{"docs/**"},
+			},
+			expected: true,
+		},
+		{
+			name:         "mix: one ignored one not — match the non-ignored",
+			changedFiles: []string{"docs/README.md", "src/main.go"},
+			filters: &FilterConfig{
+				PathsIgnore: []string{"docs/**"},
+				Paths:       []string{"src/**"},
+			},
+			expected: true,
+		},
+		{
+			name:         "all files ignored — no match",
+			changedFiles: []string{"docs/api.md", "docs/guide.md"},
+			filters: &FilterConfig{
+				PathsIgnore: []string{"docs/**"},
+				Paths:       []string{"**/*.go"},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := engine.MatchPath(tt.changedFiles, tt.filters)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestMatchPathPattern_DoubleStarWildcard validates MEDIUM-2 fix
+func TestMatchPathPattern_DoubleStarWildcard(t *testing.T) {
+	tests := []struct {
+		name     string
+		pattern  string
+		path     string
+		expected bool
+	}{
+		{name: "docs/** matches nested file", pattern: "docs/**", path: "docs/api/guide.md", expected: true},
+		{name: "docs/** matches direct file", pattern: "docs/**", path: "docs/README.md", expected: true},
+		{name: "**/src/** matches deep path", pattern: "**/src/**", path: "a/b/src/main.go", expected: true},
+		{name: "**/src/** matches root src", pattern: "**/src/**", path: "src/main.go", expected: true},
+		{name: "a/**/b matches nested", pattern: "a/**/b", path: "a/x/y/b", expected: true},
+		{name: "a/**/b no match wrong end", pattern: "a/**/b", path: "a/x/y/c", expected: false},
+		{name: "** matches everything", pattern: "**", path: "anything/deep/file.go", expected: true},
+		{name: "single * no cross-dir", pattern: "src/*.go", path: "src/main.go", expected: true},
+		{name: "single * no cross-dir fail", pattern: "src/*.go", path: "src/a/main.go", expected: false},
+		{name: "**/*.go matches nested go files", pattern: "**/*.go", path: "pkg/trigger/manager.go", expected: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := matchPathPattern(tt.pattern, tt.path)
+			assert.Equal(t, tt.expected, result, "pattern=%q path=%q", tt.pattern, tt.path)
+		})
+	}
+}

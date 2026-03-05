@@ -1,7 +1,16 @@
 package trigger
 
 import (
+	"errors"
 	"time"
+)
+
+// Sentinel errors for trigger operations
+var (
+	ErrNotFound        = errors.New("trigger not found")
+	ErrAlreadyExists   = errors.New("trigger already exists")
+	ErrInvalidSignature = errors.New("invalid signature")
+	ErrWorkflowNotFound = errors.New("workflow not found")
 )
 
 // Type represents the type of trigger
@@ -29,7 +38,7 @@ type Trigger struct {
 	WorkflowName  string                 `json:"workflow_name"`
 	Type          Type                   `json:"type"`
 	WebhookURL    string                 `json:"webhook_url,omitempty"`
-	Secret        string                 `json:"secret,omitempty"`
+	Secret        string                 `json:"-"` // Never expose in JSON responses
 	Filters       *FilterConfig          `json:"filters,omitempty"`
 	Status        Status                 `json:"status"`
 	TotalTriggers int                    `json:"total_triggers"`
@@ -49,8 +58,59 @@ type FilterConfig struct {
 	Branches       []string `json:"branches,omitempty"`
 	BranchesIgnore []string `json:"branches_ignore,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
+	TagsIgnore     []string `json:"tags_ignore,omitempty"`
 	Paths          []string `json:"paths,omitempty"`
+	PathsIgnore    []string `json:"paths_ignore,omitempty"` // HIGH-3: exclude paths
 	EventTypes     []string `json:"event_types,omitempty"`
+}
+
+// TriggerResponse is the API response for Create — includes webhook_secret once
+type TriggerResponse struct {
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	WorkflowName  string                 `json:"workflow_name"`
+	Type          Type                   `json:"type"`
+	WebhookURL    string                 `json:"webhook_url,omitempty"`
+	WebhookSecret string                 `json:"webhook_secret,omitempty"` // Only on Create
+	Filters       *FilterConfig          `json:"filters,omitempty"`
+	Status        Status                 `json:"status"`
+	TotalTriggers int                    `json:"total_triggers"`
+	SuccessCount  int                    `json:"successful_triggers"`
+	FailedCount   int                    `json:"failed_triggers"`
+	LastTriggered *time.Time             `json:"last_triggered_at,omitempty"`
+	LastWorkflow  string                 `json:"last_workflow_id,omitempty"`
+	CreatedAt     time.Time              `json:"created_at"`
+	UpdatedAt     *time.Time             `json:"updated_at,omitempty"`
+	DisabledAt    *time.Time             `json:"disabled_at,omitempty"`
+	DisableReason string                 `json:"disable_reason,omitempty"`
+	Vars          map[string]interface{} `json:"vars,omitempty"`
+}
+
+// ToResponse converts Trigger to TriggerResponse (exposeSecret=true only on Create)
+func (t *Trigger) ToResponse(exposeSecret bool) *TriggerResponse {
+	r := &TriggerResponse{
+		ID:            t.ID,
+		Name:          t.Name,
+		WorkflowName:  t.WorkflowName,
+		Type:          t.Type,
+		WebhookURL:    t.WebhookURL,
+		Filters:       t.Filters,
+		Status:        t.Status,
+		TotalTriggers: t.TotalTriggers,
+		SuccessCount:  t.SuccessCount,
+		FailedCount:   t.FailedCount,
+		LastTriggered: t.LastTriggered,
+		LastWorkflow:  t.LastWorkflow,
+		CreatedAt:     t.CreatedAt,
+		UpdatedAt:     t.UpdatedAt,
+		DisabledAt:    t.DisabledAt,
+		DisableReason: t.DisableReason,
+		Vars:          t.Vars,
+	}
+	if exposeSecret {
+		r.WebhookSecret = t.Secret
+	}
+	return r
 }
 
 // CreateRequest represents a trigger creation request
