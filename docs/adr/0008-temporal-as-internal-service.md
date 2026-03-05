@@ -5,6 +5,14 @@
 **决策者:** Websoft9 团队  
 **前置 ADR:** ADR-0007 (已废弃)
 
+> **📋 实施修订 (2026-03-05, Story 1-12)**  
+> 本 ADR 决策方向不变（Temporal 作为内部服务，不对外暴露端口），但实际部署镜像已演进：
+> - ~~`temporalio/auto-setup:1.22.0`~~ → **`temporalio/server:1.29.2`**
+> - 新增 **`temporalio/admin-tools:1.29.1`** 作为 init 容器初始化 DB schema
+> - 新增 **`temporal-create-namespace`** init 容器创建默认命名空间
+> - 服务启动顺序：postgresql → temporal-admin-tools → temporal → temporal-create-namespace → waterflow
+> - 详见 [deployments/docker-compose.yaml](../../deployments/docker-compose.yaml)
+
 ---
 
 ## 背景

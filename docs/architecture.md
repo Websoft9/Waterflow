@@ -904,18 +904,38 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  temporal:
-    image: temporalio/auto-setup:1.22.0
+  # Temporal Admin Tools - 初始化 DB schema（init 容器）
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+    restart: on-failure:6
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     environment:
-      - DB=postgresql
-      - DB_PORT=5432
+      - DB=postgres12
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=postgresql
-    ports:
-      - "7233:7233"
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-postgres.sh
+
+  temporal:
+    image: temporalio/server:1.29.2
+    depends_on:
+      temporal-admin-tools:
+        condition: service_completed_successfully
+    environment:
+      - DB=postgres12
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - BIND_ON_IP=0.0.0.0
+    # 注意：Temporal 不对外暴露端口（ADR-0008）
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
 
   waterflow-server:
     image: waterflow/server:latest
@@ -1259,7 +1279,7 @@ require (
 
 ### 9.2 外部依赖
 
-- **Temporal Server** v1.22+ (工作流引擎)
+- **Temporal Server** v1.29.2 (工作流引擎)
 - **PostgreSQL** 14+ (Temporal 持久化)
 - **Docker** 20.10+ (可选,容器节点)
 

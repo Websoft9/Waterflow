@@ -61,33 +61,71 @@ services:
     networks:
       - waterflow-network
 
-  # Temporal Server
-  temporal:
-    image: temporalio/auto-setup:1.22.0
+  # Temporal Admin Tools - 初始化 DB schema（init 容器，完成后退出）
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+    restart: on-failure:6
     depends_on:
       postgresql:
         condition: service_healthy
     environment:
-      DB: postgresql
-      DB_PORT: 5432
-      POSTGRES_USER: temporal
-      POSTGRES_PWD: temporal
-      POSTGRES_SEEDS: postgresql
-      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/development.yaml
-    ports:
-      - "7233:7233"  # gRPC
-      - "8233:8233"  # HTTP
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-postgres.sh
+    networks:
+      - waterflow-network
+
+  # Temporal Server
+  temporal:
+    image: temporalio/server:1.29.2
+    container_name: waterflow-temporal
+    depends_on:
+      temporal-admin-tools:
+        condition: service_completed_successfully
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - BIND_ON_IP=0.0.0.0
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
     healthcheck:
-      test: ["CMD", "tctl", "cluster", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 60
+    networks:
+      - waterflow-network
+
+  # Temporal Create Namespace（init 容器，完成后退出）
+  temporal-create-namespace:
+    image: temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+    restart: on-failure:5
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - DEFAULT_NAMESPACE=default
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/create-namespace.sh
     networks:
       - waterflow-network
 
   # Temporal Web UI
   temporal-ui:
-    image: temporalio/ui:2.21.0
+    image: temporalio/ui:2.44.0
     depends_on:
       temporal:
         condition: service_healthy
@@ -137,9 +175,10 @@ networks:
 
 **And** 服务启动顺序:
 1. PostgreSQL
-2. Temporal (depends_on PostgreSQL healthy)
-3. Temporal UI (depends_on Temporal healthy)
-4. Waterflow (depends_on Temporal healthy)
+2. temporal-admin-tools（depends_on PostgreSQL healthy，初始化 DB schema，执行完退出）
+3. Temporal Server（depends_on admin-tools completed successfully）
+4. temporal-create-namespace（depends_on Temporal healthy，创建 default namespace，执行完退出）
+5. Temporal UI + Waterflow + Agent（depends_on Temporal healthy）
 
 ### AC2: Waterflow Dockerfile
 **Given** 项目根目录  
@@ -494,36 +533,73 @@ services:
       - waterflow-network
     restart: unless-stopped
 
-  temporal:
-    image: temporalio/auto-setup:1.22.0
-    container_name: waterflow-temporal
+  # Temporal Admin Tools - 初始化 DB schema（init 容器，完成后退出）
+  temporal-admin-tools:
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: waterflow-temporal-admin-tools
+    restart: on-failure:6
     depends_on:
       postgresql:
         condition: service_healthy
     environment:
-      DB: postgresql
-      DB_PORT: 5432
-      POSTGRES_USER: temporal
-      POSTGRES_PWD: temporal
-      POSTGRES_SEEDS: postgresql
-      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/development.yaml
-      ENABLE_ES: "false"
-      ES_SEEDS: ""
-      LOG_LEVEL: info
-    ports:
-      - "7233:7233"  # gRPC
-      - "8233:8233"  # HTTP (可选)
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+    networks:
+      - waterflow-network
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-postgres.sh
+
+  temporal:
+    image: temporalio/server:${TEMPORAL_VERSION:-1.29.2}
+    container_name: waterflow-temporal
+    depends_on:
+      temporal-admin-tools:
+        condition: service_completed_successfully
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - BIND_ON_IP=0.0.0.0
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
     healthcheck:
-      test: ["CMD", "tctl", "cluster", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 60
     networks:
       - waterflow-network
     restart: unless-stopped
 
+  # Temporal Create Namespace（init 容器，完成后退出）
+  temporal-create-namespace:
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: waterflow-temporal-create-namespace
+    restart: on-failure:5
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - DEFAULT_NAMESPACE=default
+    networks:
+      - waterflow-network
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/create-namespace.sh
+
   temporal-ui:
-    image: temporalio/ui:2.21.0
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.44.0}
     container_name: waterflow-temporal-ui
     depends_on:
       temporal:
@@ -898,9 +974,10 @@ docker-compose ps
 ### Technology Stack
 - **Docker:** 20.10+
 - **Docker Compose:** 2.0+
-- **Temporal:** temporalio/auto-setup:1.22.0
-- **PostgreSQL:** postgres:15-alpine
-- **Temporal UI:** temporalio/ui:2.21.0
+- **Temporal Server:** temporalio/server:1.29.2
+- **Temporal Admin Tools:** temporalio/admin-tools:1.29.1-tctl-1.18.4-cli-1.5.0
+- **PostgreSQL:** postgres:16
+- **Temporal UI:** temporalio/ui:2.44.0
 
 ### Architecture Constraints
 
@@ -1128,6 +1205,19 @@ waterflow/
 
 ## Change Log
 
+### 2026-03-05 - Temporal 部署架构文档同步
+
+**背景:** 实际部署已从 `temporalio/auto-setup:1.22.0` 演进为 `server + admin-tools` 分离架构，但文档未同步。
+
+**文档更新:**
+1. ✅ **AC1 Temporal 服务配置示例** — 替换为 `temporal-admin-tools` (init) + `temporalio/server:1.29.2` + `temporal-create-namespace` (init) 三段式架构
+2. ✅ **AC1 服务启动顺序** — 新增 admin-tools 和 create-namespace 步骤
+3. ✅ **Task 1 完整配置** — 与 `deployments/docker-compose.yaml` 实际内容对齐
+4. ✅ **Technology Stack** — 拆分为 Temporal Server (1.29.2) + Temporal Admin Tools (1.29.1) + Temporal UI (2.44.0)
+5. ✅ **Implementation Summary** — 服务数从 4 更新为 7，健康检查说明更新
+6. ✅ **docs/architecture.md** — 部署视图 YAML 示例同步更新
+7. ✅ **docs/adr/0008** — 添加实施修订说明（ADR 决策方向不变，只更新镜像版本说明）
+
 ### 2025-12-25 - Code Review 修复
 
 **问题修复 (16个):**
@@ -1210,8 +1300,9 @@ waterflow/
 ### 实现的功能 ✅
 
 #### AC1: Docker Compose 配置文件
-- ✅ 创建 [docker-compose.yaml](../../docker-compose.yaml) (102 行)
-- ✅ 4 个服务: PostgreSQL, Temporal, Temporal UI, Waterflow
+- ✅ 创建 [deployments/docker-compose.yaml](../../deployments/docker-compose.yaml)
+- ✅ 7 个服务: PostgreSQL, temporal-admin-tools, Temporal Server, temporal-create-namespace, Waterflow, Agent, Temporal UI
+- ✅ Init 容器模式：admin-tools 初始化 DB schema，create-namespace 创建命名空间
 - ✅ 健康检查和服务依赖
 - ✅ 数据持久化 volume: postgresql-data
 - ✅ 统一网络: waterflow-network
@@ -1262,21 +1353,14 @@ waterflow/
 
 ### 技术细节
 
-#### 健康检查调优
-- **问题:** Temporal 容器健康检查失败
-  - 原因 1: 缺少 development-sql.yaml 配置文件
-  - 原因 2: 服务绑定到容器 IP 而非 localhost
-  - 原因 3: 启动时间过长 (60s+)
-- **解决:**
-  - 移除 DYNAMIC_CONFIG_FILE_PATH 环境变量
-  - 使用 `nc -z $(hostname -i) 7233` 检查端口
-  - 增加 start_period 到 60s
-  - 增加 retries 到 30次
-  - 最终健康检查成功
+#### 健康检查设计
+- **Temporal 健康检查方式:** `nc -z localhost 7233`（检查 gRPC 端口，`temporalio/server` 镜像内置 nc）
+- **服务就绪依赖链:** postgresql (healthy) → temporal-admin-tools (completed) → temporal (healthy) → waterflow/agent/ui
+- **Init 容器模式:** admin-tools 和 create-namespace 完成后自动退出，不占用资源
 
 #### 服务启动顺序
 ```
-PostgreSQL (6s) → Temporal (11.5s) → Temporal UI + Waterflow (同时启动)
+PostgreSQL (健康) → temporal-admin-tools (初始化 DB schema, 退出) → Temporal Server (健康) → temporal-create-namespace (创建 namespace, 退出) → Waterflow + Agent + Temporal UI
 ```
 
 #### 镜像构建

@@ -17,9 +17,11 @@
 ## 架构说明
 
 **服务列表：**
-- **PostgreSQL 15**: Temporal 数据库 (内部服务)
-- **Temporal Server 1.22.0**: 工作流引擎 (内部服务)
-- **Temporal UI 2.22.0**: Web UI 调试工具 (端口 8088)
+- **PostgreSQL 16**: Temporal 数据库 (内部服务)
+- **temporal-admin-tools 1.29.1**: 初始化 DB schema (init 容器，完成后退出)
+- **Temporal Server 1.29.2**: 工作流引擎 (内部服务)
+- **temporal-create-namespace**: 创建 default namespace (init 容器，完成后退出)
+- **Temporal UI 2.44.0**: Web UI 调试工具 (端口 8088)
 - **Waterflow Server**: REST API 服务 (端口 8080)
 - **Waterflow Agent**: 工作流执行器 (linux-amd64, linux-common)
 
