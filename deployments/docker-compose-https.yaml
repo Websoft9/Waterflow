@@ -22,7 +22,7 @@ services:
       - waterflow
     volumes:
       - ./scripts:/scripts
-    entrypoint: ["/bin/sh"]
+    entrypoint: [ "/bin/sh" ]
     command: /scripts/setup-postgres.sh
 
   # Temporal Server (required for Waterflow)
@@ -43,7 +43,7 @@ services:
     volumes:
       - ./dynamicconfig:/etc/temporal/config/dynamicconfig
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      test: [ "CMD", "nc", "-z", "localhost", "7233" ]
       interval: 5s
       timeout: 3s
       start_period: 30s
@@ -67,7 +67,7 @@ services:
       - waterflow
     volumes:
       - ./scripts:/scripts
-    entrypoint: ["/bin/sh"]
+    entrypoint: [ "/bin/sh" ]
     command: /scripts/create-namespace.sh
 
   # Temporal UI
@@ -94,7 +94,7 @@ services:
     volumes:
       - postgresql-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -44,7 +44,7 @@ services:
       - waterflow-e2e-network
     volumes:
       - ../../deployments/scripts:/scripts
-    entrypoint: ["/bin/sh"]
+    entrypoint: [ "/bin/sh" ]
     command: /scripts/setup-postgres.sh
 
   # Temporal Server
@@ -93,7 +93,7 @@ services:
       - waterflow-e2e-network
     volumes:
       - ../../deployments/scripts:/scripts
-    entrypoint: ["/bin/sh"]
+    entrypoint: [ "/bin/sh" ]
     command: /scripts/create-namespace.sh
 
   # Waterflow Server

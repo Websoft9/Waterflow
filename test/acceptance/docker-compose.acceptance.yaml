@@ -38,7 +38,7 @@ services:
       - acceptance-network
     volumes:
       - ../../deployments/scripts:/scripts
-    entrypoint: ["/bin/sh"]
+    entrypoint: [ "/bin/sh" ]
     command: /scripts/setup-postgres.sh
 
   # Temporal Server

@@ -52,18 +52,14 @@ func TestSubmitWorkflow_Success(t *testing.T) {
 	// Prepare request
 	reqBody := SubmitWorkflowRequest{
 		YAML: `name: test-workflow
-on:
-  workflow_dispatch:
-vars:
-  env: dev
 jobs:
   test:
     runs-on: test-queue
     steps:
       - name: Test Step
-        uses: echo@v1
+        uses: run@v1
         with:
-          message: "Hello"`,
+          command: echo "Hello"`,
 		Vars: map[string]interface{}{
 			"override": "value",
 		},
@@ -185,12 +181,13 @@ func TestGetWorkflowStatus_NotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
+	// Response is in RFC 7807 format (changed by ADR-0009 refactor)
 	var errResp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &errResp)
 	assert.NoError(t, err)
-	assert.Contains(t, errResp, "error")
-	errorObj := errResp["error"].(map[string]interface{})
-	assert.Equal(t, "not_found", errorObj["code"])
+	assert.Contains(t, errResp, "type")
+	assert.Contains(t, errResp, "detail")
+	assert.Equal(t, float64(http.StatusNotFound), errResp["status"])
 }
 
 // TestListWorkflows_Success tests successful list query

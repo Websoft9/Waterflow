@@ -255,7 +255,7 @@ services:
       - backend
     volumes:
       - ../../deployments/scripts:/scripts
-    entrypoint: ["/bin/sh"]
+    entrypoint: [ "/bin/sh" ]
     command: /scripts/setup-postgres.sh
 
   # ========================================
@@ -326,7 +326,7 @@ services:
       - backend
     volumes:
       - ../../deployments/scripts:/scripts
-    entrypoint: ["/bin/sh"]
+    entrypoint: [ "/bin/sh" ]
     command: /scripts/create-namespace.sh
 
   # ========================================
