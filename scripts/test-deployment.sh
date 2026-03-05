@@ -54,12 +54,10 @@ echo "Step 4/6: Verifying health checks..."
 HEALTH_RESPONSE=$(curl -s http://localhost:8080/health)
 echo "Health check response: $HEALTH_RESPONSE"
 
-# 5. 提交测试工作流
+# 5. 创建并执行测试工作流 (ADR-0009: Definition + Execution 分离)
 echo ""
-echo "Step 5/6: Submitting test workflow..."
+echo "Step 5/6: Creating and executing test workflow..."
 WORKFLOW_YAML='name: test-workflow
-on: push
-
 jobs:
   test:
     runs-on: waterflow-server
@@ -67,23 +65,32 @@ jobs:
       - name: Echo Test
         run: echo "Deployment test successful!"'
 
-RESPONSE=$(curl -s -X POST http://localhost:8080/v1/workflows \
+# Step 5a: 创建 Workflow Definition
+echo "  Creating workflow definition..."
+DEF_RESPONSE=$(curl -s -X POST http://localhost:8080/v1/workflows/definitions \
   -H "Content-Type: application/json" \
-  -d "{\"yaml\": \"$(echo "$WORKFLOW_YAML" | sed 's/"/\\"/g' | tr '\n' ' ')\"}")
+  -d "{\"name\": \"test-workflow\", \"content\": \"$(echo "$WORKFLOW_YAML" | sed 's/"/\\"/g' | tr '\n' ' ')\"}")
+echo "  Definition response: $(echo "$DEF_RESPONSE" | jq -r '.name // .error // .' 2>/dev/null)"
 
-echo "Workflow submission response:"
+# Step 5b: 触发 Workflow Execution
+echo "  Executing workflow..."
+RESPONSE=$(curl -s -X POST http://localhost:8080/v1/workflows/test-workflow/run \
+  -H "Content-Type: application/json" \
+  -d '{}')
+
+echo "Workflow execution response:"
 echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
 
-# 提取 workflow ID (如果返回是 JSON)
-WORKFLOW_ID=$(echo "$RESPONSE" | jq -r '.id' 2>/dev/null || echo "")
+# 提取 execution ID
+EXECUTION_ID=$(echo "$RESPONSE" | jq -r '.execution_id // .id' 2>/dev/null || echo "")
 
-# 6. 查询工作流状态
-if [ -n "$WORKFLOW_ID" ] && [ "$WORKFLOW_ID" != "null" ]; then
+# 6. 查询执行状态
+if [ -n "$EXECUTION_ID" ] && [ "$EXECUTION_ID" != "null" ]; then
     echo ""
-    echo "Step 6/6: Querying workflow status..."
+    echo "Step 6/6: Querying execution status..."
     sleep 3
-    STATUS_RESPONSE=$(curl -s "http://localhost:8080/v1/workflows/$WORKFLOW_ID")
-    echo "Workflow status:"
+    STATUS_RESPONSE=$(curl -s "http://localhost:8080/v1/executions/$EXECUTION_ID")
+    echo "Execution status:"
     echo "$STATUS_RESPONSE" | jq '.' 2>/dev/null || echo "$STATUS_RESPONSE"
 fi
 

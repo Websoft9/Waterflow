@@ -102,7 +102,7 @@ services:
 
       # Temporal
       WATERFLOW_TEMPORAL_HOST: temporal:7233
-      WATERFLOW_TEMPORAL_NAMESPACE: waterflow
+      WATERFLOW_TEMPORAL_NAMESPACE: default
 
       # 日志
       WATERFLOW_LOG_LEVEL: info
@@ -170,8 +170,8 @@ services:
 
     # 依赖
     depends_on:
-      temporal:
-        condition: service_healthy
+      temporal-create-namespace:
+        condition: service_completed_successfully
 
   # ========================================
   # Waterflow Agent - 工作节点
@@ -236,10 +236,33 @@ services:
         condition: service_healthy
 
   # ========================================
+  # Temporal Admin Tools - 初始化 DB schema (init 容器)
+  # ========================================
+  temporal-admin-tools:
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: temporal-admin-tools
+    restart: on-failure:6
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD}
+      - POSTGRES_SEEDS=postgresql
+    networks:
+      - backend
+    volumes:
+      - ../../deployments/scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-postgres.sh
+
+  # ========================================
   # Temporal - 工作流引擎
   # ========================================
   temporal:
-    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.24.2}
+    image: temporalio/server:${TEMPORAL_VERSION:-1.29.2}
     container_name: temporal
     hostname: temporal
 
@@ -250,7 +273,7 @@ services:
       - "127.0.0.1:7233:7233" # gRPC (仅本地)
 
     environment:
-      - DB=postgresql
+      - DB=postgres12
       - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD}
@@ -258,7 +281,7 @@ services:
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
 
     volumes:
-      - ./temporal-config:/etc/temporal/config/dynamicconfig
+      - ../../deployments/dynamicconfig:/etc/temporal/config/dynamicconfig
 
     # 安全配置 (Temporal 需要一些特权)
     security_opt:
@@ -274,23 +297,43 @@ services:
           memory: 512M
 
     healthcheck:
-      test: [ "CMD", "tctl", "--address", "temporal:7233", "cluster", "health" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      test: [ "CMD", "nc", "-z", "localhost", "7233" ]
+      interval: 10s
+      timeout: 3s
+      retries: 30
       start_period: 30s
 
     restart: unless-stopped
 
     depends_on:
-      postgresql:
+      temporal-admin-tools:
+        condition: service_completed_successfully
+
+  # ========================================
+  # Temporal Create Namespace (init 容器)
+  # ========================================
+  temporal-create-namespace:
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    container_name: temporal-create-namespace
+    restart: on-failure:5
+    depends_on:
+      temporal:
         condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - DEFAULT_NAMESPACE=default
+    networks:
+      - backend
+    volumes:
+      - ../../deployments/scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/create-namespace.sh
 
   # ========================================
   # Temporal UI - Web 控制台
   # ========================================
   temporal-ui:
-    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.22.3}
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.44.0}
     container_name: temporal-ui
     hostname: temporal-ui
 

@@ -15,25 +15,31 @@ services:
     networks:
       - acceptance-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U temporal" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-temporal}" ]
       interval: 5s
       timeout: 3s
       retries: 10
 
   # Temporal Admin Tools - 用于数据库初始化
   temporal-admin-tools:
-    image: temporalio/admin-tools:${TEMPORAL_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
     container_name: acceptance-temporal-admin-tools
+    restart: on-failure:6
     depends_on:
       postgresql:
         condition: service_healthy
     environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CLI_ADDRESS: temporal:7233
-    stdin_open: true
-    tty: true
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-temporal}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-temporal}
+      POSTGRES_SEEDS: postgresql
     networks:
       - acceptance-network
+    volumes:
+      - ../../deployments/scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-postgres.sh
 
   # Temporal Server
   temporal:
@@ -43,9 +49,9 @@ services:
       postgresql:
         condition: service_healthy
       temporal-admin-tools:
-        condition: service_started
+        condition: service_completed_successfully
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-temporal}
       POSTGRES_PWD: ${POSTGRES_PASSWORD:-temporal}
@@ -58,14 +64,14 @@ services:
     networks:
       - acceptance-network
     healthcheck:
-      test: [ "CMD", "tctl", "--address", "temporal:7233", "cluster", "health" ]
+      test: [ "CMD", "nc", "-z", "localhost", "7233" ]
       interval: 5s
       timeout: 5s
       retries: 30
 
   # Temporal Namespace Creation
   temporal-create-namespace:
-    image: temporalio/admin-tools:${TEMPORAL_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.29.1-tctl-1.18.4-cli-1.5.0}
     container_name: acceptance-temporal-create-namespace
     depends_on:
       temporal:

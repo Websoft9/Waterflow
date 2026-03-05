@@ -73,13 +73,12 @@ EXPOSE 9090
 # Agent exposes Prometheus metrics on port 9090
 # Using wget instead of curl for smaller image size
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:9090/metrics || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:6061/debug/pprof/ || exit 1
 
 # Environment variables
 ENV TEMPORAL_SERVER_URL="temporal:7233" \
     TASK_QUEUES="" \
-    LOG_LEVEL="info" \
-    METRICS_PORT="9090"
+    LOG_LEVEL="info"
 
 # Entry point
 ENTRYPOINT ["/app/agent"]

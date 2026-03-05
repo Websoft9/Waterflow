@@ -1160,7 +1160,8 @@ waterflow/
 
 **部署相关文件:**
 - [deployments/docker-compose.yaml](../../deployments/docker-compose.yaml) - Docker Compose 编排配置
-- [Dockerfile](../../Dockerfile) - Waterflow 多阶段构建镜像
+- [build/Dockerfile.server](../../build/Dockerfile.server) - Waterflow 多阶段构建镜像 (server)
+- [build/Dockerfile.agent](../../build/Dockerfile.agent) - Agent 多阶段构建镜像
 - [.dockerignore](../../.dockerignore) - Docker 构建忽略文件
 - [config.example.yaml](../../config.example.yaml) - 配置文件模板（支持环境变量覆盖）
 

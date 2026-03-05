@@ -1,4 +1,5 @@
 name: Multi-Step Example
+on:
   workflow_dispatch:
 
 jobs:
