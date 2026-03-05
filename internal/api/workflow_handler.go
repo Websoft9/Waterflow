@@ -120,16 +120,21 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 
 	// 2. Validate workflow semantics (AC1 requirement)
 	// CRITICAL: Must validate runs-on field and other semantic rules
-	if h.validator != nil {
-		if _, err := h.validator.ValidateYAML([]byte(req.YAML)); err != nil {
-			// Validation errors are CRITICAL - reject the request
-			h.logger.Error("Workflow validation failed", zap.Error(err))
-			h.writeErrorLegacy(w, r, http.StatusUnprocessableEntity, "validation_error",
-				"Workflow validation failed", map[string]interface{}{
-					"error": err.Error(),
-				})
-			return
-		}
+	if h.validator == nil {
+		// validator 初始化失败时，拒绝请求而非跳过验证（H2 修复）
+		h.logger.Error("Validator not initialized, rejecting workflow submission")
+		h.writeErrorLegacy(w, r, http.StatusInternalServerError, "server_error",
+			"Workflow validator not available, please contact administrator", nil)
+		return
+	}
+	if _, err := h.validator.ValidateYAML([]byte(req.YAML)); err != nil {
+		// Validation errors are CRITICAL - reject the request
+		h.logger.Error("Workflow validation failed", zap.Error(err))
+		h.writeErrorLegacy(w, r, http.StatusUnprocessableEntity, "validation_error",
+			"Workflow validation failed", map[string]interface{}{
+				"error": err.Error(),
+			})
+		return
 	}
 
 	// 3. Merge vars (request vars override YAML vars)
@@ -145,13 +150,11 @@ func (h *WorkflowHandlers) SubmitWorkflow(w http.ResponseWriter, r *http.Request
 	// 3. Generate workflow ID (UUID v4)
 	workflowID := uuid.New().String()
 
-	// 5. Determine Task Queue from runs-on (使用第一个 Job 的 runs-on)
-	taskQueue := "default" // 默认队列
-	for _, job := range workflow.Jobs {
-		if job.RunsOn != "" {
-			taskQueue = job.RunsOn
-		}
-		break // 当前只支持单 Job，使用第一个 Job 的配置
+	// 5. 父工作流 RunWorkflowExecutor 必须运行在 Server 自身的 Temporal 队列上（H1 修复）
+	// 子 Job 的 Agent 路由由 workflow.go 内部根据 job.runs-on 分发，不在这里决定
+	taskQueue := h.temporalClient.GetConfig().TaskQueue
+	if taskQueue == "" {
+		taskQueue = "waterflow-server" // 配置缺失时的安全默认值
 	}
 
 	// 6. Start Temporal workflow

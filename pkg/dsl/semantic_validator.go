@@ -428,6 +428,11 @@ func ValidateTaskQueueName(name string) error {
 		return fmt.Errorf("task queue name cannot be empty")
 	}
 
+	// Check length first (fast path before regex)
+	if len(name) > 255 {
+		return fmt.Errorf("task queue name too long: maximum 255 characters, got %d", len(name))
+	}
+
 	// Regex: alphanumeric start, alphanumeric/hyphen middle, alphanumeric end
 	// Pattern: ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$
 	// Matches: "a", "linux-amd64", "gpu-a100", "web-servers-prod"
@@ -435,10 +440,6 @@ func ValidateTaskQueueName(name string) error {
 	re := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
 	if !re.MatchString(name) {
 		return fmt.Errorf("invalid task queue name: must contain only alphanumeric characters and hyphens, and must start and end with alphanumeric")
-	}
-
-	if len(name) > 255 {
-		return fmt.Errorf("task queue name too long: maximum 255 characters, got %d", len(name))
 	}
 
 	return nil

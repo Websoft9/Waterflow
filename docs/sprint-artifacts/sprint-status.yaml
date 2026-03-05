@@ -51,7 +51,7 @@ development_status:
   1-6-matrix-parallel-execution: done  # 完成,Matrix策略/上下文/验证/状态追踪已实现,所有Matrix测试通过
   1-7-timeout-and-retry-strategy: done  # 完成,覆盖率>90%,58个测试通过(单元52+集成6),实现超时解析器/重试策略/错误分类器,扩展语义验证器,完成日期2025-12-19
   1-8-temporal-sdk-integration: done  # 完成,Temporal SDK v1.38.0集成,Client/Worker/Workflow/Activity/History Parser全部实现,编译通过,完成日期2025-12-22
-  1-9-workflow-management-api: done  # ✅新架构完成(ADR-0009):Definition API(5端点)+Execution API(7端点),GORM+PostgreSQL,17单元测试+8集成测试,参数覆盖机制,向后兼容,2026-02-04完成
+  1-9-workflow-management-api: done  # ✅新架构完成(ADR-0009):Definition API(5端点)+Execution API(7端点),GORM+PostgreSQL,17单元测试+8集成测试,参数覆盖机制,向后兼容,2026-02-04完成。跨故事回归修复(2026-03-05):ADR-0009格式变更导致TestGetWorkflowStatus_NotFound断言字段过时,Story2-2验证规则收紧导致TestSubmitWorkflow_Success使用echo@v1无效,两处测试已同步修复,全包绿灯
   1-10-schedule-api-implementation: done  # ✅Schedule API完成(11/11集成测试全部通过),修复Temporal 1.29.x兼容性(Memo值*commonpb.Payload解码/Update时Memo同步),Agent unhealthy修复(healthcheck配置错误),2026-03-05完成
   1-11-webhook-trigger-implementation: done  # ✅代码审查修复完成(2026-03-05): CRIT-1 Temporal ExecuteWorkflow/CRIT-2集成测试5/5通过/HIGH-1 GORM Save/HIGH-2 sentinel errors/HIGH-3 PathsIgnore/MEDIUM-1 Secret掩码/MEDIUM-2 **通配符/25单元测试+5集成测试全部通过,完成日期2026-03-05
   1-12-docker-compose-deployment: done  # Docker Compose 部署方案完成,服务健康检查通过,工作流提交验证成功,部署文档已更新
@@ -59,8 +59,8 @@ development_status:
 
   # Epic 2: 分布式 Agent 系统 (10 stories) - COMPLETED 2025-12-26
   epic-2: done
-  2-1-agent-worker-framework: done  # 代码审查通过(2次),所有文档问题已修复,创建README.md,更新配置路径说明(examples/configs/),7/7 AC完成,WaitGroup同步/日志优化/去重/StopTimeout配置,测试覆盖率~60%,完成日期2025-12-25
-  2-2-server-group-task-queue-mapping: done  # 代码审查通过(2025-12-29),AC1-AC7完成,Task Queue直接映射,命名验证完善,API强制验证已确认,手动集成测试场景完整,3个问题修复(MEDIUM×3),710+行新增代码
+  2-1-agent-worker-framework: done  # 代码审查通过(3次),第3次审查修复:pprof改为--pprof flag/重试日志统一Warn+最后一次Error/run-agent路径修正/newWorkerFromClient拆分/新增7个单元测试,测试覆盖率56.7%→72.7%,AC3文档对齐RunWorkflowExecutor,完成日期2025-12-25
+  2-2-server-group-task-queue-mapping: done  # 代码审查通过(2次),第2次审查修复:H1父工作流队列路由修正/H2 validator-nil改500/H3注册/v1/task-queues路由/M1消除重复验证逻辑/M2-L1清理误导注释/M3文档化双连字符警告,所有测试通过,完成日期2025-12-29
   2-3-servergrouprovider-interface: cancelled  # ADR-0007/0008架构调整:Agent注册机制与Temporal Worker重复,已决策删除ServerGroupProvider接口,改用Temporal原生Worker API,取消日期2025-12-29
   2-4-agent-registration-heartbeat: done  # Temporal Worker 自动提供心跳机制,已在 Story 2.1 实现
   2-5-task-distribution-to-agent: done  # Task Queue 直接映射已实现任务分发,已在 Story 2.2 完成

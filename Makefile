@@ -229,7 +229,7 @@ run: build
 ## run-agent: Run agent with default config
 run-agent: build-agent
 	@echo "Running $(AGENT_BINARY_NAME)..."
-	./$(BIN_DIR)/$(AGENT_BINARY_NAME) --config config.agent.example.yaml
+	./$(BIN_DIR)/$(AGENT_BINARY_NAME) --config examples/configs/config.agent.example.yaml
 
 ## dev: Run server in development mode with hot reload (requires air)
 dev:

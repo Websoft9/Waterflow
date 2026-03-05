@@ -30,6 +30,7 @@ func main() {
 	taskQueues := flag.String("task-queues", "", "comma-separated task queue names")
 	logLevel := flag.String("log-level", "", "log level (overrides config)")
 	showVersion := flag.Bool("version", false, "show version information")
+	enablePprof := flag.Bool("pprof", false, "enable pprof profiling server on :6061 (development only, do NOT use in production)")
 	flag.Parse()
 
 	if *showVersion {
@@ -40,8 +41,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Check for CONFIG_PATH environment variable
-	if envConfigPath := os.Getenv("CONFIG_PATH"); envConfigPath != "" {
+	// CONFIG_PATH env var overrides --config flag (useful for container deployments).
+	// Priority: --config flag > CONFIG_PATH env > default (/app/config/config.yaml)
+	if envConfigPath := os.Getenv("CONFIG_PATH"); envConfigPath != "" && *configFile == "/app/config/config.yaml" {
 		*configFile = envConfigPath
 	}
 
@@ -104,14 +106,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start pprof server for profiling (on separate port)
-	go func() {
-		pprofAddr := ":6061"
-		logger.Log.Info("Starting pprof server", zap.String("address", pprofAddr))
-		if err := http.ListenAndServe(pprofAddr, nil); err != nil { //nolint:gosec // pprof server timeout not critical
-			logger.Log.Warn("pprof server failed", zap.Error(err))
-		}
-	}()
+	// Start pprof server for profiling (only when --pprof flag is set)
+	if *enablePprof {
+		go func() {
+			pprofAddr := ":6061"
+			logger.Log.Info("Starting pprof server (--pprof enabled)", zap.String("address", pprofAddr))
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil { //nolint:gosec // pprof server timeout not critical
+				logger.Log.Warn("pprof server failed", zap.Error(err))
+			}
+		}()
+	}
 
 	// Start worker
 	if err := worker.Start(); err != nil {

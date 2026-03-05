@@ -1261,3 +1261,11 @@ Claude Sonnet 4.5
 - ✅ MEDIUM-2: 文档示例改进，添加完整验证错误展示
 - ✅ MEDIUM-3: 删除虚假的集成测试文件声称，明确使用手动集成测试
 - ✅ LOW-1: 测试用例添加注释说明多连字符行为
+
+**代码审查修复 (2026-01-xx):**
+- ✅ HIGH-1 (H1): 修复父工作流 `RunWorkflowExecutor` 提交到 Server 自身队列 (`h.temporalClient.GetConfig().TaskQueue`)，不再使用随机 map 迭代的 job.runs-on (workflow_handler.go)
+- ✅ HIGH-2 (H2): 修复 `validator=nil` 时静默跳过验证的问题 — 现在返回 HTTP 500，拒绝请求而非绕过安全检查 (workflow_handler.go)
+- ✅ HIGH-3 (H3): 注册遗漏的 `GET /v1/task-queues` 路由 → `wh.ListTaskQueues` (router.go)
+- ✅ MEDIUM-1 (M1): 消除 `ValidateRunsOn` 与 `ValidateTaskQueueName` 的重复逻辑，前者现委托后者 (validator_runs_on.go)；`ValidateTaskQueueName` 长度检查提前至 regex 前 (semantic_validator.go)
+- ✅ MEDIUM-2/LOW-1 (M2/L1): 删除误导性注释 "当前只支持单 Job" 及随机 map 迭代 for-loop (workflow_handler.go)
+- ✅ MEDIUM-3 (M3): 文档化连续双连字符命名行为及警告 (docs/guides/server-groups.md)

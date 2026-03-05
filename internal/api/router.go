@@ -294,6 +294,9 @@ func NewRouterWithGORM(logger *zap.Logger, temporalClient *temporal.Client, even
 		ah := NewAgentHandlers(logger, temporalClient)
 		router.HandleFunc("/v1/agents", ah.ListAgents).Methods(http.MethodGet)
 		router.HandleFunc("/v1/agents/{name}", ah.GetAgentStatus).Methods(http.MethodGet)
+
+		// Task Queue discovery endpoint (Story 2.2 AC - H3 修复：注册此前遗漏的路由)
+		router.HandleFunc("/v1/task-queues", wh.ListTaskQueues).Methods(http.MethodGet)
 	}
 
 	// Audit log endpoints (Story 9-3 AC6)

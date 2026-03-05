@@ -32,7 +32,12 @@ func NewWorker(cfg *config.Config, logger *zap.Logger) (*Worker, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Temporal: %w", err)
 	}
+	return newWorkerFromClient(cfg, temporalClient, logger)
+}
 
+// newWorkerFromClient creates a Worker from an already-connected Temporal client.
+// Used internally and by tests to bypass Temporal network connection.
+func newWorkerFromClient(cfg *config.Config, temporalClient *temporal.Client, log *zap.Logger) (*Worker, error) {
 	// Initialize NodeRegistry
 	nodeRegistry := node.NewRegistry()
 
@@ -40,18 +45,18 @@ func NewWorker(cfg *config.Config, logger *zap.Logger) (*Worker, error) {
 	if err := builtin.RegisterBuiltinNodes(nodeRegistry); err != nil {
 		return nil, fmt.Errorf("failed to register builtin nodes: %w", err)
 	}
-	logger.Info("Registered builtin nodes", zap.Int("count", 2))
+	log.Info("Registered builtin nodes", zap.Int("count", 2))
 
 	// Initialize Plugin Manager with registry
-	pluginManager := NewPluginManager(cfg.Agent.PluginDir, nodeRegistry, logger)
+	pluginManager := NewPluginManager(cfg.Agent.PluginDir, nodeRegistry, log)
 
 	w := &Worker{
 		config:         cfg,
-		logger:         logger,
+		logger:         log,
 		temporalClient: temporalClient,
 		workers:        make([]worker.Worker, 0, len(cfg.Agent.TaskQueues)),
 		pluginManager:  pluginManager,
-		nodeRegistry:   nodeRegistry, // Store for Activities
+		nodeRegistry:   nodeRegistry,
 	}
 
 	return w, nil
@@ -69,9 +74,9 @@ func connectToTemporal(cfg *config.Config, logger *zap.Logger) (*temporal.Client
 			return temporalClient, nil
 		}
 
-		// Use Error for first 5 attempts, then Warn
-		if attempt <= 5 {
-			logger.Error("Failed to connect to Temporal, retrying",
+		// Final attempt: log as Error with "giving up"; intermediate: Warn with "retrying"
+		if attempt == cfg.Temporal.MaxRetries {
+			logger.Error("Failed to connect to Temporal, giving up",
 				zap.Int("attempt", attempt),
 				zap.Int("max_retries", cfg.Temporal.MaxRetries),
 				zap.Error(err),
@@ -184,7 +189,9 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 	}
 
 	// Close Temporal client
-	w.temporalClient.Close()
+	if w.temporalClient != nil {
+		w.temporalClient.Close()
+	}
 
 	w.logger.Info("Agent shutdown complete")
 	return nil

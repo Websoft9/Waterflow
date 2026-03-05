@@ -144,6 +144,8 @@ func TestConnectToTemporal_Retry(t *testing.T) {
 
 	// Should take at least 2 retry intervals (100ms * 2)
 	assert.GreaterOrEqual(t, duration, 200*time.Millisecond)
+	// Should not take excessively long (3 retries * 100ms + connection overhead < 5s)
+	assert.Less(t, duration, 5*time.Second)
 }
 
 func TestParseTaskQueues(t *testing.T) {
@@ -191,6 +193,170 @@ func TestParseTaskQueues(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// ---- H1 unit tests: cover NewWorker/Start/Shutdown without Temporal ----
+
+// TestNewWorkerFromClient verifies newWorkerFromClient initialises registries
+// and plugin manager without needing a live Temporal connection.
+func TestNewWorkerFromClient(t *testing.T) {
+	require.NoError(t, logger.Init("info", "json"))
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			TaskQueues:      []string{"test-queue"},
+			PluginDir:       "/tmp/plugins-nonexistent",
+			ShutdownTimeout: 5 * time.Second,
+		},
+	}
+
+	w, err := newWorkerFromClient(cfg, nil, logger.Log)
+	require.NoError(t, err)
+	assert.NotNil(t, w)
+	assert.NotNil(t, w.pluginManager)
+	assert.NotNil(t, w.nodeRegistry)
+	assert.Empty(t, w.workers)
+}
+
+// TestNewWorkerFromClient_BuiltinRegistration verifies builtin nodes are registered.
+func TestNewWorkerFromClient_BuiltinRegistration(t *testing.T) {
+	require.NoError(t, logger.Init("info", "json"))
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			TaskQueues: []string{"q1"},
+			PluginDir:  "/tmp/nonexistent",
+		},
+	}
+
+	w, err := newWorkerFromClient(cfg, nil, logger.Log)
+	require.NoError(t, err)
+
+	// Builtin nodes should be registered (checkout@v1, run@v1)
+	list := w.nodeRegistry.List()
+	assert.GreaterOrEqual(t, len(list), 1, "Expected at least 1 builtin node registered")
+}
+
+// TestWorkerStart_NoTaskQueues verifies Start succeeds when task_queues is empty
+// (the for-range loop is skipped, no real Temporal workers created).
+func TestWorkerStart_NoTaskQueues(t *testing.T) {
+	require.NoError(t, logger.Init("info", "json"))
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			TaskQueues:        []string{},
+			PluginDir:         "/tmp/nonexistent",
+			AutoReloadPlugins: false,
+			ShutdownTimeout:   5 * time.Second,
+		},
+	}
+
+	w, err := newWorkerFromClient(cfg, nil, logger.Log)
+	require.NoError(t, err)
+
+	err = w.Start()
+	require.NoError(t, err)
+	assert.Empty(t, w.workers, "No workers should be created for empty task_queues")
+
+	// Shutdown should succeed with nil temporalClient
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	assert.NoError(t, w.Shutdown(ctx))
+}
+
+// TestWorkerShutdown_EmptyWorkers verifies Shutdown handles the case with no
+// running workers and a nil temporalClient (no panic).
+func TestWorkerShutdown_EmptyWorkers(t *testing.T) {
+	require.NoError(t, logger.Init("info", "json"))
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			TaskQueues:      []string{},
+			ShutdownTimeout: 5 * time.Second,
+		},
+	}
+
+	w, err := newWorkerFromClient(cfg, nil, logger.Log)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err = w.Shutdown(ctx)
+	assert.NoError(t, err)
+}
+
+// TestWorkerShutdown_ContextTimeout verifies Shutdown logs a warning and returns
+// when the context deadline is exceeded (no blocking).
+func TestWorkerShutdown_ContextTimeout(t *testing.T) {
+	require.NoError(t, logger.Init("info", "json"))
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			TaskQueues:      []string{},
+			ShutdownTimeout: 1 * time.Second,
+		},
+	}
+
+	w, err := newWorkerFromClient(cfg, nil, logger.Log)
+	require.NoError(t, err)
+
+	// Simulate a goroutine holding the WaitGroup
+	w.wg.Add(1)
+
+	// Use a context that expires immediately
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	err = w.Shutdown(ctx)
+	assert.NoError(t, err, "Shutdown should not return error on timeout")
+
+	// Release the goroutine after test
+	w.wg.Done()
+}
+
+// TestWorkerStart_AutoReloadDisabled verifies AutoReloadPlugins=false skips the watcher goroutine.
+func TestWorkerStart_AutoReloadDisabled(t *testing.T) {
+	require.NoError(t, logger.Init("info", "json"))
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			TaskQueues:        []string{},
+			PluginDir:         "/tmp/nonexistent",
+			AutoReloadPlugins: false,
+			ShutdownTimeout:   3 * time.Second,
+		},
+	}
+
+	w, err := newWorkerFromClient(cfg, nil, logger.Log)
+	require.NoError(t, err)
+
+	err = w.Start()
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	assert.NoError(t, w.Shutdown(ctx))
+}
+
+// TestWorkerNodeRegistry_AfterInit verifies the node registry is accessible
+// after Worker initialisation for Activity binding.
+func TestWorkerNodeRegistry_AfterInit(t *testing.T) {
+	require.NoError(t, logger.Init("info", "json"))
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			TaskQueues: []string{"q"},
+			PluginDir:  "/tmp/nonexistent",
+		},
+	}
+
+	w, err := newWorkerFromClient(cfg, nil, logger.Log)
+	require.NoError(t, err)
+
+	// Registry must not be nil (Activities depend on it)
+	registered := w.nodeRegistry.List()
+	assert.NotNil(t, registered)
 }
 
 // parseTaskQueuesHelper duplicates the logic from main.go for testing

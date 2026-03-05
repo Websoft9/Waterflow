@@ -354,6 +354,9 @@ log:
 export WATERFLOW_TEMPORAL_ADDRESS=temporal.example.com:7233
 export WATERFLOW_AGENT_TASK_QUEUES=linux-amd64,linux-common
 export WATERFLOW_LOG_LEVEL=debug
+# CONFIG_PATH 环境变量可覆盖 --config flag（适配容器部署），优先级低于显式指定的 --config
+# 优先级: --config flag > CONFIG_PATH 环境变量 > 默认值 (/app/config/config.yaml)
+export CONFIG_PATH=/etc/waterflow/agent.yaml
 ```
 
 **And** Agent 启动时验证配置并记录:
@@ -461,14 +464,12 @@ func (w *Worker) Start() error {
 			MaxConcurrentWorkflowTaskExecutionSize: 50,
 		})
 
-		// Register workflows (Job executor)
-		workerInstance.RegisterWorkflow(temporal.RunJobWorkflow)
+		// Register workflows (Main orchestrator + job instance)
+		workerInstance.RegisterWorkflow(temporal.RunWorkflowExecutor)
+		workerInstance.RegisterWorkflow(temporal.ExecuteJobInstance)
 
 		// Register activities (Step executor)
-		activities := &temporal.Activities{
-			PluginManager: w.pluginManager,
-			Logger:        w.logger,
-		}
+		activities := temporal.NewActivities(w.logger, w.nodeRegistry)
 		workerInstance.RegisterActivity(activities.ExecuteStepActivity)
 
 		w.workers = append(w.workers, workerInstance)
@@ -528,7 +529,7 @@ func (c *Client) GetClient() client.Client {
 
 **And** 每个 Task Queue 创建一个独立的 Worker
 
-**And** Worker 注册 `RunJobWorkflow` 工作流 (来自 Server 的 Job 执行)
+**And** Worker 注册 `RunWorkflowExecutor` 工作流和 `ExecuteJobInstance` 子工作流 (来自 pkg/temporal)
 
 **And** Worker 注册 `ExecuteStepActivity` 活动 (Step 执行)
 
@@ -1177,9 +1178,10 @@ Story 2.1 完成后,继续 Story 2.2: 服务器组概念和 Task Queue 直接映
 
 ✅ **单节点执行模式** (ADR-0002) - 每个 Step = 1 个 Activity  
 ✅ **Task Queue 直接映射** (ADR-0006) - runs-on → Task Queue 名称  
-✅ **插件化节点系统** (ADR-0003) - PluginManager 框架 (Epic 4 实现)  
-✅ **配置优先级** - 环境变量 > 命令行参数 > 配置文件  
+✅ **插件化节点系统** (ADR-0003) - PluginManager 全功能实现（.so 扫描/加载/fsnotify 热重载，Story 2.9/3.1/4.1 相关逻辑已预置）  
+✅ **配置优先级** - 环境变量 > 命令行参数 (--config) > CONFIG_PATH 环境变量 > 默认值  
 ✅ **优雅关闭** - SIGTERM 触发 30s 超时关闭  
+✅ **pprof 开关** - 默认关闭，--pprof 标志显式启用（生产环境安全）  
 
 ### 代码规范
 
@@ -1238,9 +1240,9 @@ Claude Sonnet 4.5
 ### Completion Notes List
 
 ✅ **AC1: Agent 项目结构和基础框架**
-- 创建 [cmd/agent/main.go](../../cmd/agent/main.go) - Agent 启动入口 (120 行)
-- 创建 [internal/agent/plugin_manager.go](../../internal/agent/plugin_manager.go) - 插件管理器 stub (41 行)
-- 实现命令行参数: --config, --task-queues, --log-level, --version
+- 创建 [cmd/agent/main.go](../../cmd/agent/main.go) - Agent 启动入口
+- 创建 [internal/agent/plugin_manager.go](../../internal/agent/plugin_manager.go) - 插件管理器（含完整 .so 扫描、动态加载、fsnotify 热重载）
+- 实现命令行参数: --config, --task-queues, --log-level, --version, --pprof（pprof 默认关闭，需显式 --pprof 启用）
 - 实现信号处理 (SIGINT/SIGTERM) 和优雅关闭
 - 支持版本信息显示 (Version, Commit, BuildTime)
 
@@ -1248,19 +1250,19 @@ Claude Sonnet 4.5
 - 扩展 [pkg/config/config.go](../../pkg/config/config.go) 添加 AgentConfig 结构 (+118 行)
 - 实现 LoadAgent() 函数,支持文件/环境变量配置
 - 实现 validateQueueName() 验证 Task Queue 命名 (ADR-0006)
-- 创建 [config.agent.example.yaml](../../config.agent.example.yaml) 配置示例
-- 支持环境变量覆盖 (WATERFLOW_AGENT_*, WATERFLOW_TEMPORAL_*, WATERFLOW_LOG_*)
+- 创建 [examples/configs/config.agent.example.yaml](../../examples/configs/config.agent.example.yaml) 配置示例
+- 支持环境变量覆盖: WATERFLOW_AGENT_*, WATERFLOW_TEMPORAL_*, WATERFLOW_LOG_*
+- 支持 CONFIG_PATH 环境变量覆盖 --config flag（优先级低于显式 --config）
 
 ✅ **AC3: Temporal Worker 连接和注册**
-- 创建 [internal/agent/worker.go](../../internal/agent/worker.go) - Worker 实现 (145 行)
-- 实现 NewWorker() - 创建 Worker 并连接 Temporal (带重试,日志级别优化)
+- 创建 [internal/agent/worker.go](../../internal/agent/worker.go) - Worker 实现
+- 实现 NewWorker() + newWorkerFromClient()（分离连接与初始化，支持单元测试）
 - 实现 connectToTemporal() - 连接重试逻辑 (最多 10 次, 5 秒间隔)
-  - 前 5 次失败使用 Error 级别日志
-  - 后续失败使用 Warn 级别日志
+  - 中间失败使用 Warn 级别日志
+  - 最终放弃使用 Error 级别日志（"giving up"）
 - 实现 Start() - 为每个 Task Queue 创建独立 Worker
-- 注册 RunWorkflowExecutor 工作流 (来自 pkg/temporal)
+- 注册 `RunWorkflowExecutor` + `ExecuteJobInstance` 工作流 (来自 pkg/temporal)
 - 注册 ExecuteStepActivity 活动 (Step 执行器)
-  - **注意:** ExecuteStepActivity 当前依赖 PluginManager (Epic 4),执行会返回错误
 - 每个 Worker 支持 100 并发 Activity, 50 并发 Workflow Task
 - Worker StopTimeout 使用配置的 `agent.shutdown_timeout`
 
@@ -1355,3 +1357,22 @@ Claude Sonnet 4.5
 - 配置文件示例放在 `examples/configs/` 符合容器化部署最佳实践
 - 默认配置路径 `/app/config/config.yaml` 适配 Docker 容器，生产环境通过安装脚本复制到 `/etc/waterflow/`
 
+### 2026-03-05 - Code Review #3 修复 (Dev Agent Amelia)
+**执行者:** Dev Agent (Claude Sonnet 4.6)  
+**状态:** Done
+
+**修复内容:**
+1. **[H1] 单元测试覆盖率** - 重构 `NewWorker` 提取 `newWorkerFromClient`，新增 7 个单元测试覆盖 `Start`/`Shutdown`/初始化路径，覆盖率从 56.7% → **72.7%**（满足 AC7 >70%）
+2. **[H2] 文档-代码不一致** - 更新 AC3/Completion Notes/Dev Notes 反映实际 `RunWorkflowExecutor`+`ExecuteJobInstance` 注册；plugin_manager 实际实现说明（非 stub）
+3. **[M1] workflow 注册名** - 故事文档 AC3 代码示例更新为 `RunWorkflowExecutor`+`ExecuteJobInstance`
+4. **[M2] 最后重试日志** - 最后一次失败由 "retrying" 改为 "giving up"（Error 级别）
+5. **[M3] run-agent 路径** - `Makefile` 修正为 `examples/configs/config.agent.example.yaml`
+6. **[M4] pprof 安全** - 添加 `--pprof` flag，默认关闭，需显式启用
+7. **[L1] 重试日志级别** - 中间重试统一使用 Warn，最终失败才 Error
+8. **[L2] CONFIG_PATH 文档** - AC2 添加 CONFIG_PATH 优先级说明
+9. **[L3] 时间上界断言** - `TestConnectToTemporal_Retry` 添加 `< 5s` 上界
+
+**测试结果:**
+- ✅ 50 个测试通过，2 个跳过（集成测试）
+- ✅ 覆盖率 72.7% (`internal/agent`)
+- ✅ 编译无错误
