@@ -648,22 +648,6 @@ func TestStory1_9_NewArch_INT_008_ErrorScenarios(t *testing.T) {
 
 // Helper functions
 
-func skipDatabaseTests(t *testing.T) bool {
-	if getEnvOrDefault("SKIP_DATABASE_TESTS", "") == "true" {
-		t.Skip("Database tests disabled (SKIP_DATABASE_TESTS=true)")
-		return true
-	}
-	return false
-}
-
-func skipTemporalTests(t *testing.T) bool {
-	if getEnvOrDefault("SKIP_TEMPORAL_TESTS", "") == "true" {
-		t.Skip("Temporal tests disabled (SKIP_TEMPORAL_TESTS=true)")
-		return true
-	}
-	return false
-}
-
 func createTestDefinition(t *testing.T, name, content string) {
 	createTestDefinitionWithTags(t, name, content, []string{"test"})
 }

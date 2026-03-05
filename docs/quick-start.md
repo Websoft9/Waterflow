@@ -332,6 +332,129 @@ curl -X POST http://localhost:8080/v1/workflows \
 
 **完整模板文档:** [工作流模板库](./templates/README.md)
 
+## ⏰ 创建定时调度
+
+### 基础调度示例
+
+为工作流创建定时任务，实现自动化执行：
+
+```bash
+# 1. 创建工作流定义
+curl -X POST http://localhost:8080/v1/workflows/definitions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "daily-backup",
+    "content": "name: daily-backup\nvars:\n  backup_dir: /tmp\njobs:\n  backup:\n    runs-on: default\n    steps:\n      - name: Run Backup\n        uses: exec@v1\n        with:\n          command: echo \"Backup to ${backup_dir}\""
+  }'
+
+# 2. 创建每日调度（凌晨 2 点执行）
+curl -X POST http://localhost:8080/v1/workflows/daily-backup/schedules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "nightly-backup",
+    "cron": "0 2 * * *",
+    "timezone": "Asia/Shanghai",
+    "vars": {
+      "backup_dir": "/data/backups"
+    },
+    "memo": "每日凌晨 2 点自动备份"
+  }'
+
+# 3. 查看调度详情
+curl http://localhost:8080/v1/workflows/daily-backup/schedules/nightly-backup
+```
+
+### 常用 Cron 表达式
+
+| 表达式 | 说明 |
+|--------|------|
+| `0 * * * *` | 每小时整点 |
+| `0 2 * * *` | 每天凌晨 2 点 |
+| `0 9 * * 1` | 每周一上午 9 点 |
+| `0 0 1 * *` | 每月 1 号零点 |
+| `*/15 * * * *` | 每 15 分钟 |
+
+### 参数覆盖机制
+
+调度支持三层参数合并（优先级从低到高）：
+
+```yaml
+# 1. 工作流 YAML 定义的默认参数
+name: backup-workflow
+vars:
+  backup_dir: /tmp          # 默认值
+  retention_days: 7         # 默认值
+```
+
+```bash
+# 2. 调度创建时绑定的参数（覆盖 YAML vars）
+curl -X POST http://localhost:8080/v1/workflows/backup-workflow/schedules \
+  -d '{
+    "name": "prod-backup",
+    "cron": "0 2 * * *",
+    "vars": {
+      "backup_dir": "/data/backups",  # 覆盖默认值
+      "retention_days": 30             # 覆盖默认值
+    }
+  }'
+
+# 3. 手动触发时提供的参数（最高优先级）
+curl -X POST http://localhost:8080/v1/workflows/backup-workflow/schedules/prod-backup/trigger \
+  -d '{
+    "vars": {
+      "backup_dir": "/mnt/emergency"  # 临时覆盖
+    }
+  }'
+```
+
+### 调度管理操作
+
+```bash
+# 暂停调度（系统维护）
+curl -X POST http://localhost:8080/v1/workflows/daily-backup/schedules/nightly-backup/pause \
+  -d '{"reason": "系统维护中"}'
+
+# 恢复调度
+curl -X POST http://localhost:8080/v1/workflows/daily-backup/schedules/nightly-backup/resume
+
+# 更新调度（修改 Cron 表达式）
+curl -X PUT http://localhost:8080/v1/workflows/daily-backup/schedules/nightly-backup \
+  -d '{
+    "cron": "0 3 * * *",
+    "memo": "改为凌晨 3 点执行"
+  }'
+
+# 删除调度
+curl -X DELETE http://localhost:8080/v1/workflows/daily-backup/schedules/nightly-backup
+```
+
+### 多调度场景
+
+一个工作流可以创建多个调度：
+
+```bash
+# 工作日备份（周一到周五）
+curl -X POST http://localhost:8080/v1/workflows/backup-workflow/schedules \
+  -d '{
+    "name": "weekday-backup",
+    "cron": "0 2 * * 1-5",
+    "vars": {"env": "production"}
+  }'
+
+# 周末备份（周六、周日）
+curl -X POST http://localhost:8080/v1/workflows/backup-workflow/schedules \
+  -d '{
+    "name": "weekend-backup",
+    "cron": "0 4 * * 0,6",
+    "vars": {"env": "staging"}
+  }'
+
+# 列出所有调度
+curl http://localhost:8080/v1/workflows/backup-workflow/schedules
+```
+
+**详细文档:** [Schedule API 参考](api-guide.md#schedule-api)
+
 ## 📚 下一步
 
 - 📖 [完整部署文档](deployment.md) - 详细配置和故障排查

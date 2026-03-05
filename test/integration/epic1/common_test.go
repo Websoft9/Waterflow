@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"testing"
 	"time"
 )
 
@@ -320,4 +321,22 @@ func waitForWorkflowRunning(ctx context.Context, serverURL, workflowID string, t
 			}
 		}
 	}
+}
+
+// skipDatabaseTests checks if database tests should be skipped
+func skipDatabaseTests(t *testing.T) bool {
+	if getEnvOrDefault("SKIP_DATABASE_TESTS", "") == "true" {
+		t.Skip("Database tests disabled (SKIP_DATABASE_TESTS=true)")
+		return true
+	}
+	return false
+}
+
+// skipTemporalTests checks if Temporal tests should be skipped
+func skipTemporalTests(t *testing.T) bool {
+	if getEnvOrDefault("SKIP_TEMPORAL_TESTS", "") == "true" {
+		t.Skip("Temporal tests disabled (SKIP_TEMPORAL_TESTS=true)")
+		return true
+	}
+	return false
 }

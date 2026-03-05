@@ -15,7 +15,7 @@ import (
 func BenchmarkCreateWorkflowDefinition(b *testing.B) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 
 	// Setup mock to always succeed
 	mockStore.On("Create", nil, nil).Return(nil).Maybe()
@@ -50,7 +50,7 @@ jobs:
 func BenchmarkListWorkflowDefinitions(b *testing.B) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 
 	// Mock response with 20 definitions
 	defs := make([]*workflow.WorkflowDefinition, 20)

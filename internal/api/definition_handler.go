@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 
+	"github.com/Websoft9/waterflow/internal/server/schedule"
 	"github.com/Websoft9/waterflow/pkg/dsl"
 	"github.com/Websoft9/waterflow/pkg/workflow"
 	"github.com/gorilla/mux"
@@ -14,15 +16,16 @@ import (
 
 // DefinitionHandlers handles workflow definition endpoints
 type DefinitionHandlers struct {
-	logger         *zap.Logger
-	parser         *dsl.Parser
-	validator      *dsl.Validator
-	defStore       workflow.DefinitionStore
-	paramExtractor *workflow.ParameterExtractor
+	logger          *zap.Logger
+	parser          *dsl.Parser
+	validator       *dsl.Validator
+	defStore        workflow.DefinitionStore
+	paramExtractor  *workflow.ParameterExtractor
+	scheduleManager *schedule.Manager
 }
 
 // NewDefinitionHandlers creates new DefinitionHandlers instance
-func NewDefinitionHandlers(logger *zap.Logger, defStore workflow.DefinitionStore) *DefinitionHandlers {
+func NewDefinitionHandlers(logger *zap.Logger, defStore workflow.DefinitionStore, scheduleManager *schedule.Manager) *DefinitionHandlers {
 	validator, err := dsl.NewValidator(logger)
 	if err != nil {
 		logger.Error("Failed to create validator", zap.Error(err))
@@ -30,11 +33,12 @@ func NewDefinitionHandlers(logger *zap.Logger, defStore workflow.DefinitionStore
 	}
 
 	return &DefinitionHandlers{
-		logger:         logger,
-		parser:         dsl.NewParser(logger),
-		validator:      validator,
-		defStore:       defStore,
-		paramExtractor: workflow.NewParameterExtractor(),
+		logger:          logger,
+		parser:          dsl.NewParser(logger),
+		validator:       validator,
+		defStore:        defStore,
+		paramExtractor:  workflow.NewParameterExtractor(),
+		scheduleManager: scheduleManager,
 	}
 }
 
@@ -95,19 +99,12 @@ func (h *DefinitionHandlers) CreateWorkflowDefinition(w http.ResponseWriter, r *
 	// Parse and validate YAML
 	wf, err := h.parser.Parse([]byte(req.Content))
 	if err != nil {
-		writeError(w, r, http.StatusUnprocessableEntity, "validation_error", "YAML validation failed", map[string]interface{}{
-			"errors": []map[string]interface{}{
-				{
-					"error": err.Error(),
-				},
-			},
-		})
-		return
-	}
-
-	// Validate workflow (semantic validation)
-	if h.validator != nil {
-		if _, err := h.validator.ValidateYAML([]byte(req.Content)); err != nil {
+		// Extract detailed errors from ValidationError
+		if validationErr, ok := err.(*dsl.ValidationError); ok {
+			writeError(w, r, http.StatusUnprocessableEntity, "validation_error", "YAML validation failed", map[string]interface{}{
+				"errors": validationErr.Errors,
+			})
+		} else {
 			writeError(w, r, http.StatusUnprocessableEntity, "validation_error", "YAML validation failed", map[string]interface{}{
 				"errors": []map[string]interface{}{
 					{
@@ -115,6 +112,27 @@ func (h *DefinitionHandlers) CreateWorkflowDefinition(w http.ResponseWriter, r *
 					},
 				},
 			})
+		}
+		return
+	}
+
+	// Validate workflow (semantic validation)
+	if h.validator != nil {
+		if _, err := h.validator.ValidateYAML([]byte(req.Content)); err != nil {
+			// Extract detailed errors from ValidationError
+			if validationErr, ok := err.(*dsl.ValidationError); ok {
+				writeError(w, r, http.StatusUnprocessableEntity, "validation_error", "YAML validation failed", map[string]interface{}{
+					"errors": validationErr.Errors,
+				})
+			} else {
+				writeError(w, r, http.StatusUnprocessableEntity, "validation_error", "YAML validation failed", map[string]interface{}{
+					"errors": []map[string]interface{}{
+						{
+							"error": err.Error(),
+						},
+					},
+				})
+			}
 			return
 		}
 	}
@@ -410,22 +428,32 @@ func (h *DefinitionHandlers) DeleteWorkflowDefinition(w http.ResponseWriter, r *
 		return
 	}
 
-	// TODO (AC5): Check if definition is referenced by schedules or webhooks
-	// This requires implementation of Story 1.10 (Schedule API) and Story 1.11 (Webhook API)
-	// Once implemented, add:
-	//   scheduleCount, _ := h.scheduleStore.CountByWorkflow(r.Context(), name)
-	//   webhookCount, _ := h.webhookStore.CountByWorkflow(r.Context(), name)
-	//   if scheduleCount > 0 || webhookCount > 0 {
-	//       writeError(w, r, http.StatusConflict, "conflict",
-	//           fmt.Sprintf("Cannot delete workflow '%s' because it is referenced by %d schedule(s) and %d webhook(s)",
-	//               name, scheduleCount, webhookCount),
-	//           map[string]interface{}{
-	//               "schedules": scheduleCount,
-	//               "webhooks": webhookCount,
-	//               "suggestion": "Please delete or update these schedules/webhooks before deleting the workflow definition",
-	//           })
-	//       return
-	//   }
+	// Check if definition is referenced by schedules (AC10 - Story 1.10)
+	if h.scheduleManager != nil {
+		schedules, err := h.scheduleManager.ListByWorkflow(r.Context(), name)
+		if err != nil {
+			h.logger.Warn("Failed to check schedule references", zap.Error(err))
+			// Continue with deletion even if check fails
+		} else if len(schedules) > 0 {
+			// Build schedule details for error response
+			scheduleDetails := make([]map[string]interface{}, 0, len(schedules))
+			for _, sched := range schedules {
+				scheduleDetails = append(scheduleDetails, map[string]interface{}{
+					"schedule_id": sched.ID,
+					"cron":        sched.Cron,
+					"status":      sched.Status,
+				})
+			}
+
+			writeError(w, r, http.StatusConflict, "conflict",
+				fmt.Sprintf("Cannot delete workflow '%s', referenced by %d active schedules", name, len(schedules)),
+				map[string]interface{}{
+					"schedules":  scheduleDetails,
+					"suggestion": "Delete all schedules before deleting the workflow definition",
+				})
+			return
+		}
+	}
 
 	// Delete definition
 	err := h.defStore.Delete(r.Context(), name)

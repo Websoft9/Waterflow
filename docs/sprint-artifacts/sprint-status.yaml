@@ -52,8 +52,8 @@ development_status:
   1-7-timeout-and-retry-strategy: done  # 完成,覆盖率>90%,58个测试通过(单元52+集成6),实现超时解析器/重试策略/错误分类器,扩展语义验证器,完成日期2025-12-19
   1-8-temporal-sdk-integration: done  # 完成,Temporal SDK v1.38.0集成,Client/Worker/Workflow/Activity/History Parser全部实现,编译通过,完成日期2025-12-22
   1-9-workflow-management-api: done  # ✅新架构完成(ADR-0009):Definition API(5端点)+Execution API(7端点),GORM+PostgreSQL,17单元测试+8集成测试,参数覆盖机制,向后兼容,2026-02-04完成
-  1-10-schedule-api-implementation: not-started  # Schedule API 实现(基于Temporal Schedules),定时工作流触发,6个API端点
-  1-11-webhook-trigger-implementation: not-started  # Webhook Trigger 实现,事件驱动工作流触发,6个API端点(删除logs API,改用工作流查询)
+  1-10-schedule-api-implementation: done  # ✅Schedule API完成(11/11集成测试全部通过),修复Temporal 1.29.x兼容性(Memo值*commonpb.Payload解码/Update时Memo同步),Agent unhealthy修复(healthcheck配置错误),2026-03-05完成
+  1-11-webhook-trigger-implementation: in-progress  # Webhook Trigger 实现,事件驱动工作流触发,6个API端点(删除logs API,改用工作流查询)
   1-12-docker-compose-deployment: done  # Docker Compose 部署方案完成,服务健康检查通过,工作流提交验证成功,部署文档已更新
   epic-1-retrospective: optional
 

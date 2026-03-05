@@ -103,6 +103,15 @@ services:
       WATERFLOW_TEMPORAL_TASKQUEUE: ${WATERFLOW_TEMPORAL_TASKQUEUE:-waterflow-server}
       WATERFLOW_LOG_LEVEL: ${WATERFLOW_LOG_LEVEL:-info}
       WATERFLOW_LOG_FORMAT: ${WATERFLOW_LOG_FORMAT:-json}
+
+      # Database Configuration (for workflow definitions storage)
+      WATERFLOW_DATABASE_ENABLED: ${WATERFLOW_DATABASE_ENABLED:-true}
+      WATERFLOW_DATABASE_HOST: ${WATERFLOW_DATABASE_HOST:-postgresql}
+      WATERFLOW_DATABASE_PORT: ${WATERFLOW_DATABASE_PORT:-5432}
+      WATERFLOW_DATABASE_USER: ${WATERFLOW_DATABASE_USER:-temporal}
+      WATERFLOW_DATABASE_PASSWORD: ${WATERFLOW_DATABASE_PASSWORD:-temporal}
+      WATERFLOW_DATABASE_DATABASE: ${WATERFLOW_DATABASE_DATABASE:-waterflow}
+      WATERFLOW_DATABASE_SSLMODE: ${WATERFLOW_DATABASE_SSLMODE:-disable}
     ports:
       - "${WATERFLOW_SERVER_PORT:-8080}:8080"
     healthcheck:
@@ -155,7 +164,7 @@ services:
     volumes:
       - agent-plugins:/app/plugins:ro
     healthcheck:
-      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:9090/metrics", "||", "exit", "1" ]
+      test: [ "CMD-SHELL", "wget -q -O /dev/null http://localhost:6061/debug/pprof/ || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 5

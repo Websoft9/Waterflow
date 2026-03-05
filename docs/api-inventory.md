@@ -19,13 +19,13 @@
 | **基础设施** | 4 | Story 1.2 |
 | **工作流定义** | 5 | Story 1.9 |
 | **工作流执行** | 7 | Story 1.9 |
-| **定时调度** | 6 | Story 1.10 |
+| **定时调度** | 9 | Story 1.10 |
 | **Webhook 触发** | 5 | Story 1.11 |
 | **模板管理** | 2 | Story 6.4 |
 | **节点管理** | 1 | Story 5.6 |
 | **YAML 验证** | 1 | Story 5.2 |
 | **审计日志** | 1 | Story 9.3 |
-| **总计** | **32** | - |
+| **总计** | **35** | - |
 
 ---
 
@@ -267,9 +267,10 @@ Content-Type: application/json
 
 ---
 
-## 4️⃣ 定时调度 API (6 个) - Story 1.10
+## 4️⃣ 定时调度 API (9 个) - Story 1.10
 
-> **说明**: Schedule 挂载在工作流定义下，引用而非复制 YAML。
+> **说明**: Schedule 挂载在工作流定义下，引用而非复制 YAML。  
+> **架构**: 完全基于 Temporal Schedules API，无数据库依赖。
 
 ### 4.1 创建 Schedule
 ```
@@ -277,14 +278,14 @@ POST /v1/workflows/{name}/schedules
 Content-Type: application/json
 
 {
-  "schedule_id": "nightly-deploy",
+  "name": "nightly-deploy",
   "cron": "0 2 * * *",
   "timezone": "Asia/Shanghai",
   "vars": {
     "env": "production"
   },
   "overlap_policy": "skip",
-  "enabled": true
+  "memo": "每日凌晨 2 点部署"
 }
 ```
 - **用途**: 为工作流定义创建定时调度
@@ -295,27 +296,72 @@ Content-Type: application/json
   "workflow_name": "deploy-app",
   "cron": "0 2 * * *",
   "timezone": "Asia/Shanghai",
+  "overlap_policy": "skip",
+  "status": "active",
   "vars": {"env": "production"},
-  "next_run_time": "2026-02-04T02:00:00+08:00",
-  "enabled": true
+  "memo": "每日凌晨 2 点部署",
+  "next_run_time": "2026-02-06T02:00:00+08:00",
+  "created_at": "2026-02-05T10:00:00Z"
 }
 ```
-- **vars**: 执行时覆盖 YAML 默认值
+- **vars**: 执行时覆盖 YAML 默认值（优先级: Trigger vars > Schedule vars > YAML vars）
+- **overlap_policy**: `skip`（跳过）、`allow_all`（并发）、`buffer_one`（缓冲一次）
 - **404**: 工作流定义不存在
+- **409**: Schedule 名称冲突
 
 ### 4.2 列出 Schedules
 ```
 GET /v1/workflows/{name}/schedules
+GET /v1/workflows/{name}/schedules?status=active&page=1&limit=20
 ```
 - **用途**: 列出工作流的所有 Schedules
-- **返回**: Schedule 列表
+- **过滤参数**:
+  - `status`: active, paused
+  - `page`, `limit`: 分页参数
+- **返回**: Schedule 列表 + 分页元数据
+```json
+{
+  "schedules": [
+    {
+      "schedule_id": "nightly-deploy",
+      "workflow_name": "deploy-app",
+      "cron": "0 2 * * *",
+      "status": "active",
+      "next_run_time": "2026-02-06T02:00:00+08:00"
+    }
+  ],
+  "meta": {
+    "total": 3,
+    "page": 1,
+    "limit": 20,
+    "total_pages": 1
+  }
+}
+```
 
 ### 4.3 查询 Schedule 详情
 ```
 GET /v1/workflows/{name}/schedules/{schedule_id}
 ```
-- **用途**: 查询单个 Schedule
-- **返回**: 完整 Schedule 信息 + 最近执行历史
+- **用途**: 查询单个 Schedule 详细信息
+- **返回**: 完整 Schedule 信息 + 下次执行时间
+```json
+{
+  "schedule_id": "nightly-deploy",
+  "workflow_name": "deploy-app",
+  "cron": "0 2 * * *",
+  "timezone": "Asia/Shanghai",
+  "overlap_policy": "skip",
+  "status": "active",
+  "vars": {"env": "production"},
+  "memo": "每日凌晨 2 点部署",
+  "next_run_time": "2026-02-06T02:00:00+08:00",
+  "last_run_time": "2026-02-05T02:00:00+08:00",
+  "created_at": "2026-02-01T10:00:00Z",
+  "updated_at": "2026-02-03T15:30:00Z"
+}
+```
+- **404**: Schedule 不存在
 
 ### 4.4 更新 Schedule
 ```
@@ -324,12 +370,14 @@ Content-Type: application/json
 
 {
   "cron": "0 3 * * *",
+  "timezone": "America/New_York",
   "vars": {"env": "staging"},
-  "enabled": false
+  "memo": "改为纽约时区凌晨 3 点"
 }
 ```
-- **用途**: 更新 Schedule 配置
+- **用途**: 更新 Schedule 配置（支持部分更新）
 - **返回**: 200 OK + 更新后的 Schedule
+- **404**: Schedule 不存在
 
 ### 4.5 删除 Schedule
 ```
@@ -337,20 +385,81 @@ DELETE /v1/workflows/{name}/schedules/{schedule_id}
 ```
 - **用途**: 删除 Schedule
 - **返回**: 204 No Content
-- **行为**: 不影响正在运行的执行
+- **行为**: 
+  - 立即停止后续触发
+  - 不影响正在运行的工作流执行
+  - 从 Temporal 中永久删除
+- **404**: Schedule 不存在
 
-### 4.6 手动触发 Schedule
+### 4.6 暂停 Schedule
+```
+POST /v1/workflows/{name}/schedules/{schedule_id}/pause
+Content-Type: application/json
+
+{
+  "reason": "系统维护中"
+}
+```
+- **用途**: 暂停 Schedule（不再触发新执行）
+- **返回**: 204 No Content
+- **行为**: 
+  - Status 变为 `paused`
+  - 不删除 Schedule，可恢复
+- **404**: Schedule 不存在
+
+### 4.7 恢复 Schedule
+```
+POST /v1/workflows/{name}/schedules/{schedule_id}/resume
+```
+- **用途**: 恢复已暂停的 Schedule
+- **返回**: 204 No Content
+- **行为**: 
+  - Status 变为 `active`
+  - 按 Cron 表达式正常触发
+- **404**: Schedule 不存在
+
+### 4.8 手动触发 Schedule
 ```
 POST /v1/workflows/{name}/schedules/{schedule_id}/trigger
 Content-Type: application/json
 
 {
-  "vars": {"version": "1.2.4"}
+  "vars": {"version": "1.2.4", "urgent": true}
 }
 ```
-- **用途**: 立即触发一次执行
-- **返回**: 202 Accepted + execution_id
-- **vars**: 可选，覆盖 Schedule 绑定的 vars
+- **用途**: 立即触发一次执行（不影响 Cron 计划）
+- **返回**: 202 Accepted
+```json
+{
+  "workflow_id": "wf_20260205_abc123"
+}
+```
+- **vars**: 可选，最高优先级覆盖（Trigger vars > Schedule vars > YAML vars）
+- **404**: Schedule 不存在
+
+### 4.9 列出 Schedule 执行历史
+```
+GET /v1/workflows/{name}/schedules/{schedule_id}/executions
+GET /v1/workflows/{name}/schedules/{schedule_id}/executions?limit=10
+```
+- **用途**: 查询 Schedule 触发的工作流执行历史
+- **返回**: 执行列表（按时间倒序）
+```json
+{
+  "executions": [
+    {
+      "workflow_id": "wf_20260205_abc123",
+      "status": "completed",
+      "started_at": "2026-02-05T02:00:00Z",
+      "completed_at": "2026-02-05T02:05:23Z"
+    }
+  ],
+  "meta": {
+    "total": 30,
+    "limit": 10
+  }
+}
+```
 
 ---
 

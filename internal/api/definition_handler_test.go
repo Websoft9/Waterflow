@@ -61,7 +61,7 @@ func (m *MockDefinitionStore) Exists(ctx context.Context, name string) (bool, er
 func TestCreateWorkflowDefinition_Success(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	// Disable semantic validator for test simplicity
 	handler.validator = nil
 	handler.validator = nil
@@ -120,7 +120,7 @@ jobs:
 func TestCreateWorkflowDefinition_Conflict(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 	handler.validator = nil
 
@@ -154,7 +154,7 @@ jobs:
 func TestGetWorkflowDefinition_Success(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 	handler.validator = nil
 
@@ -195,7 +195,7 @@ func TestGetWorkflowDefinition_Success(t *testing.T) {
 func TestGetWorkflowDefinition_NotFound(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 	handler.validator = nil
 
@@ -215,7 +215,7 @@ func TestGetWorkflowDefinition_NotFound(t *testing.T) {
 func TestListWorkflowDefinitions_Success(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 	handler.validator = nil
 
@@ -260,7 +260,7 @@ func TestListWorkflowDefinitions_Success(t *testing.T) {
 func TestUpdateWorkflowDefinition_Success(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 	handler.validator = nil
 
@@ -306,7 +306,7 @@ jobs:
 func TestDeleteWorkflowDefinition_Success(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 	handler.validator = nil
 
@@ -325,7 +325,7 @@ func TestDeleteWorkflowDefinition_Success(t *testing.T) {
 func TestDeleteWorkflowDefinition_NotFound(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 	handler.validator = nil
 
@@ -345,7 +345,7 @@ func TestDeleteWorkflowDefinition_NotFound(t *testing.T) {
 func TestCreateWorkflowDefinition_InvalidYAML(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 
 	// Invalid YAML syntax
@@ -370,7 +370,7 @@ func TestCreateWorkflowDefinition_InvalidYAML(t *testing.T) {
 func TestCreateWorkflowDefinition_MissingName(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 
 	reqBody := `{
@@ -388,7 +388,7 @@ func TestCreateWorkflowDefinition_MissingName(t *testing.T) {
 func TestCreateWorkflowDefinition_MissingContent(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 
 	reqBody := `{
@@ -406,7 +406,7 @@ func TestCreateWorkflowDefinition_MissingContent(t *testing.T) {
 func TestUpdateWorkflowDefinition_InvalidYAML(t *testing.T) {
 	logger := zap.NewNop()
 	mockStore := new(MockDefinitionStore)
-	handler := NewDefinitionHandlers(logger, mockStore)
+	handler := NewDefinitionHandlers(logger, mockStore, nil)
 	handler.validator = nil
 
 	// Mock Get to return existing definition
