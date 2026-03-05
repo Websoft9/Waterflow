@@ -1,6 +1,6 @@
 # Story 1.11: Webhook Trigger 实现
 
-Status: in-progress
+Status: done
 
 > **⚠️ 架构变更通知 (ADR-0009, 2026-02-03)**
 >
