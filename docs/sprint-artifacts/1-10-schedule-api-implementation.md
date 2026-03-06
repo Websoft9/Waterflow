@@ -2160,14 +2160,16 @@ open http://localhost:8233
 - ✅ 修复问题5: 添加Schedule数量限制检查（100/workflow）
 - ✅ 修复问题6-8: 补充4个集成测试（覆盖AC3/4/6/10）
 - ✅ 修复问题9: 优化ListAllSchedules性能（避免不必要的Describe调用）
+- ✅ 修复问题10 (2026-03-06): `Manager.ListByWorkflow/Get/List/Pause/Resume/Update/Trigger/Delete` 无 nil 守卫，`temporalClient=nil` 时直接 dereference 导致 panic；添加 `checkTemporalClient()` helper，所有 Temporal 操作前统一守卫，单元测试从 3/5 提升至 **5/5 PASS**
 
 ### File List
 
 **核心实现文件:**
-- `internal/server/schedule/manager.go` (580行) - Schedule业务逻辑层
+- `internal/server/schedule/manager.go` (~610行) - Schedule业务逻辑层
   - Create/List/ListByWorkflow/Get/Update/Pause/Resume/Trigger/Delete
   - Cron验证、Schedule数量限制、参数合并逻辑
   - convertFromDescription/convertFromListEntry辅助函数
+  - `checkTemporalClient()` nil 守卫（2026-03-06 修复）
 - `internal/api/schedule_handler.go` (589行) - Schedule REST API层
   - 9个HTTP handlers（Create/List/Get/Update/Delete/Pause/Resume/Trigger）
   - Request/Response类型定义、错误处理
@@ -2427,7 +2429,7 @@ err := handle.Update(ctx, client.ScheduleUpdateOptions{
 - ✅ 错误反馈增强：YAML 验证错误显示详细字段级错误
 
 **测试覆盖:**
-- ✅ 单元测试：5个测试函数 (manager_simple_test.go) - 3/5通过
+- ✅ 单元测试：5个测试函数 (manager_simple_test.go) - **5/5通过**（2026-03-06 nil守卫修复后全部通过）
 - ✅ 集成测试：11个测试场景 - **6/11通过 (55%)**
   - ✅ INT-001: CreateSchedule
   - ✅ INT-002: PauseResumeSchedule
@@ -2486,6 +2488,21 @@ Temporal Server 1.29.1 + Go SDK v1.38.0 存在向后兼容性问题：
 - [ ] 升级 Temporal Server到v1.30+或更高版本
 - [ ] 重新运行集成测试验证修复
 - [ ] 可选：实现Memo fallback机制作为永久compatibil层
+
+**问题2: `Manager` 方法 nil pointer panic（已修复 2026-03-06）**
+
+**症状:** `TestManager_Create_WorkflowExists` panic — `invalid memory address or nil pointer dereference`
+
+**根本原因:**
+`ListByWorkflow`（及其他8个方法）在第一行直接调用 `m.temporalClient.ScheduleClient()`，无 nil 检查。
+测试刻意传入 `nil` temporalClient 来验证workflow存在性检查，在进入 Temporal 操作前被 panic 打断。
+
+**修复:**
+- 新增 `checkTemporalClient() error` helper method
+- 在 `Create/List/ListByWorkflow/Get/Pause/Resume/Update/Trigger/Delete` 共9处 Temporal 操作前统一调用
+- `Create` 中守卫位置在 workflow 存在性检查之后，确保 "workflow not found" 优先于 "temporal client not initialized"
+
+**验证:** `manager_simple_test.go` 全部 **5/5 PASS**（修复前 3/5）
 
 ---
 

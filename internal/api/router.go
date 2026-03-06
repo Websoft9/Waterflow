@@ -290,13 +290,15 @@ func NewRouterWithGORM(logger *zap.Logger, temporalClient *temporal.Client, even
 		// AC6: Rerun workflow
 		router.HandleFunc("/v1/workflows/{id}/rerun", wh.RerunWorkflow).Methods(http.MethodPost)
 
-		// Agent discovery endpoints (Story 1.9 AC9)
+		// Agent discovery and health monitoring endpoints (Story 1.9 AC9, Story 2.7)
 		ah := NewAgentHandlers(logger, temporalClient)
 		router.HandleFunc("/v1/agents", ah.ListAgents).Methods(http.MethodGet)
+		// /summary must be registered before /{name} to avoid being swallowed by the param route
+		router.HandleFunc("/v1/agents/summary", ah.GetAgentsSummary).Methods(http.MethodGet)
 		router.HandleFunc("/v1/agents/{name}", ah.GetAgentStatus).Methods(http.MethodGet)
 
-		// Task Queue discovery endpoint (Story 2.2 AC - H3 修复：注册此前遗漏的路由)
-		router.HandleFunc("/v1/task-queues", wh.ListTaskQueues).Methods(http.MethodGet)
+		// Task Queue discovery endpoint (Story 2.7 AC3: real Temporal-backed implementation)
+		router.HandleFunc("/v1/task-queues", ah.ListTaskQueues).Methods(http.MethodGet)
 	}
 
 	// Audit log endpoints (Story 9-3 AC6)
@@ -319,9 +321,9 @@ func NewRouterWithGORM(logger *zap.Logger, temporalClient *temporal.Client, even
 	// Note: Authentication middleware removed as Waterflow serves as a component,
 	// authentication is handled by the parent application
 	adminRouter := router.PathPrefix("/admin").Subrouter()
-	ah := handlers.NewAdminHandler(logger)
-	adminRouter.HandleFunc("/log-level", ah.GetLogLevel).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/log-level", ah.SetLogLevel).Methods(http.MethodPut)
+	adminH := handlers.NewAdminHandler(logger)
+	adminRouter.HandleFunc("/log-level", adminH.GetLogLevel).Methods(http.MethodGet)
+	adminRouter.HandleFunc("/log-level", adminH.SetLogLevel).Methods(http.MethodPut)
 
 	// Custom error handlers
 	router.NotFoundHandler = http.HandlerFunc(h.NotFound)

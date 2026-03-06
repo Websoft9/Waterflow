@@ -246,7 +246,7 @@ func TestGetWorkflowLogs_MissingID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// TestListTaskQueues_NoTemporal tests task queues list (placeholder implementation)
+// TestListTaskQueues_NoTemporal tests legacy WorkflowHandlers.ListTaskQueues (superseded by AgentHandlers)
 func TestListTaskQueues_NoTemporal(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	handlers := NewWorkflowHandlers(logger, nil, nil)
@@ -256,7 +256,7 @@ func TestListTaskQueues_NoTemporal(t *testing.T) {
 
 	handlers.ListTaskQueues(w, req)
 
-	// Placeholder implementation returns 200 with message
+	// Legacy placeholder returns 200 with message
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}

@@ -1097,26 +1097,14 @@ func (h *WorkflowHandlers) extractLogFromEvent(event *history.HistoryEvent, even
 	return logEntry
 }
 
-// ListTaskQueues returns a list of active task queues.
-// This is a placeholder implementation for Story 2.2.
-// Full implementation will be provided in Story 2.7 (Agent Health Monitoring).
+// ListTaskQueues is a legacy placeholder kept for backward compatibility.
+// The real implementation has moved to AgentHandlers.ListTaskQueues (Story 2.7).
+// This method is no longer registered in the router.
 func (h *WorkflowHandlers) ListTaskQueues(w http.ResponseWriter, r *http.Request) {
-	// Story 2.7 will implement:
-	// - Query Temporal Admin API for worker heartbeats
-	// - Calculate worker count per task queue
-	// - Return detailed health status
-
 	response := map[string]interface{}{
-		"message": "Task queue listing not yet fully implemented (Story 2.7)",
-		"hint":    "Use Temporal UI to view active task queues: http://localhost:8088",
-		"task_queues": []map[string]interface{}{
-			{
-				"name":           "example",
-				"worker_count":   0,
-				"status":         "unknown",
-				"implementation": "placeholder",
-			},
-		},
+		"message":     "Task queue listing has moved to AgentHandlers (Story 2.7)",
+		"hint":        "Use GET /v1/task-queues (backed by Temporal DescribeTaskQueue)",
+		"task_queues": []map[string]interface{}{},
 	}
 
 	w.Header().Set("Content-Type", "application/json")

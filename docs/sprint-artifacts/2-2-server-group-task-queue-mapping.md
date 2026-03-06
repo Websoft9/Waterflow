@@ -1227,15 +1227,16 @@ Claude Sonnet 4.5
 - `pkg/dsl/validator_runs_on_test.go` - runs-on 验证测试 (210 行)
 
 **修改文件:**
-- `pkg/dsl/semantic_validator.go` - 添加 ValidateTaskQueueName + validateRunsOn (~90 行新增)
-- `pkg/temporal/workflow.go` - 添加防御性 runs-on 检查 (~12 行新增)
+- `pkg/dsl/semantic_validator.go` - 添加 ValidateTaskQueueName + validateRunsOn；提取 taskQueueNameRegex 为包级 var；validateRunsOn 改委托 ValidateRunsOn（支持表达式语法）(~105 行新增)
+- `pkg/dsl/task_queue_validator_test.go` - Matrix 表达式语法测试用例 (+3 用例)
+- `pkg/temporal/workflow.go` - 添加 buildChildWorkflowOptions 含默认 360min 超时；防御性 runs-on 检查 (~26 行新增)
 - `README.md` - 更新多服务器示例 (~15 行修改)
 - `docs/sprint-artifacts/sprint-status.yaml` - 状态更新
 - `docs/sprint-artifacts/2-2-server-group-task-queue-mapping.md` - 本文件
 
 **Story 1.9 新增 (Task Queue API):**
-- `internal/api/taskqueue_handler.go` - Task Queue 查询 API (150 行)
-- `internal/api/router.go` - 注册路由 (~2 行新增)
+- `internal/api/workflow_handler.go` - `ListTaskQueues` 占位实现（位于此文件末尾，完整实现待 Story 2.7）
+- `internal/api/router.go` - 注册路由 (~3 行新增，H3 修复)
 
 **总计:** ~1131 新增代码行 (含测试), ~32 修改行
 
@@ -1269,3 +1270,10 @@ Claude Sonnet 4.5
 - ✅ MEDIUM-1 (M1): 消除 `ValidateRunsOn` 与 `ValidateTaskQueueName` 的重复逻辑，前者现委托后者 (validator_runs_on.go)；`ValidateTaskQueueName` 长度检查提前至 regex 前 (semantic_validator.go)
 - ✅ MEDIUM-2/LOW-1 (M2/L1): 删除误导性注释 "当前只支持单 Job" 及随机 map 迭代 for-loop (workflow_handler.go)
 - ✅ MEDIUM-3 (M3): 文档化连续双连字符命名行为及警告 (docs/guides/server-groups.md)
+
+**代码审查修复 (2026-03-06):**
+- ✅ HIGH (H1): 修复 `SemanticValidator.validateRunsOn` 直接调用 `ValidateTaskQueueName` 而非 `ValidateRunsOn`，导致 Matrix 表达式语法 (`${{ matrix.server }}`) 在 API 验证时被错误拒绝；现委托 `ValidateRunsOn` 以支持 AC5.1 (semantic_validator.go)
+- ✅ MEDIUM (M1): 修正文件列表误报——`taskqueue_handler.go` 从未创建，`ListTaskQueues` 实际位于 `workflow_handler.go` 末尾
+- ✅ MEDIUM (M2): 将 `ValidateTaskQueueName` 内 `regexp.MustCompile` 提取为包级变量，消除高频调用的重复编译 (semantic_validator.go)
+- ✅ LOW (L1): 为 `TestSemanticValidator_ValidateRunsOn` 补充3个 Matrix 表达式语法测试用例 (task_queue_validator_test.go)
+- ✅ LOW (L2): 子工作流增加 `WorkflowExecutionTimeout`，`TimeoutMinutes=0` 时使用默认 360 分钟，防止无限等待 (workflow.go)

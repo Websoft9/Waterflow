@@ -418,6 +418,12 @@ func (v *SemanticValidator) validateRetryStrategy(jobName string, stepIdx int, s
 	return errors
 }
 
+// taskQueueNameRegex is the compiled pattern for Task Queue name validation per ADR-0006.
+// Pattern: alphanumeric start, alphanumeric/hyphen middle, alphanumeric end.
+// Matches: "a", "linux-amd64", "gpu-a100", "web-servers-prod"
+// Rejects: "-linux", "linux-", "linux_amd64", "web servers"
+var taskQueueNameRegex = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
+
 // ValidateTaskQueueName validates Task Queue naming per ADR-0006.
 // Rules:
 // - Only alphanumeric characters and hyphens
@@ -433,12 +439,7 @@ func ValidateTaskQueueName(name string) error {
 		return fmt.Errorf("task queue name too long: maximum 255 characters, got %d", len(name))
 	}
 
-	// Regex: alphanumeric start, alphanumeric/hyphen middle, alphanumeric end
-	// Pattern: ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$
-	// Matches: "a", "linux-amd64", "gpu-a100", "web-servers-prod"
-	// Rejects: "-linux", "linux-", "linux_amd64", "web servers"
-	re := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
-	if !re.MatchString(name) {
+	if !taskQueueNameRegex.MatchString(name) {
 		return fmt.Errorf("invalid task queue name: must contain only alphanumeric characters and hyphens, and must start and end with alphanumeric")
 	}
 
@@ -462,15 +463,17 @@ func (v *SemanticValidator) validateRunsOn(workflow *Workflow) error {
 			continue
 		}
 
-		// Validate task queue name format
-		if err := ValidateTaskQueueName(job.RunsOn); err != nil {
+		// Validate task queue name format.
+		// Uses ValidateRunsOn which also handles Matrix expression syntax (e.g., ${{ matrix.server }}).
+		// Expressions are skipped here and validated at execution time after rendering.
+		if err := ValidateRunsOn(job.RunsOn); err != nil {
 			errors = append(errors, FieldError{
 				Line:       job.LineNum,
 				Field:      fmt.Sprintf("jobs.%s.runs-on", jobName),
 				Error:      err.Error(),
 				Value:      job.RunsOn,
 				Snippet:    extractCodeSnippet(v.content, job.LineNum, 2),
-				Suggestion: "Use only alphanumeric characters and hyphens (e.g., 'linux-amd64', 'web-servers')",
+				Suggestion: "Use only alphanumeric characters and hyphens (e.g., 'linux-amd64', 'web-servers'), or expression syntax (e.g., '${{ matrix.server }}')",
 			})
 		}
 	}

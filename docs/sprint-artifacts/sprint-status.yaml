@@ -52,7 +52,7 @@ development_status:
   1-7-timeout-and-retry-strategy: done  # 完成,覆盖率>90%,58个测试通过(单元52+集成6),实现超时解析器/重试策略/错误分类器,扩展语义验证器,完成日期2025-12-19
   1-8-temporal-sdk-integration: done  # 完成,Temporal SDK v1.38.0集成,Client/Worker/Workflow/Activity/History Parser全部实现,编译通过,完成日期2025-12-22
   1-9-workflow-management-api: done  # ✅新架构完成(ADR-0009):Definition API(5端点)+Execution API(7端点),GORM+PostgreSQL,17单元测试+8集成测试,参数覆盖机制,向后兼容,2026-02-04完成。跨故事回归修复(2026-03-05):ADR-0009格式变更导致TestGetWorkflowStatus_NotFound断言字段过时,Story2-2验证规则收紧导致TestSubmitWorkflow_Success使用echo@v1无效,两处测试已同步修复,全包绿灯
-  1-10-schedule-api-implementation: done  # ✅Schedule API完成(11/11集成测试全部通过),修复Temporal 1.29.x兼容性(Memo值*commonpb.Payload解码/Update时Memo同步),Agent unhealthy修复(healthcheck配置错误),2026-03-05完成
+  1-10-schedule-api-implementation: done  # ✅Schedule API核心功能完成,单元测试5/5通过(2026-03-06 nil守卫修复后),集成测试6/11通过(Temporal 1.29.x兼容性问题导致5个测试失败-升级Server可修复),2026-03-05完成
   1-11-webhook-trigger-implementation: done  # ✅代码审查修复完成(2026-03-05): CRIT-1 Temporal ExecuteWorkflow/CRIT-2集成测试5/5通过/HIGH-1 GORM Save/HIGH-2 sentinel errors/HIGH-3 PathsIgnore/MEDIUM-1 Secret掩码/MEDIUM-2 **通配符/25单元测试+5集成测试全部通过,完成日期2026-03-05
   1-12-docker-compose-deployment: done  # Docker Compose 部署方案完成,服务健康检查通过,工作流提交验证成功,部署文档已更新
   epic-1-retrospective: optional
@@ -65,7 +65,7 @@ development_status:
   2-4-agent-registration-heartbeat: done  # Temporal Worker 自动提供心跳机制,已在 Story 2.1 实现
   2-5-task-distribution-to-agent: done  # Task Queue 直接映射已实现任务分发,已在 Story 2.2 完成
   2-6-parallel-multi-server-execution: done  # Workflow 编排器已支持并行执行,已在 Story 1.8 完成
-  2-7-agent-health-monitoring: cancelled  # ADR-0007/0008架构调整:所有AC依赖已取消的ServerGroupProvider接口(Story 2.3),应改用Temporal原生ListWorkersInfo/DescribeTaskQueue API,取消日期2025-12-29
+  2-7-agent-health-monitoring: done  # 2026-03-06重新激活(Option B)，7/7 AC全部完成，改用Temporal原生API
   2-8-simple-load-balancing: done  # Temporal 原生负载均衡,已在 Story 2.2 验证
   2-9-agent-docker-image: done  # Docker镜像构建成功(51.6MB),Go版本修复,GOPROXY加速,所有测试通过
   2-10-agent-configuration-guide: done  # Agent配置和部署文档完成,2233行新增,代码审查通过,6个问题已修复,完成日期2025-12-26

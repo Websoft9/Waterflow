@@ -65,6 +65,10 @@ tags:
     description: 审计日志 - 查询系统审计事件
   - name: Health
     description: 健康检查和监控 - 系统状态、指标、版本信息
+  - name: Agents
+    description: Agent 发现与健康监控 - 基于 Temporal Task Queue 实时状态
+  - name: Task Queues
+    description: Task Queue 列表与 Worker 计数 - Temporal 原生数据
 
 security:
   - bearerAuth: []
@@ -1004,6 +1008,84 @@ paths:
                     type: string
                     example: "2026-01-15T10:00:00Z"
 
+  # ==================== Agents ====================
+  /v1/agents:
+    get:
+      summary: 列出所有 Agent
+      description: |
+        返回所有已知 Task Queue 的 Agent 健康状态。
+        通过 Temporal `DiscoverTaskQueues` 发现 Task Queue，再用 `DescribeTaskQueue` 查询实时 poller 数据。
+      operationId: listAgents
+      tags: [Agents]
+      responses:
+        '200':
+          description: Agent 列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAgentsResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/agents/summary:
+    get:
+      summary: 获取 Agent 汇总统计
+      description: 返回跨所有 Task Queue 的健康状态聚合数据，适用于监控仪表板。
+      operationId: getAgentsSummary
+      tags: [Agents]
+      responses:
+        '200':
+          description: 汇总统计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentsSummaryResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/agents/{name}:
+    get:
+      summary: 获取单个 Agent 状态
+      description: 通过 Task Queue 名称查询指定 Agent 的实时 Temporal Worker 状态。
+      operationId: getAgentStatus
+      tags: [Agents]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Agent 名称（即 Task Queue 名称）
+          schema:
+            type: string
+            example: linux-amd64
+      responses:
+        '200':
+          description: Agent 状态详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Task Queues ====================
+  /v1/task-queues:
+    get:
+      summary: 列出所有 Task Queue
+      description: 返回所有已知 Task Queue 及其实时 Worker 数量与健康状态（Temporal 原生数据）。
+      operationId: listTaskQueues
+      tags: [Task Queues]
+      responses:
+        '200':
+          description: Task Queue 列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTaskQueuesResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1048,6 +1130,124 @@ components:
         default: 20
   
   schemas:
+    # ========== Agent Schemas ==========
+    AgentResponse:
+      type: object
+      description: 单个 Agent（Task Queue）的健康状态
+      properties:
+        name:
+          type: string
+          example: linux-amd64
+        pollers:
+          type: integer
+          description: Task Queue 上的 Worker 总数
+          example: 3
+        healthy_pollers:
+          type: integer
+          description: 30 秒内有活动的健康 Worker 数量
+          example: 3
+        task_backlog:
+          type: integer
+          format: int64
+          description: 待处理任务数量
+          example: 0
+        status:
+          type: string
+          enum: [healthy, degraded, unavailable]
+          description: |
+            健康状态：
+            - `healthy`：≥50% Worker 在 30 秒内活跃
+            - `degraded`：>0 但 <50% Worker 健康
+            - `unavailable`：无 Worker 或查询失败
+          example: healthy
+        last_update_time:
+          type: string
+          format: date-time
+          example: "2026-03-06T10:30:00Z"
+
+    ListAgentsResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentResponse'
+        total_count:
+          type: integer
+          example: 3
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-06T10:30:01Z"
+
+    TaskQueueResponse:
+      type: object
+      description: Task Queue 实时状态（与 AgentResponse 结构相同，语义为队列视角）
+      properties:
+        name:
+          type: string
+          example: web-servers
+        pollers:
+          type: integer
+          example: 2
+        healthy_pollers:
+          type: integer
+          example: 1
+        task_backlog:
+          type: integer
+          format: int64
+          example: 5
+        status:
+          type: string
+          enum: [healthy, degraded, unavailable]
+          example: degraded
+        last_update_time:
+          type: string
+          format: date-time
+          example: "2026-03-06T10:29:00Z"
+
+    ListTaskQueuesResponse:
+      type: object
+      properties:
+        task_queues:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskQueueResponse'
+        total_count:
+          type: integer
+          example: 2
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-06T10:30:01Z"
+
+    AgentsSummaryResponse:
+      type: object
+      description: 跨所有 Task Queue 的聚合健康统计
+      properties:
+        total_queues:
+          type: integer
+          example: 5
+        healthy_queues:
+          type: integer
+          example: 3
+        degraded_queues:
+          type: integer
+          example: 1
+        unavailable_queues:
+          type: integer
+          example: 1
+        total_pollers:
+          type: integer
+          example: 12
+        healthy_pollers:
+          type: integer
+          example: 10
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-06T10:30:01Z"
+
     # ========== Workflow Schemas ==========
     SubmitWorkflowRequest:
       type: object

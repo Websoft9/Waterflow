@@ -98,6 +98,24 @@ func executeJob(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job) error {
 	return executeMatrixInstancesWithLimit(ctx, wf, job, instances, maxParallel, failFast)
 }
 
+// defaultJobTimeoutMinutes is used when a job has no explicit timeout configured.
+// Matches the SemanticValidator default (360 minutes = 6 hours).
+const defaultJobTimeoutMinutes = 360
+
+// buildChildWorkflowOptions constructs child workflow options for a job.
+// When TimeoutMinutes is 0 (unset), it falls back to defaultJobTimeoutMinutes
+// to prevent jobs waiting indefinitely for an unavailable Agent (AC6).
+func buildChildWorkflowOptions(job *dsl.Job) workflow.ChildWorkflowOptions {
+	timeoutMinutes := job.TimeoutMinutes
+	if timeoutMinutes <= 0 {
+		timeoutMinutes = defaultJobTimeoutMinutes
+	}
+	return workflow.ChildWorkflowOptions{
+		TaskQueue:                job.RunsOn,
+		WorkflowExecutionTimeout: time.Duration(timeoutMinutes) * time.Minute,
+	}
+}
+
 // executeMatrixInstancesParallel executes all instances in parallel
 func executeMatrixInstancesParallel(ctx workflow.Context, wf *dsl.Workflow, job *dsl.Job, instances []*dsl.MatrixInstance, failFast bool) error {
 	logger := workflow.GetLogger(ctx)
@@ -109,9 +127,7 @@ func executeMatrixInstancesParallel(ctx workflow.Context, wf *dsl.Workflow, job 
 
 	futures := make([]workflow.Future, len(instances))
 	for i, instance := range instances {
-		childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
-			TaskQueue: job.RunsOn,
-		})
+		childCtx := workflow.WithChildOptions(ctx, buildChildWorkflowOptions(job))
 		logger.Info("Starting matrix instance", "job", job.Name, "instance", i, "matrix", instance.Matrix)
 		futures[i] = workflow.ExecuteChildWorkflow(childCtx, ExecuteJobInstance, wf, job, instance)
 	}
@@ -154,9 +170,7 @@ func executeMatrixInstancesWithLimit(ctx workflow.Context, wf *dsl.Workflow, job
 			nextIndex++
 			running++
 
-			childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
-				TaskQueue: job.RunsOn,
-			})
+			childCtx := workflow.WithChildOptions(ctx, buildChildWorkflowOptions(job))
 			logger.Info("Starting matrix instance", "job", job.Name, "instance", idx, "matrix", instance.Matrix)
 
 			future := workflow.ExecuteChildWorkflow(childCtx, ExecuteJobInstance, wf, job, instance)

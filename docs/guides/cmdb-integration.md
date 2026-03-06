@@ -1,10 +1,18 @@
 # CMDB 集成指南
 
-> ⚠️ **历史文档警告** (更新于 2025-12-29)  
-> 本文档描述的 Agent 注册/心跳机制已废弃（ADR-0007 之前的架构）。  
-> **当前架构：** Agent 通过 Temporal Worker 自动连接，无需注册 API。  
-> **CMDB 集成：** 现在通过 `server-groups.yaml` 文件进行服务器组映射。  
-> **参考文档：** [ADR-0008](../adr/0008-temporal-as-internal-service.md) | [Server Groups 指南](./server-groups.md)
+> ❌ **本文档已废弃 — 请勿参考实施** (更新于 2025-12-29)
+>
+> 本文档描述的 `ServerGroupProvider` 接口、`InMemoryProvider`、`FileProvider` 以及 Agent 注册 API **从未被实现**。
+>
+> **根本原因：** Story 2.3 于 2025-12-29 根据 [ADR-0008](../adr/0008-temporal-as-internal-service.md) 取消。
+> `pkg/provider/` 目录不存在，`ServerGroupProvider` 接口从未创建。
+>
+> **当前架构（实际已实现）：**
+> - Agent 通过 Temporal Worker 自动注册，无需任何注册 API
+> - Agent 健康监控使用 Temporal 原生 `DescribeTaskQueue` API（见 `internal/api/agent_handler.go`）
+> - 服务器组映射通过 runs-on 和 Task Queue 直接对应（见 ADR-0008）
+>
+> **参考文档：** [ADR-0008](../adr/0008-temporal-as-internal-service.md) | [Story 2.2](../sprint-artifacts/2-2-server-group-task-queue-mapping.md)
 
 ## 概述
 

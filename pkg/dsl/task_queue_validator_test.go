@@ -143,6 +143,51 @@ func TestSemanticValidator_ValidateRunsOn(t *testing.T) {
 			wantErr:     true,
 			errContains: "invalid task queue name",
 		},
+		// AC5.1: Matrix expression syntax must be accepted at validation time
+		// (H1 fix: SemanticValidator.validateRunsOn now delegates to ValidateRunsOn
+		// which skips format checks for expression syntax)
+		{
+			name: "expression syntax: simple matrix variable",
+			workflow: &Workflow{
+				Name: "test",
+				Jobs: map[string]*Job{
+					"deploy": {
+						RunsOn:  "${{ matrix.server }}",
+						Steps:   []*Step{{Uses: "checkout@v1"}},
+						LineNum: 5,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "expression syntax: composite expression",
+			workflow: &Workflow{
+				Name: "test",
+				Jobs: map[string]*Job{
+					"deploy": {
+						RunsOn:  "${{ matrix.server }}-agent",
+						Steps:   []*Step{{Uses: "checkout@v1"}},
+						LineNum: 5,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "expression syntax: os+arch composite",
+			workflow: &Workflow{
+				Name: "test",
+				Jobs: map[string]*Job{
+					"build": {
+						RunsOn:  "${{ matrix.os }}-${{ matrix.arch }}",
+						Steps:   []*Step{{Uses: "checkout@v1"}},
+						LineNum: 5,
+					},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	// Create validator with empty registry (we're only testing runs-on validation)
